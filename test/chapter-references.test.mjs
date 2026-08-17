@@ -115,17 +115,19 @@ test("selecting text and marking a chapter wraps exactly that text with [[select
   assert.match(body, /textarea\.setRangeText\(`\[\[\$\{selectedText\}\|\$\{chapter\}\]\]`,start,end,"end"\)/);
 });
 
-test("prose chapter refs are always-in-flow (no floating/absolute positioning) so there's no dead zone between text and badge, and stay hidden until the toggle is on", () => {
-  assert.doesNotMatch(styleSource, /\.prose-chapter-ref[^{]*\{[^}]*position:absolute/);
-  assert.match(styleSource, /\.prose-chapter-ref \.chapter-citation\{display:none/);
-  assert.match(styleSource, /body\.show-chapter-refs \.prose-chapter-ref \.chapter-citation\{display:inline-flex\}/);
-  assert.match(styleSource, /body\.show-chapter-refs \.prose-chapter-ref \.chapter-ref-link\{text-decoration:underline/);
+test("prose chapter refs are fully inert with the toggle off — no pointer-events, no visible decoration — and even with the toggle on, everything stays hidden until actual hover", () => {
+  assert.match(styleSource, /\.prose-chapter-ref \.chapter-ref-link\{color:inherit;text-decoration:none;pointer-events:none/);
+  assert.match(styleSource, /\.prose-chapter-ref \.chapter-citation\{position:absolute;left:0;bottom:100%;[^}]*opacity:0;pointer-events:none/);
+  assert.doesNotMatch(styleSource, /body\.show-chapter-refs \.prose-chapter-ref \.chapter-ref-link\{[^}]*text-decoration:underline/, "underline must not appear from the toggle alone — only on :hover");
+  assert.match(styleSource, /body\.show-chapter-refs \.prose-chapter-ref:hover \.chapter-ref-link\{[^}]*text-decoration:underline/);
+  assert.match(styleSource, /body\.show-chapter-refs \.prose-chapter-ref:hover \.chapter-citation\{opacity:1;pointer-events:auto\}/);
 });
 
-test("the marked text itself is a real <a> link when a source exists, clickable independent of hover/toggle state", () => {
+test("the marked text is a real <a> link when a source exists, but only becomes clickable (pointer-events:auto) once the toggle is on", () => {
   const ctx = sandbox({ chapterUrlTemplate: "https://example.com/ch-{n}" });
   const html = vm.runInContext(`richInline(${JSON.stringify("[[man|2]] text")})`, ctx);
   assert.match(html, /^<span class="prose-chapter-ref"><a class="chapter-ref-link" href="https:\/\/example\.com\/ch-2"/);
+  assert.match(styleSource, /body\.show-chapter-refs \.prose-chapter-ref \.chapter-ref-link\{pointer-events:auto\}/);
 });
 
 test("an explicit chapter link (for sites like webnovel.com with non-formulaic URLs) takes priority over the template", () => {
