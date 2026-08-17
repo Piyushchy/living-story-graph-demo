@@ -20,6 +20,7 @@ function sandbox(dataValue) {
     functionBody("validChapter"),
     functionBody("chapterUrl"),
     functionBody("chapterCitation"),
+    functionBody("lastSentenceSplit"),
     functionBody("richInline"),
   ].join("\n");
   const ctx = { data: dataValue, URL };
@@ -87,10 +88,11 @@ test("richInline still supports the existing [[Label|url]] wiki-link syntax unch
   assert.match(html, /<a class="wiki-external-link" href="https:\/\/example\.com\/protos"[^>]*>Protos Energy/);
 });
 
-test("the chapter-link template form validates {n} presence and a real URL before saving", () => {
-  assert.match(source, /if\(raw&&!raw\.includes\("\{n\}"\)\)/);
-  assert.match(source, /if\(raw&&!safeExternalUrl\(raw\.replaceAll\("\{n\}","1"\)\)\)/);
-  assert.match(source, /data\.chapterUrlTemplate=raw/);
+test("the chapter-links form validates the template, each explicit-link line, and saves both together", () => {
+  assert.match(source, /if\(rawTemplate&&!rawTemplate\.includes\("\{n\}"\)\)/);
+  assert.match(source, /if\(rawTemplate&&!safeExternalUrl\(rawTemplate\.replaceAll\("\{n\}","1"\)\)\)/);
+  assert.match(source, /const badLine=listFromText\(rawSources\)\.find/);
+  assert.match(source, /data\.chapterUrlTemplate=rawTemplate;data\.chapterSources=chapterSourcesFromText\(rawSources\)/);
 });
 
 test("the header exposes an on/off toggle for hover-revealed chapter markers, persisted per browser", () => {
@@ -107,7 +109,39 @@ test("selecting text in a wiki field and marking a chapter inserts a [[N]] marke
   assert.match(body, /textarea\.setRangeText\(`\[\[\$\{chapter\}\]\]`,end,end,"end"\)/);
 });
 
-test("chapter-ref-span markers are hidden by default and only reveal on hover once the toggle is on", () => {
-  assert.match(styleSource, /body:not\(\.show-chapter-refs\) \.chapter-ref-span \.chapter-citation\{display:none\}/);
-  assert.match(styleSource, /body\.show-chapter-refs \.chapter-ref-span:hover \.chapter-citation\{display:inline-flex\}/);
+test("chapter-ref-span markers float as non-reflowing tooltips, invisible until hovered with the toggle on", () => {
+  assert.match(styleSource, /\.chapter-ref-span \.chapter-citation\{position:absolute[^}]*opacity:0;pointer-events:none/);
+  assert.match(styleSource, /body\.show-chapter-refs \.chapter-ref-span:hover \.chapter-citation\{opacity:1;pointer-events:auto\}/);
+});
+
+test("richInline bounds a chapter marker's highlight to its own last sentence, not the whole preceding paragraph", () => {
+  const ctx = sandbox({ chapterUrlTemplate: "https://example.com/ch-{n}" });
+  const html = vm.runInContext(`richInline(${JSON.stringify("A Slightly Chubby man walked in. He looked around the room. He sat down.[[1]] More unrelated text follows.")})`, ctx);
+  // only the last sentence before the marker should be wrapped — the earlier two sentences stay plain
+  assert.match(html, /^A Slightly Chubby man walked in\. He looked around the room\. <mark class="chapter-ref-span">He sat down\.<a class="chapter-citation"/);
+  assert.match(html, /More unrelated text follows\.$/);
+});
+
+test("an explicit chapter link (for sites like webnovel.com with non-formulaic URLs) takes priority over the template", () => {
+  const ctx = sandbox({ chapterUrlTemplate: "https://example.com/ch-{n}", chapterSources: { 1: "https://www.webnovel.com/book/x_1/a-shooting-star-and-a-wish_60202087178355517" } });
+  assert.equal(vm.runInContext("chapterUrl(1)", ctx), "https://www.webnovel.com/book/x_1/a-shooting-star-and-a-wish_60202087178355517");
+  assert.equal(vm.runInContext("chapterUrl(2)", ctx), "https://example.com/ch-2", "chapter 2 has no explicit entry, so it falls back to the template");
+});
+
+test("chapterSourcesFromText/ToText round-trip explicit chapter links as one line per chapter", () => {
+  const ctx = sandbox({});
+  vm.runInContext(functionBody("chapterSourcesFromText") + "\n" + functionBody("chapterSourcesToText") + "\n" + functionBody("listFromText"), ctx);
+  const result = vm.runInContext(`(() => {
+    const map = chapterSourcesFromText(${JSON.stringify("2 | https://example.com/two\n1 | https://example.com/one")});
+    return JSON.stringify({ map, text: chapterSourcesToText(map) });
+  })()`, ctx);
+  const { map, text } = JSON.parse(result);
+  assert.deepEqual(map, { "1": "https://example.com/one", "2": "https://example.com/two" });
+  assert.equal(text, "1 | https://example.com/one\n2 | https://example.com/two");
+});
+
+test("marking a chapter with no saved link prompts to save one, so it's set once instead of re-entered every mention", () => {
+  const body = functionBody("installWikiLinkHelpers");
+  assert.match(body, /if\(!chapterUrl\(chapter\)\)\{/);
+  assert.match(body, /data\.chapterSources=\{\.\.\.\(data\.chapterSources\|\|\{\}\),\[chapter\]:savedUrl\}/);
 });
