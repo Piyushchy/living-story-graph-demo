@@ -284,7 +284,7 @@ function loadLocalData() {
   catch { return deepClone(sampleData); }
 }
 async function loadData() {
-  if(isUploadRoute&&localStorage.getItem(PUBLISH_DIRTY_KEY)==="1"){hostedDataStatus="dirty";return loadLocalData();}
+  if(localStorage.getItem(PUBLISH_DIRTY_KEY)==="1"){hostedDataStatus="dirty";return loadLocalData();}
   try { const response=await fetch("/api/data");if(response.ok){const hosted=await response.json();if(Array.isArray(hosted.entities)&&Array.isArray(hosted.events)){hostedDataStatus="connected";const migrated=migrateCultivationData(hosted);if(isUploadRoute)localStorage.setItem(STORAGE_KEY,JSON.stringify(migrated));return migrated;}}hostedDataStatus=response.status===404?"empty":"unavailable"; }
   catch {hostedDataStatus="unavailable";}
   return loadLocalData();
