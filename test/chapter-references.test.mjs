@@ -145,3 +145,14 @@ test("marking a chapter with no saved link prompts to save one, so it's set once
   assert.match(body, /if\(!chapterUrl\(chapter\)\)\{/);
   assert.match(body, /data\.chapterSources=\{\.\.\.\(data\.chapterSources\|\|\{\}\),\[chapter\]:savedUrl\}/);
 });
+
+test("renderAdmin only re-syncs the explicit chapter-links textarea when the map actually changed, not on every render", () => {
+  const body = functionBody("renderAdmin");
+  assert.match(body, /renderedChapterSources!==data\.chapterSources/);
+  assert.match(body, /renderedChapterSources=data\.chapterSources/);
+});
+
+test("Delete all story data preserves chapter links instead of silently discarding them, matching how volumes are already preserved", () => {
+  assert.match(source, /chapterUrlTemplate:data\.chapterUrlTemplate\|\|""/);
+  assert.match(source, /chapterSources:deepClone\(data\.chapterSources\|\|\{\}\)/);
+});
