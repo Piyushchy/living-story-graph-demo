@@ -7,6 +7,7 @@ const EVENT_TYPE_COLORS = { cultivation:"#e8ad3c",relationship:"#45c98b",status:
 const STORAGE_KEY = "living-story-graph-demo-v1";
 const VIEW_STATE_KEY = "living-story-graph-view-state-v1";
 const PUBLISH_DIRTY_KEY = "living-story-graph-publish-dirty-v1";
+const CHAPTER_REF_TOGGLE_KEY = "living-story-graph-chapter-refs-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CULTIVATION_LEVELS = ["Mortal","Body Tempering","Qi Training","Foundation Establishment","Golden Core","Nascent Soul","Earth Immortal","Heaven Immortal","Celestial Immortal","Demi Dao Lord","Dao Lord","Above Dao Lord"];
 
@@ -127,6 +128,7 @@ app.innerHTML = `
   <div class="app">
     <header class="topbar">
       <div class="brand"><span class="brand-mark"></span><div><strong><span class="brand-long">Living </span>Story Graph</strong><small id="novel-name"></small></div></div>
+      <button type="button" id="toggle-chapter-refs" class="button ghost chapter-ref-toggle" aria-pressed="false" title="Hover marked text to reveal its chapter"><span aria-hidden="true">🔖</span> Chapter refs</button>
       ${isUploadRoute?"":'<nav class="tabs" aria-label="Main navigation"><button class="tab active" data-view="graph">Public graph</button></nav>'}
     </header>
     <main>
@@ -172,6 +174,11 @@ app.innerHTML = `
             <div id="volume-rows" class="volume-rows"></div>
             <p id="volume-error" class="volume-error" role="alert"></p>
             <div class="form-actions volume-actions"><button class="button ghost" id="add-volume" type="button">＋ Add another volume</button><button class="button primary" type="submit">Save all volumes</button></div>
+          </form>
+          <form id="chapter-links-form" class="admin-card">
+            <div class="volume-editor-heading"><div><span class="editor-kicker">Chapter references</span><h2>Chapter link source</h2><p>Set this once. Every “Chapter N” mention across the whole site — profiles, events, achievements, and inline <code>[[12]]</code> markers in prose — links out automatically. Use <code>{n}</code> where the chapter number goes.</p></div><button class="button primary" type="submit">Save link source</button></div>
+            <label class="field"><span>Chapter URL template</span><input id="chapter-url-template" name="template" type="text" placeholder="https://your-site.com/chapter-{n}"></label>
+            <p id="chapter-links-error" class="volume-error" role="alert"></p>
           </form>
           <div class="admin-grid">
             <form id="entity-form" class="admin-card"><div class="admin-card-heading"><h2 id="entity-form-title">Create character, organization, or location</h2><div class="manage-row"><input id="manage-entity" list="admin-entity-options" placeholder="Load an existing identity"><button class="button ghost" id="load-entity" type="button">Load</button></div></div><p id="creation-edit-note" class="event-edit-mode-note" hidden><strong>Editing a creation-generated row.</strong> These facts were made by this identity form, so saving here updates the original linked row instead of creating a chapter event.</p><input name="editingId" type="hidden"><input name="editingCreationEventId" type="hidden"><div class="form-grid">
@@ -305,14 +312,21 @@ function safeExternalUrl(value){
   catch { return ""; }
 }
 function richInline(value){
-  const text=String(value??""),pattern=/\[\[([^\]|]+?)\|([^\]]+?)\]\]/g;let html="",lastIndex=0,match;
+  const text=String(value??""),pattern=/\[\[([^\]|]+?)\|([^\]]+?)\]\]|\[\[(\d+)\]\]/g;
+  let out="",segment="",cursor=0,match;
   while((match=pattern.exec(text))){
-    html+=escapeHtml(text.slice(lastIndex,match.index));
+    const gap=escapeHtml(text.slice(cursor,match.index));
+    if(match[3]!==undefined){
+      const chapter=validChapter(match[3]);
+      if(chapter){segment+=gap+chapterCitation({chapter});out+=`<mark class="chapter-ref-span">${segment}</mark>`;segment="";cursor=pattern.lastIndex;continue;}
+      segment+=gap+escapeHtml(match[0]);cursor=pattern.lastIndex;continue;
+    }
     const label=match[1].trim(),url=safeExternalUrl(match[2]);
-    html+=url?`<a class="wiki-external-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}<span aria-hidden="true">↗</span></a>`:escapeHtml(label);
-    lastIndex=pattern.lastIndex;
+    segment+=gap+(url?`<a class="wiki-external-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}<span aria-hidden="true">↗</span></a>`:escapeHtml(label));
+    cursor=pattern.lastIndex;
   }
-  return html+escapeHtml(text.slice(lastIndex));
+  segment+=escapeHtml(text.slice(cursor));
+  return out+segment;
 }
 function richText(value){
   return String(value??"").split(/\r?\n/).map(line=>{
@@ -322,7 +336,8 @@ function richText(value){
     return `<span class="cited-prose-line"><span>${richInline(prose)}</span>${chapterCitation({chapter,sourceUrl})}</span>`;
   }).join("<br>");
 }
-function chapterCitation(record,{requireUrl=false}={}){const chapter=validChapter(record?.chapter),url=safeExternalUrl(record?.sourceUrl);if(!chapter)return "";if(url)return `<a class="chapter-citation" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="Open the source for chapter ${chapter}"><span>Chapter ${chapter}</span><i aria-hidden="true">↗</i></a>`;return requireUrl?"":`<span class="chapter-citation uncited" title="No external chapter source has been added">Chapter ${chapter}</span>`;}
+function chapterUrl(chapter){const template=String(data?.chapterUrlTemplate||"").trim();if(!template||!chapter)return "";return safeExternalUrl(template.replaceAll("{n}",String(chapter)));}
+function chapterCitation(record,{requireUrl=false}={}){const chapter=validChapter(record?.chapter);if(!chapter)return "";const url=safeExternalUrl(record?.sourceUrl)||chapterUrl(chapter);if(url)return `<a class="chapter-citation" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="Open the source for chapter ${chapter}"><span>Chapter ${chapter}</span><i aria-hidden="true">↗</i></a>`;return requireUrl?"":`<span class="chapter-citation uncited" title="No external chapter source has been added">Chapter ${chapter}</span>`;}
 function eventOriginControl(event){const owner=entity(event.source),label=owner?.name||"event";return `<span class="event-controls">${chapterCitation(event)}<button class="event-origin-link" type="button" data-open-event="${escapeHtml(event.source)}" data-event-chapter="${event.chapter}" title="Open ${escapeHtml(label)}’s detailed timeline at chapter ${event.chapter}" aria-label="Open this event in ${escapeHtml(label)}’s detailed timeline"><span>Details</span><i aria-hidden="true">→</i></button></span>`;}
 function entityWikiUrl(id){return safeExternalUrl(entity(id)?.profile?.wikiUrl);}
 function entityNameLink(id,label=entity(id)?.name||id,className="entity-wiki-link"){const url=entityWikiUrl(id),text=escapeHtml(label);return url?`<a class="${className}" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="Open ${text} on the wiki">${text}<span aria-hidden="true">↗</span></a>`:text;}
@@ -778,6 +793,7 @@ function isAutomaticCreationDescription(record){
 
 function renderAdmin(){
   renderVolumeEditor();
+  const templateField=$("#chapter-url-template");if(templateField&&document.activeElement!==templateField)templateField.value=data.chapterUrlTemplate||"";
   const sorted=[...data.events].sort((a,b)=>a.chapter-b.chapter||(a.order||0)-(b.order||0)||String(a.type).localeCompare(String(b.type)));$("#data-count").textContent=`${data.events.length} events`;$("#entity-count").textContent=`${data.entities.length} identities`;$("#entity-table").innerHTML=[...data.entities].sort((a,b)=>a.name.localeCompare(b.name)).map(item=>{const connected=data.events.filter(event=>eventInvolves(event,item.id)).length,intro=item.kind==="character"?(firstMention(item)||firstAppearance(item)||item.intro):item.intro;return `<tr class="${connected?"":"orphan-identity"}"><td><strong>${escapeHtml(item.name)}</strong>${connected?"":'<small class="orphan-warning">Not yet visible on graph</small>'}</td><td><span class="chip">${escapeHtml(item.kind)}</span></td><td>${intro?`Chapter ${intro}`:"—"}</td><td>${connected||'<span class="orphan-warning">0 — repair needed</span>'}</td><td><div class="table-actions"><button class="button ghost edit-identity" data-id="${escapeHtml(item.id)}">Edit identity</button><button class="button ghost delete-identity-row" data-id="${escapeHtml(item.id)}">Delete</button></div></td></tr>`;}).join("");$("#event-table").innerHTML=sorted.map(e=>{const creationManaged=isCreationManagedEvent(e);return `<tr data-event-id="${escapeHtml(e.id)}" data-event-owner="${creationManaged?"identity":"chapter"}"><td>${e.chapter}</td><td><span class="chip">${escapeHtml(e.type)}</span>${creationManaged?'<small class="table-location">creation record</small>':""}</td><td>${escapeHtml([entity(e.source)?.name,e.target?entity(e.target)?.name:null].filter(Boolean).join(" → "))}${e.location?`<small class="table-location">at ${escapeHtml(entity(e.location)?.name||e.location)}</small>`:""}</td><td>${escapeHtml(e.description||"")}</td><td><div class="table-actions"><button class="button ghost edit-event" data-id="${escapeHtml(e.id)}">${creationManaged?"Edit creation":"Edit event"}</button><button class="button ghost delete-event" data-id="${escapeHtml(e.id)}">Delete</button></div></td></tr>`;}).join("");
   document.querySelectorAll(".edit-identity").forEach(button=>button.onclick=()=>loadEntityEditor(button.dataset.id));
   document.querySelectorAll(".delete-identity-row").forEach(button=>button.onclick=()=>deleteIdentity(button.dataset.id));
@@ -910,7 +926,7 @@ $("#delete-entity").onclick=()=>deleteIdentity($("#entity-form").elements.editin
 $("#event-form").addEventListener("submit",event=>{event.preventDefault();const editingId=event.currentTarget.elements.editingId.value,previous=editingId?data.events.find(item=>item.id===editingId):null,record=buildEventRecord(event.currentTarget,editingId||undefined);if(!record)return;if(editingId){const index=data.events.findIndex(item=>item.id===editingId);if(index>=0)data.events[index]=record;}else data.events.push(record);if(previous)syncPresenceFromEvents(previous.source,previous.type);syncPresenceFromEvents(record.source,record.type);saveData();resetEventEditor();renderAll();toast(`Change ${editingId?"updated":"saved"}; graph updated`);});
 $("#event-form").elements.type.addEventListener("change",updateEventHelp);
 $("#event-form").elements.level.addEventListener("change",()=>{const form=$("#event-form"),value=form.elements.value.value.trim().toLowerCase();if(form.elements.type.value==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===value))form.elements.value.value="";});
-function installWikiLinkHelpers(){document.querySelectorAll("#admin-view textarea").forEach(textarea=>{if(textarea.parentElement.querySelector(".inline-link-helper"))return;const button=document.createElement("button");button.type="button";button.className="inline-link-helper";button.textContent="＋ Link selected text to a wiki page";button.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd,label=textarea.value.slice(start,end).trim()||prompt("Text readers should see (for example: Protos Energy)");if(!label)return;const url=prompt("Paste the full webpage URL");if(!safeExternalUrl(url)){if(url)toast("Use a complete http:// or https:// link");return;}textarea.setRangeText(`[[${label}|${url.trim()}]]`,start,end,"end");textarea.focus();};textarea.insertAdjacentElement("afterend",button);});}
+function installWikiLinkHelpers(){document.querySelectorAll("#admin-view textarea").forEach(textarea=>{if(textarea.parentElement.querySelector(".inline-link-helper"))return;const button=document.createElement("button");button.type="button";button.className="inline-link-helper";button.textContent="＋ Link selected text to a wiki page";button.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd,label=textarea.value.slice(start,end).trim()||prompt("Text readers should see (for example: Protos Energy)");if(!label)return;const url=prompt("Paste the full webpage URL");if(!safeExternalUrl(url)){if(url)toast("Use a complete http:// or https:// link");return;}textarea.setRangeText(`[[${label}|${url.trim()}]]`,start,end,"end");textarea.focus();};const chapterButton=document.createElement("button");chapterButton.type="button";chapterButton.className="inline-link-helper chapter-mark-helper";chapterButton.textContent="＋ Mark chapter for selected text";chapterButton.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd;if(start===end){toast("Select the text this chapter reference belongs to first");return;}const input=prompt("Which chapter does this text belong to?"),chapter=validChapter(input);if(!chapter){if(input!==null)toast("Enter a whole chapter number greater than 0");return;}textarea.setRangeText(`[[${chapter}]]`,end,end,"end");textarea.focus();};textarea.insertAdjacentElement("afterend",button);button.insertAdjacentElement("afterend",chapterButton);});}
 document.addEventListener("click",event=>{const link=event.target.closest("[data-open-event]");if(!link)return;event.preventDefault();event.stopPropagation();openProfile(link.dataset.openEvent,Number(link.dataset.eventChapter));});
 $("#cancel-event-edit").onclick=resetEventEditor;
 $("#queue-event").onclick=()=>{const record=buildEventRecord($("#event-form"));if(!record)return;if(eventDrafts.length&&record.chapter!==eventDrafts[0].chapter){toast(`This batch is for chapter ${eventDrafts[0].chapter}. Save or clear it before changing chapters.`);return;}eventDrafts.push(record);renderEventBatch();clearEventInputsForNext();toast("Change added to the chapter batch");};
@@ -929,6 +945,7 @@ $("#clear-profile").onclick=()=>{const form=$("#profile-form"),item=resolveEntit
 $("#volume-rows").addEventListener("click",event=>{const button=event.target.closest("button"),row=button?.closest(".volume-row"),rows=$("#volume-rows");if(!button||!row)return;if(button.classList.contains("volume-remove")){row.remove();refreshVolumeRowOrder();return;}if(!button.classList.contains("volume-move"))return;const direction=Number(button.dataset.move),sibling=direction<0?row.previousElementSibling:row.nextElementSibling;if(!sibling)return;if(direction<0)rows.insertBefore(row,sibling);else rows.insertBefore(row,sibling.nextSibling);refreshVolumeRowOrder();});
 $("#add-volume").onclick=()=>{const rows=$("#volume-rows"),last=rows.lastElementChild,lastChapter=Number(last?.querySelector('[name="volumeTo"]')?.value)||0,index=rows.children.length,newVolume={id:`volume-${crypto.randomUUID()}`,name:`Volume ${index+1}`,from:lastChapter+1,to:lastChapter+1};rows.insertAdjacentHTML("beforeend",volumeRowMarkup(newVolume,index));refreshVolumeRowOrder();rows.lastElementChild.querySelector('[name="volumeName"]').select();rows.lastElementChild.scrollIntoView({behavior:"smooth",block:"nearest"});};
 $("#volume-form").addEventListener("submit",event=>{event.preventDefault();const volumes=collectVolumeRows(),error=validateVolumes(volumes),errorBox=$("#volume-error");errorBox.textContent=error;if(error){errorBox.scrollIntoView({behavior:"smooth",block:"center"});return;}const orphanEvents=data.events.filter(storyEvent=>!volumes.some(volume=>storyEvent.chapter>=volume.from&&storyEvent.chapter<=volume.to));if(orphanEvents.length&&!confirm(`${orphanEvents.length} existing event${orphanEvents.length===1?" is":"s are"} outside these chapter ranges and will not appear in a volume. Save anyway?`))return;cancelChapterSequence();expandedChapter=null;data.volumes=volumes;activeVolume=volumes.some(volume=>volume.id===activeVolume)?activeVolume:volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=activeVol().from;selectedId=null;locationPovId=null;lastAutoFitSignature="";saveData();configure();renderAll();toast(`${volumes.length} volume${volumes.length===1?"":"s"} saved`);});
+$("#chapter-links-form").addEventListener("submit",event=>{event.preventDefault();const raw=$("#chapter-url-template").value.trim(),errorBox=$("#chapter-links-error");errorBox.textContent="";if(raw&&!raw.includes("{n}")){errorBox.textContent="Include {n} in the template so each chapter number can be inserted — for example https://example.com/chapter-{n}.";return;}if(raw&&!safeExternalUrl(raw.replaceAll("{n}","1"))){errorBox.textContent="Enter a complete http:// or https:// URL.";return;}data.chapterUrlTemplate=raw;saveData();renderAll();toast(raw?"Chapter link source saved — every chapter reference site-wide now links out":"Chapter link source cleared");});
 
 $("#export-data").onclick=()=>{const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="living-story-graph-data.json";link.click();URL.revokeObjectURL(url);};
 $("#publish-data").onclick=publishData;
@@ -941,6 +958,7 @@ function toast(message){const el=$("#toast");el.textContent=message;el.classList
 function positionSliderOnboarding(){const onboarding=$("#slider-onboarding"),card=onboarding?.parentElement;if(!onboarding||onboarding.hidden||!card)return;const sliderRect=timeline.getBoundingClientRect(),cardRect=card.getBoundingClientRect(),x=Math.max(72,Math.min(cardRect.width-72,sliderRect.left+sliderRect.width/2-cardRect.left));onboarding.style.setProperty("--slider-x",`${x}px`);}
 window.addEventListener("resize",positionSliderOnboarding);
 
+const chapterRefToggle=$("#toggle-chapter-refs");if(chapterRefToggle){const applyChapterRefState=on=>{document.body.classList.toggle("show-chapter-refs",on);chapterRefToggle.classList.toggle("active",on);chapterRefToggle.setAttribute("aria-pressed",String(on));};applyChapterRefState(localStorage.getItem(CHAPTER_REF_TOGGLE_KEY)==="1");chapterRefToggle.onclick=()=>{const next=!document.body.classList.contains("show-chapter-refs");applyChapterRefState(next);localStorage.setItem(CHAPTER_REF_TOGGLE_KEY,next?"1":"0");};}
 graph.addEventListener("wheel",event=>{event.preventDefault();const {x:ux,y:uy}=toSvgPoint(event.clientX,event.clientY);zoomBy(event.deltaY>0?0.9:1.11,ux,uy);},{passive:false});
 graph.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;const p=toSvgPoint(event.clientX,event.clientY);panStart={ux:p.x,uy:p.y,viewX:view.x,viewY:view.y};graph.setPointerCapture(event.pointerId);});
 graph.addEventListener("pointermove",event=>{if(!panStart)return;const p=toSvgPoint(event.clientX,event.clientY);view.x=panStart.viewX+(p.x-panStart.ux);view.y=panStart.viewY+(p.y-panStart.uy);applyViewTransform();});

@@ -512,6 +512,15 @@ th { color: var(--muted); font-weight: 600; }
 .profile-event-link .event-source-link,.event-detail-list .event-source-link,.location-character-events .event-source-link{margin-left:0}
 .event-controls{display:flex;align-items:center;justify-content:flex-end;gap:5px;margin-top:7px}.event-controls .event-origin-link{margin:0}
 .chapter-citation{display:inline-flex;align-items:center;gap:4px;width:max-content;padding:3px 7px;border:1px solid rgba(125,211,252,.38);border-radius:999px;background:rgba(14,116,144,.13);color:#91e6ff;text-decoration:none;font-size:9px;font-weight:800;line-height:1.2;white-space:nowrap}.chapter-citation:hover{border-color:#7dd3fc;background:rgba(14,116,144,.25);color:white}.chapter-citation i{font-style:normal;opacity:.75}.chapter-citation.uncited{border-color:#35445a;background:rgba(30,41,59,.45);color:#8291a7;cursor:help}
+.chapter-ref-toggle{display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;flex:0 0 auto}.chapter-ref-toggle.active{background:var(--text);color:var(--bg);border-color:var(--text)}
+.chapter-ref-span{background:none;color:inherit;padding:0}
+.chapter-ref-span .chapter-citation{margin-left:5px;vertical-align:1px}
+body:not(.show-chapter-refs) .chapter-ref-span .chapter-citation{display:none}
+body.show-chapter-refs .chapter-ref-span{border-radius:4px;transition:background-color .15s ease;cursor:help;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+body.show-chapter-refs .chapter-ref-span .chapter-citation{display:none}
+body.show-chapter-refs .chapter-ref-span:hover{background:rgba(125,211,252,.16)}
+body.show-chapter-refs .chapter-ref-span:hover .chapter-citation{display:inline-flex}
+.chapter-mark-helper{margin-left:6px}
 .cited-prose-line{display:inline-flex;align-items:baseline;gap:8px;max-width:100%;flex-wrap:wrap}.cited-prose-line>.chapter-citation{flex:0 0 auto;transform:translateY(-1px)}
 .profile-event-link .chapter-citation,.event-detail-list .chapter-citation{margin-top:7px}.event-detail-list small .entity-wiki-link{font-size:inherit}
 .entity-wiki-link{color:#8bdcff;text-decoration-color:rgba(125,211,252,.42);text-underline-offset:2px}.entity-wiki-link:hover{color:#d8f5ff;text-decoration-color:currentColor}.entity-wiki-link>span{display:inline-block;margin-left:3px;font-size:.72em;opacity:.72;transform:translateY(-.15em)}
