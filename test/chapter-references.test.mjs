@@ -15,12 +15,14 @@ function functionBody(name) {
 
 function sandbox(dataValue) {
   const helperSource = [
+    "var dataVersion=0,missingChapterLinksCache=null;",
     functionBody("escapeHtml"),
     functionBody("safeExternalUrl"),
     functionBody("validChapter"),
     functionBody("chapterUrl"),
     functionBody("chapterCitation"),
     functionBody("richInline"),
+    functionBody("referencedChaptersWithoutLinks"),
   ].join("\n");
   const ctx = { data: dataValue, URL };
   vm.createContext(ctx);
@@ -159,4 +161,56 @@ test("renderAdmin only re-syncs the explicit chapter-links textarea when the map
 test("Delete all story data preserves chapter links instead of silently discarding them, matching how volumes are already preserved", () => {
   assert.match(source, /chapterUrlTemplate:data\.chapterUrlTemplate\|\|""/);
   assert.match(source, /chapterSources:deepClone\(data\.chapterSources\|\|\{\}\)/);
+});
+
+test("saveData bumps a version counter used to invalidate the cached missing-links scan", () => {
+  const body = functionBody("saveData");
+  assert.match(body, /dataVersion\+\+/);
+});
+
+test("referencedChaptersWithoutLinks finds chapters cited by events and by [[N]]/[[Label|N]] prose markers that have no resolvable link", () => {
+  const ctx = sandbox({
+    chapterSources: { 3: "https://webnovel.example/three" },
+    events: [
+      { chapter: 3, type: "mention" }, // covered by the explicit chapterSources entry -> NOT missing
+      { chapter: 9, type: "mention" }, // no template, no explicit entry -> missing
+    ],
+    entities: [
+      { id: "lex", kind: "character", profile: { history: "He arrived.[[3]] Later, [[something odd|1234]] happened." } },
+    ],
+  });
+  const missing = JSON.parse(vm.runInContext("JSON.stringify(referencedChaptersWithoutLinks())", ctx));
+  assert.deepEqual(missing, [9, 1234]);
+});
+
+test("referencedChaptersWithoutLinks treats an event's own sourceUrl as satisfying that chapter, even with no template", () => {
+  const ctx = sandbox({ events: [{ chapter: 5, sourceUrl: "https://example.com/five" }], entities: [] });
+  const missing = JSON.parse(vm.runInContext("JSON.stringify(referencedChaptersWithoutLinks())", ctx));
+  assert.deepEqual(missing, []);
+});
+
+test("referencedChaptersWithoutLinks result is cached against dataVersion, not recomputed on every call", () => {
+  const ctx = sandbox({ events: [{ chapter: 7 }], entities: [] });
+  vm.runInContext("referencedChaptersWithoutLinks()", ctx); // populate cache
+  // mutate data without bumping dataVersion — a stale cache should still return the old (now-incorrect) result
+  vm.runInContext(`data.chapterSources={7:"https://example.com/seven"}`, ctx);
+  const stillCached = JSON.parse(vm.runInContext("JSON.stringify(referencedChaptersWithoutLinks())", ctx));
+  assert.deepEqual(stillCached, [7], "cache should not have noticed the change yet");
+  vm.runInContext("dataVersion++", ctx);
+  const fresh = JSON.parse(vm.runInContext("JSON.stringify(referencedChaptersWithoutLinks())", ctx));
+  assert.deepEqual(fresh, [], "bumping dataVersion should invalidate the cache");
+});
+
+test("the missing-chapter-links warning is wired into renderAdmin and hidden when nothing is missing", () => {
+  const body = functionBody("renderAdmin");
+  assert.match(body, /const missingBox=\$\("#missing-chapter-links"\)/);
+  assert.match(body, /missingBox\.hidden=!missing\.length/);
+});
+
+test("a small quick-add form saves or updates a single chapter link without touching the bulk list, and prefills the URL for an existing chapter", () => {
+  assert.match(source, /id="chapter-quick-add-form"/);
+  assert.match(source, /id="quick-add-chapter"/);
+  assert.match(source, /id="quick-add-url"/);
+  assert.match(source, /\$\("#quick-add-chapter"\)\.addEventListener\("blur",\(\)=>\{const chapter=validChapter/);
+  assert.match(source, /data\.chapterSources=\{\.\.\.\(data\.chapterSources\|\|\{\}\),\[chapter\]:url\}/);
 });
