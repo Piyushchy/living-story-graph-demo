@@ -20,7 +20,6 @@ function sandbox(dataValue) {
     functionBody("validChapter"),
     functionBody("chapterUrl"),
     functionBody("chapterCitation"),
-    functionBody("lastSentenceSplit"),
     functionBody("richInline"),
   ].join("\n");
   const ctx = { data: dataValue, URL };
@@ -53,33 +52,37 @@ test("chapterCitation falls back to the central template when no sourceUrl is se
   assert.match(html, /href="https:\/\/example\.com\/ch-9"/);
 });
 
-test("richInline turns an inline [[12]] marker into a chapter-ref-span ending in a citation, without swallowing later text", () => {
+test("richInline renders a bare [[12]] as a standalone point-citation, wrapping nothing else", () => {
   const ctx = sandbox({ chapterUrlTemplate: "https://example.com/ch-{n}" });
   const html = vm.runInContext(`richInline(${JSON.stringify("Luthor arrives in the lobby.[[18]] He waits by the door.")})`, ctx);
-  assert.match(html, /^<mark class="chapter-ref-span">Luthor arrives in the lobby\.<a class="chapter-citation" href="https:\/\/example\.com\/ch-18"/);
+  assert.match(html, /^Luthor arrives in the lobby\.<span class="prose-chapter-ref"><a class="chapter-citation" href="https:\/\/example\.com\/ch-18"/);
   assert.match(html, /He waits by the door\.$/);
-  assert.doesNotMatch(html, /He waits by the door\.<\/mark>/);
 });
 
-test("richInline with no template configured still wraps the marker as an uncited badge", () => {
+test("richInline with no template configured still renders a bare marker as an uncited badge", () => {
   const ctx = sandbox({});
   const html = vm.runInContext(`richInline(${JSON.stringify("Something happens.[[4]]")})`, ctx);
-  assert.match(html, /<mark class="chapter-ref-span">Something happens\.<span class="chapter-citation uncited"[^>]*>Chapter 4<\/span><\/mark>/);
+  assert.match(html, /Something happens\.<span class="prose-chapter-ref"><span class="chapter-citation uncited"[^>]*>Chapter 4<\/span><\/span>$/);
 });
 
-test("richInline gives each marker in the same field its own segment", () => {
+test("richInline [[Label|N]] wraps exactly the given label as a real clickable link, not a guessed range", () => {
   const ctx = sandbox({ chapterUrlTemplate: "https://example.com/ch-{n}" });
-  const html = vm.runInContext(`richInline(${JSON.stringify("First fact.[[1]] Second fact.[[2]]")})`, ctx);
-  assert.equal((html.match(/<mark class="chapter-ref-span">/g) || []).length, 2);
-  assert.match(html, /First fact\.[\s\S]*?ch-1"/);
-  assert.match(html, /Second fact\.[\s\S]*?ch-2"/);
+  const html = vm.runInContext(`richInline(${JSON.stringify("A Slightly Chubby [[man|2]] random text")})`, ctx);
+  assert.equal(html, 'A Slightly Chubby <span class="prose-chapter-ref"><a class="chapter-ref-link" href="https://example.com/ch-2" target="_blank" rel="noopener noreferrer" title="Open the source for chapter 2">man</a><a class="chapter-citation" href="https://example.com/ch-2" target="_blank" rel="noopener noreferrer" title="Open the source for chapter 2"><span>Chapter 2</span><i aria-hidden="true">↗</i></a></span> random text');
+});
+
+test("richInline [[Label|N]] with no saved link renders an uncited, still-visible label", () => {
+  const ctx = sandbox({});
+  const html = vm.runInContext(`richInline(${JSON.stringify("[[man|2]] random text")})`, ctx);
+  assert.match(html, /^<span class="prose-chapter-ref"><span class="chapter-ref-link uncited" title="No source saved for chapter 2 yet">man<\/span><span class="chapter-citation uncited"/);
+  assert.match(html, / random text$/);
 });
 
 test("richInline leaves an invalid chapter number (0) as literal text", () => {
   const ctx = sandbox({ chapterUrlTemplate: "https://example.com/ch-{n}" });
   const html = vm.runInContext(`richInline(${JSON.stringify("Odd input.[[0]] more text")})`, ctx);
-  assert.doesNotMatch(html, /<mark/);
   assert.match(html, /\[\[0\]\]/);
+  assert.doesNotMatch(html, /prose-chapter-ref/);
 });
 
 test("richInline still supports the existing [[Label|url]] wiki-link syntax unchanged", () => {
@@ -101,25 +104,26 @@ test("the header exposes an on/off toggle for hover-revealed chapter markers, pe
   assert.match(source, /document\.body\.classList\.toggle\("show-chapter-refs"/);
 });
 
-test("selecting text in a wiki field and marking a chapter inserts a [[N]] marker right after the selection", () => {
+test("selecting text and marking a chapter wraps exactly that text with [[selection|chapter]], not a bare marker appended after it", () => {
   const body = functionBody("installWikiLinkHelpers");
   assert.match(body, /chapter-mark-helper/);
   assert.match(body, /Mark chapter for selected text/);
+  assert.match(body, /const selectedText=textarea\.value\.slice\(start,end\)/);
   assert.match(body, /chapter=validChapter\(input\)/);
-  assert.match(body, /textarea\.setRangeText\(`\[\[\$\{chapter\}\]\]`,end,end,"end"\)/);
+  assert.match(body, /textarea\.setRangeText\(`\[\[\$\{selectedText\}\|\$\{chapter\}\]\]`,start,end,"end"\)/);
 });
 
-test("chapter-ref-span markers float as non-reflowing tooltips, invisible until hovered with the toggle on", () => {
-  assert.match(styleSource, /\.chapter-ref-span \.chapter-citation\{position:absolute[^}]*opacity:0;pointer-events:none/);
-  assert.match(styleSource, /body\.show-chapter-refs \.chapter-ref-span:hover \.chapter-citation\{opacity:1;pointer-events:auto\}/);
+test("prose chapter refs are always-in-flow (no floating/absolute positioning) so there's no dead zone between text and badge, and stay hidden until the toggle is on", () => {
+  assert.doesNotMatch(styleSource, /\.prose-chapter-ref[^{]*\{[^}]*position:absolute/);
+  assert.match(styleSource, /\.prose-chapter-ref \.chapter-citation\{display:none/);
+  assert.match(styleSource, /body\.show-chapter-refs \.prose-chapter-ref \.chapter-citation\{display:inline-flex\}/);
+  assert.match(styleSource, /body\.show-chapter-refs \.prose-chapter-ref \.chapter-ref-link\{text-decoration:underline/);
 });
 
-test("richInline bounds a chapter marker's highlight to its own last sentence, not the whole preceding paragraph", () => {
+test("the marked text itself is a real <a> link when a source exists, clickable independent of hover/toggle state", () => {
   const ctx = sandbox({ chapterUrlTemplate: "https://example.com/ch-{n}" });
-  const html = vm.runInContext(`richInline(${JSON.stringify("A Slightly Chubby man walked in. He looked around the room. He sat down.[[1]] More unrelated text follows.")})`, ctx);
-  // only the last sentence before the marker should be wrapped — the earlier two sentences stay plain
-  assert.match(html, /^A Slightly Chubby man walked in\. He looked around the room\. <mark class="chapter-ref-span">He sat down\.<a class="chapter-citation"/);
-  assert.match(html, /More unrelated text follows\.$/);
+  const html = vm.runInContext(`richInline(${JSON.stringify("[[man|2]] text")})`, ctx);
+  assert.match(html, /^<span class="prose-chapter-ref"><a class="chapter-ref-link" href="https:\/\/example\.com\/ch-2"/);
 });
 
 test("an explicit chapter link (for sites like webnovel.com with non-formulaic URLs) takes priority over the template", () => {

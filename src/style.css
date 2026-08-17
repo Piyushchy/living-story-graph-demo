@@ -515,11 +515,12 @@ th { color: var(--muted); font-weight: 600; }
 .chapter-ref-toggle{display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;flex:0 0 auto;border:1px solid var(--border);color:var(--text);background:var(--panel);border-radius:9px;padding:9px 13px}
 .chapter-ref-toggle.active{background:var(--text);color:var(--bg);border-color:var(--text)}
 .profile-hero-toggle{position:relative;z-index:2;align-self:flex-start;font-size:11px;padding:7px 11px;background:rgba(10,15,25,.55);backdrop-filter:blur(6px)}
-.chapter-ref-span{position:relative;background:none;color:inherit;padding:0}
-.chapter-ref-span .chapter-citation{position:absolute;left:0;bottom:100%;margin-bottom:5px;z-index:6;opacity:0;pointer-events:none;transition:opacity .12s ease;white-space:nowrap}
-body.show-chapter-refs .chapter-ref-span{border-radius:3px;cursor:help}
-body.show-chapter-refs .chapter-ref-span:hover{background:rgba(125,211,252,.16)}
-body.show-chapter-refs .chapter-ref-span:hover .chapter-citation{opacity:1;pointer-events:auto}
+.prose-chapter-ref .chapter-ref-link{color:inherit;text-decoration:none}
+.prose-chapter-ref .chapter-citation{display:none;margin-left:4px;transform:scale(.82);vertical-align:2px}
+body.show-chapter-refs .prose-chapter-ref .chapter-ref-link{text-decoration:underline;text-decoration-color:rgba(125,211,252,.4);text-decoration-thickness:1px;text-underline-offset:2px;cursor:pointer}
+body.show-chapter-refs .prose-chapter-ref .chapter-ref-link:hover{text-decoration-color:#7dd3fc;color:#bae6fd}
+body.show-chapter-refs .prose-chapter-ref .chapter-ref-link.uncited{cursor:help;text-decoration-style:dotted}
+body.show-chapter-refs .prose-chapter-ref .chapter-citation{display:inline-flex}
 .chapter-mark-helper{margin-left:6px}
 .cited-prose-line{display:inline-flex;align-items:baseline;gap:8px;max-width:100%;flex-wrap:wrap}.cited-prose-line>.chapter-citation{flex:0 0 auto;transform:translateY(-1px)}
 .profile-event-link .chapter-citation,.event-detail-list .chapter-citation{margin-top:7px}.event-detail-list small .entity-wiki-link{font-size:inherit}
