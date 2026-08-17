@@ -1,0 +1,1 @@
+export default { subtitle: "Inter-realm imperial power", history: "The Jotun Empire enters the recorded story as a major political force with agents and envoys operating across realms.", purpose: "Imperial administration, diplomacy and expansion.", traits: ["Empire", "Diplomatic network", "Military influence"] };

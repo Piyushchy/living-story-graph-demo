@@ -1,0 +1,1 @@
+export default { subtitle: "Domain of primordial beings", history: "The Primordial Garden is first known through rumor before its sovereign and membership are revealed.", purpose: "A domain tied to primordial life and ancient authority.", traits: ["Primordial domain", "Hidden hierarchy", "Ancient inhabitants"] };

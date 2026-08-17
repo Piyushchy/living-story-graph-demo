@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/upload", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/api/(login|session)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    }
+  ]
+}
