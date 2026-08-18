@@ -523,6 +523,7 @@ body.show-chapter-refs .prose-chapter-ref:hover{background:rgba(125,211,252,.16)
 body.show-chapter-refs .prose-chapter-ref:hover .chapter-ref-link{cursor:pointer;text-decoration:underline;text-decoration-color:rgba(125,211,252,.5);text-decoration-thickness:1px;text-underline-offset:2px}
 body.show-chapter-refs .prose-chapter-ref:hover .chapter-ref-link.uncited{cursor:help;text-decoration-style:dotted}
 body.show-chapter-refs .prose-chapter-ref:hover .chapter-citation{opacity:1;pointer-events:auto}
+body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover{cursor:help}
 .chapter-mark-helper{margin-left:6px}
 .cited-prose-line{display:inline-flex;align-items:baseline;gap:8px;max-width:100%;flex-wrap:wrap}.cited-prose-line>.chapter-citation{flex:0 0 auto;transform:translateY(-1px)}
 .profile-event-link .chapter-citation,.event-detail-list .chapter-citation{margin-top:7px}.event-detail-list small .entity-wiki-link{font-size:inherit}

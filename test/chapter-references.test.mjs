@@ -125,6 +125,49 @@ test("richInline doesn't support nesting a marker inside another marker's label 
   assert.doesNotMatch(html, />\[System</, "the label must not contain a leftover stray bracket");
 });
 
+test("richInline [[cite:N]]...[[/cite]] cites a whole sentence to a chapter while a word-level [[Label|url]] link inside it keeps working independently — the actual requested feature", () => {
+  const ctx = sandbox({ chapterUrlTemplate: "https://example.com/ch-{n}" });
+  const html = vm.runInContext(`richInline(${JSON.stringify("[[cite:1]]Something involving the [[System|https://the-innkeeper.fandom.com/wiki/Systems]] here.[[/cite]]")})`, ctx);
+  assert.equal(html, '<span class="prose-chapter-ref sentence-cite" data-chapter="1">Something involving the <a class="wiki-external-link" href="https://the-innkeeper.fandom.com/wiki/Systems" target="_blank" rel="noopener noreferrer">System<span aria-hidden="true">↗</span></a> here.<a class="chapter-citation" href="https://example.com/ch-1" target="_blank" rel="noopener noreferrer" title="Open the source for chapter 1"><span>Chapter 1</span><i aria-hidden="true">↗</i></a></span>');
+});
+
+test("richInline supports multiple sentence-cite zones for different chapters in the same field", () => {
+  const ctx = sandbox({ chapterUrlTemplate: "https://example.com/ch-{n}" });
+  const html = vm.runInContext(`richInline(${JSON.stringify("[[cite:1]]Sentence one.[[/cite]] [[cite:2]]Sentence two.[[/cite]]")})`, ctx);
+  assert.match(html, /data-chapter="1">Sentence one\.<a class="chapter-citation" href="https:\/\/example\.com\/ch-1"/);
+  assert.match(html, /data-chapter="2">Sentence two\.<a class="chapter-citation" href="https:\/\/example\.com\/ch-2"/);
+});
+
+test("richInline auto-closes a sentence-cite zone left open at the end of the field, so a missing [[/cite]] doesn't swallow the rest of the text", () => {
+  const ctx = sandbox({});
+  const html = vm.runInContext(`richInline(${JSON.stringify("[[cite:1]]Forgot to close this")})`, ctx);
+  assert.match(html, /^<span class="prose-chapter-ref sentence-cite" data-chapter="1">Forgot to close this<span class="chapter-citation uncited"[^>]*>Chapter 1<\/span><\/span>$/);
+});
+
+test("richInline treats a new [[cite:N]] as implicitly closing a still-open previous zone", () => {
+  const ctx = sandbox({});
+  const html = vm.runInContext(`richInline(${JSON.stringify("[[cite:1]]One[[cite:2]]Two[[/cite]]")})`, ctx);
+  assert.equal((html.match(/class="prose-chapter-ref sentence-cite"/g) || []).length, 2);
+  assert.match(html, /data-chapter="1">One<span class="chapter-citation uncited"/);
+  assert.match(html, /data-chapter="2">Two<span class="chapter-citation uncited"/);
+});
+
+test("richInline leaves a stray [[/cite]] with no matching open zone as literal text", () => {
+  const ctx = sandbox({});
+  const html = vm.runInContext(`richInline(${JSON.stringify("nothing was open[[/cite]] after")})`, ctx);
+  assert.equal(html, "nothing was open[[/cite]] after");
+});
+
+test("richInline sentence-cite zones use the existing hover-highlight rule for free, since it's the same base class as word-level refs", () => {
+  assert.doesNotMatch(styleSource, /\.sentence-cite\{[^}]*background/, "should not need its own separate highlight rule");
+  assert.match(styleSource, /body\.show-chapter-refs \.prose-chapter-ref:hover\{background/);
+});
+
+test("the Mark-chapter button now wraps the selection in a [[cite:N]]...[[/cite]] zone instead of a single-bracket marker that couldn't contain other markers", () => {
+  const body = functionBody("installWikiLinkHelpers");
+  assert.match(body, /textarea\.setRangeText\(`\[\[cite:\$\{chapter\}\]\]\$\{selectedText\}\[\[\/cite\]\]`,start,end,"end"\)/);
+});
+
 test("the wiki-link button can optionally attach a chapter citation too, producing the three-part syntax", () => {
   const body = functionBody("installWikiLinkHelpers");
   assert.match(body, /Also cite a chapter for this\?/);
@@ -150,13 +193,13 @@ test("pressing Alt also toggles chapter refs, sharing the same toggle logic as c
   assert.match(source, /document\.addEventListener\("click",event=>\{if\(event\.target\.closest\("\[data-chapter-ref-toggle\]"\)\)toggleChapterRefs\(\);\}\)/);
 });
 
-test("selecting text and marking a chapter wraps exactly that text with [[selection|chapter]], not a bare marker appended after it", () => {
+test("selecting text and marking a chapter wraps it in [[cite:N]]...[[/cite]], not a single-bracket marker that couldn't contain other markers", () => {
   const body = functionBody("installWikiLinkHelpers");
   assert.match(body, /chapter-mark-helper/);
   assert.match(body, /Mark chapter for selected text/);
   assert.match(body, /const selectedText=textarea\.value\.slice\(start,end\)/);
   assert.match(body, /chapter=validChapter\(input\)/);
-  assert.match(body, /textarea\.setRangeText\(`\[\[\$\{selectedText\}\|\$\{chapter\}\]\]`,start,end,"end"\)/);
+  assert.match(body, /textarea\.setRangeText\(`\[\[cite:\$\{chapter\}\]\]\$\{selectedText\}\[\[\/cite\]\]`,start,end,"end"\)/);
 });
 
 test("prose chapter refs are fully inert with the toggle off — no pointer-events, no visible decoration — and even with the toggle on, everything stays hidden until actual hover", () => {
