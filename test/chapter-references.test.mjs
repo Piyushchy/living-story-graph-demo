@@ -320,3 +320,37 @@ test("a first-time explanation callout for chapter refs is shown once per browse
   assert.match(source, /function toggleChapterRefs\(\)\{[^}]*dismissChapterRefHint\(\);\}/);
   assert.match(source, /\$\("#dismiss-chapter-ref-hint"\)\?\.addEventListener\("click"/);
 });
+
+test("gender and age are now event-tracked like status (can be revealed/changed at any chapter, with citation and link) instead of being static-only fields", () => {
+  assert.match(source, /<option value="gender">Gender becomes known or changes<\/option>/);
+  assert.match(source, /<option value="age">Age stated or changes<\/option>/);
+  assert.match(source, /if \(event\.type === "gender" && source && event\.value\) source\.gender = event\.value;/);
+  assert.match(source, /if \(event\.type === "age" && source && event\.value\) source\.age = event\.value;/);
+  assert.match(source, /needsValue=\["alias","display_name","status","gender","age",/);
+  assert.match(source, /if\(\["alias","display_name","identity_parent","status","gender","age",/);
+});
+
+test("the Gender and Age profile facts show a chapter citation (and link, if the event has one) once a reveal event exists, using the same ' | chapter | url' syntax richText already supports", () => {
+  assert.match(source, /const citedFact=\(value,event\)=>event\?`\$\{value\} \| \$\{event\.chapter\}\$\{event\.sourceUrl\?` \| \$\{event\.sourceUrl\}`:""\}`:value;/);
+  assert.match(source, /fact\("Gender",citedFact\(state\.gender,latestGenderEvent\)\)/);
+  assert.match(source, /fact\("Age",citedFact\(state\.age,latestAgeEvent\)\)/);
+});
+
+test("Gender and Age history sections render on the profile alongside Status history, each entry individually cited", () => {
+  assert.match(source, /\$\{genders\.length\?`<section><h3>Gender history<\/h3>\$\{proseList\(genders\.map\(event=>citedFact\(event\.value,event\)\)\)\}<\/section>`:""\}/);
+  assert.match(source, /\$\{ages\.length\?`<section><h3>Age history<\/h3>\$\{proseList\(ages\.map\(event=>citedFact\(event\.value,event\)\)\)\}<\/section>`:""\}/);
+});
+
+test("citedFact produces a richText-compatible citation string that actually renders a chapter link", () => {
+  const ctx = sandbox({ chapterUrlTemplate: "https://example.com/ch-{n}" });
+  vm.runInContext(functionBody("richText"), ctx);
+  const citedFact = (value, event) => event ? `${value} | ${event.chapter}${event.sourceUrl ? ` | ${event.sourceUrl}` : ""}` : value;
+  const withoutSource = citedFact("Female", { chapter: 30 });
+  const html1 = vm.runInContext(`richText(${JSON.stringify(withoutSource)})`, ctx);
+  assert.match(html1, /Female<\/span><a class="chapter-citation" href="https:\/\/example\.com\/ch-30"/);
+  const withSource = citedFact("Female", { chapter: 30, sourceUrl: "https://webnovel.example/ch30" });
+  const html2 = vm.runInContext(`richText(${JSON.stringify(withSource)})`, ctx);
+  assert.match(html2, /Female<\/span><a class="chapter-citation" href="https:\/\/webnovel\.example\/ch30"/);
+  const noEvent = citedFact("male", null);
+  assert.equal(noEvent, "male");
+});
