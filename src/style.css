@@ -291,11 +291,11 @@ th { color: var(--muted); font-weight: 600; }
 .event-detail-list { display: grid; gap: 8px; margin-top: 10px; }.event-detail-list article{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding-top:8px;border-top:1px solid #202c40}.event-detail-list p{margin:0;color:#c2ccdb;font-size:12px;line-height:1.5}.event-detail-list small{display:block;margin-top:4px;color:#718096}
 .node { cursor: grab; transition: opacity .18s ease,filter .18s ease; touch-action: none; }.node-hit-target{fill:transparent;stroke:none;pointer-events:all}.node.dim { opacity: .055; filter: saturate(.1); }.node.selected { filter: drop-shadow(0 0 11px rgba(255,255,255,.48)); }.node.dragging { cursor: grabbing; filter: drop-shadow(0 0 9px rgba(255,255,255,.35)); }.edge { transition: opacity .18s ease; }.edge.dim { opacity: .035; }.edge.hidden { display: none; }
 #graph { --label-size: 14px; }
-.node-label { fill: var(--text); text-anchor: middle; font-size: calc(var(--label-size) * var(--label-scale,1)); font-weight: 600; pointer-events: painted; cursor: pointer; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+.node-label { fill: var(--text); text-anchor: middle; font-size: calc(var(--label-size) * var(--label-scale,1)); font-weight: 600; pointer-events: painted; cursor: grab; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
 /* Names sit in a layer above every shape, so nothing is ever drawn over a label, and the
    declutter pass can drop individual names without touching the nodes they belong to. */
 .node-label-layer { pointer-events: none; }
-.node-labels { pointer-events: none; cursor: pointer; }
+.node-labels { pointer-events: none; cursor: grab; }
 .node-labels > * { pointer-events: painted; }
 .node-labels.label-culled { pointer-events: none; transition: opacity .16s ease; }
 /* Outranks the action/selection focus rules, which force opacity on every .node. */

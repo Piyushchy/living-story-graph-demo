@@ -630,6 +630,16 @@ function stepPhysics() {
   const ids = [...physics.pos.keys()]; if (!ids.length) return;
   const force = new Map(ids.map(id => [id, { x: 0, y: 0 }]));
   const REPEL = 2600+Math.min(6200,Math.max(0,ids.length-10)*115), CENTER = Math.max(.00032,.00115-Math.max(0,ids.length-12)*.000015), cx = 360, cy = 260;
+  // Keeps one node's name from settling on top of another node's shape — label-versus-label
+  // separation alone still let a long place name sit across a neighbouring character.
+  const clearLabelOfShape=(labelPos,labelBox,shapePos,shapeRadius,labelForce,shapeForce)=>{
+    if(!labelBox||!labelForce||!shapeForce)return;
+    const dx=(labelPos.x+labelBox.ox)-shapePos.x,dy=(labelPos.y+labelBox.oy)-shapePos.y,
+      overlapX=labelBox.hw+shapeRadius+14-Math.abs(dx),overlapY=labelBox.hh+shapeRadius+12-Math.abs(dy);
+    if(overlapX<=0||overlapY<=0)return;
+    if(overlapX<overlapY){const direction=dx>=0?1:-1,push=Math.min(3.5,Math.max(.7,.055*overlapX));labelForce.x+=direction*push;shapeForce.x-=direction*push;}
+    else{const direction=dy>=0?1:-1,push=Math.min(3.5,Math.max(.7,.075*overlapY));labelForce.y+=direction*push;shapeForce.y-=direction*push;}
+  };
   for (let i = 0; i < ids.length; i++) {
     const a = physics.pos.get(ids[i]), fa = force.get(ids[i]);
     for (let j = i + 1; j < ids.length; j++) {
@@ -640,10 +650,11 @@ function stepPhysics() {
       fa.x += fx; fa.y += fy; fb.x -= fx; fb.y -= fy;
       // Hard separation: inverse-square repulsion alone still lets two shapes sit on top of
       // each other once springs pull them together, which is what made the graph look tangled.
-      const clearance=(physics.radii.get(ids[i])||24)+(physics.radii.get(ids[j])||24)+16;
+      const ra=physics.radii.get(ids[i])||24,rb=physics.radii.get(ids[j])||24,clearance=ra+rb+22;
       if(d<clearance){const push=Math.min(6,(clearance-d)*.24);fa.x+=dx/d*push;fa.y+=dy/d*push;fb.x-=dx/d*push;fb.y-=dy/d*push;}
       const ab=physics.bounds.get(ids[i]),bb=physics.bounds.get(ids[j]);
-      if(ab&&bb){const labelDx=(a.x+ab.ox)-(b.x+bb.ox),labelDy=(a.y+ab.oy)-(b.y+bb.oy),overlapX=ab.hw+bb.hw+12-Math.abs(labelDx),overlapY=ab.hh+bb.hh+6-Math.abs(labelDy);if(overlapX>0&&overlapY>0){if(overlapX<overlapY){const direction=labelDx>=0?1:-1,push=Math.min(4,.08*overlapX);fa.x+=direction*push;fb.x-=direction*push;}else{const direction=labelDy>=0?1:-1,push=Math.min(4,.11*overlapY);fa.y+=direction*push;fb.y-=direction*push;}}}
+      if(ab&&bb){const labelDx=(a.x+ab.ox)-(b.x+bb.ox),labelDy=(a.y+ab.oy)-(b.y+bb.oy),overlapX=ab.hw+bb.hw+16-Math.abs(labelDx),overlapY=ab.hh+bb.hh+10-Math.abs(labelDy);if(overlapX>0&&overlapY>0){const opposed=(a.y-b.y)*labelDy<0;if(opposed||overlapX<overlapY){const direction=labelDx>=0?1:-1,push=Math.min(5,Math.max(.9,.11*overlapX));fa.x+=direction*push;fb.x-=direction*push;}else{const direction=labelDy>=0?1:-1,push=Math.min(5,Math.max(.9,.15*overlapY));fa.y+=direction*push;fb.y-=direction*push;}}}
+      clearLabelOfShape(a,ab,b,rb,fa,fb);clearLabelOfShape(b,bb,a,ra,fb,fa);
     }
     fa.x += (cx - a.x) * CENTER; fa.y += (cy - a.y) * CENTER;
   }
@@ -724,7 +735,7 @@ function renderGraph() {
   fitGraphToCount(visible.length);
   const positions=physics.pos;
   const glyphRadius=id=>locView.expanded.has(id)?9:locationGlyphRadius(id,locView),locationDistance=id=>locView.expanded.has(id)?74:glyphRadius(id)+58;
-  physics.bounds.clear();visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,labelY=item.kind==="character"?5:item.kind==="location"?-glyphRadius(item.id)-13:58;physics.bounds.set(item.id,{ox:0,oy:labelY-5,hw:Math.min(150,Math.max(28,String(shownName).length*4.2)),hh:9});});
+  physics.bounds.clear();
   const springs=new Map(),addSpring=(a,b,length,strength)=>{if(!a||!b||a===b||!renderIds.has(a)||!renderIds.has(b))return;const key=a<b?`${a}|${b}`:`${b}|${a}`,existing=springs.get(key);if(existing){existing.length=Math.min(existing.length,length);existing.strength=Math.max(existing.strength,strength);return;}springs.set(key,{a,b,length,strength});};
   derived.memberships.forEach(m=>addSpring(m.character,m.organization,105,.022));
   derived.identityParents.forEach(link=>addSpring(link.child,link.parent,68,.09));
@@ -779,23 +790,28 @@ function renderGraph() {
     const labelGroup=svgEl("g",{class:`${group.getAttribute("class")} node-labels`,"data-id":item.id}),label=svgEl("text",{x:0,y:labelY,class:`node-label${item.kind==="location"?" location-region-label":""}`});label.textContent=shownName;labelGroup.appendChild(label);
     if(item.kind==="location"){const tier=svgEl("text",{x:0,y:labelY-13,class:"location-tier-label"});tier.textContent=String(item.locationType||"Place").toUpperCase();labelGroup.appendChild(tier);}
     if(mentionedOnly){const stateLabel=svgEl("text",{x:0,y:39,class:"node-state-label"});stateLabel.textContent="MENTIONED";labelGroup.appendChild(stateLabel);}
-    labelLayer.appendChild(labelGroup);labelEls.set(item.id,{group:labelGroup,offset:labelY,kind:item.kind,halfWidth:Math.min(150,Math.max(28,String(shownName).length*4.2))});
-    group.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;event.stopPropagation();physics.dragId=item.id;dragMoved=false;dragStartClient={x:event.clientX,y:event.clientY};const c=toContentPoint(event.clientX,event.clientY),p=positions.get(item.id);dragOffset={x:p.x-c.x,y:p.y-c.y};physics.vel.set(item.id,{x:0,y:0});group.classList.add("dragging");group.setPointerCapture(event.pointerId);});
-    group.addEventListener("pointermove",event=>{if(physics.dragId!==item.id)return;const c=toContentPoint(event.clientX,event.clientY),p=positions.get(item.id);p.x=c.x+dragOffset.x;p.y=c.y+dragOffset.y;if(!dragMoved&&Math.hypot(event.clientX-dragStartClient.x,event.clientY-dragStartClient.y)>4)dragMoved=true;});
+    labelLayer.appendChild(labelGroup);labelEls.set(item.id,{group:labelGroup,text:label,offset:labelY,kind:item.kind,halfWidth:Math.min(150,Math.max(28,String(shownName).length*4.2)),halfHeight:9});
     const selectNode=()=>{cancelChapterSequence();if(item.kind==="location"){activateLocation(item.id);return;}locationPovId=null;selectedId=selectedId===item.id?null:item.id;setMobilePanel("info");renderAll();};
-    const endDrag=event=>{if(physics.dragId!==item.id)return;physics.dragId=null;group.classList.remove("dragging");if(event.type==="pointerup"){if(dragMoved){const p=physics.pos.get(item.id);if(p)p.pinned=true;}else selectNode();}};
-    group.addEventListener("pointerup",endDrag);group.addEventListener("pointercancel",endDrag);
-    group.addEventListener("dblclick",event=>{event.stopPropagation();const p=physics.pos.get(item.id);if(p?.pinned){p.pinned=false;toast(`${item.name} released back into the layout`);}});
-    group.addEventListener("keydown",event=>{if(event.key!=="Enter"&&event.key!==" ")return;event.preventDefault();selectNode();});
-    group.addEventListener("dblclick",()=>openProfile(item.id));
-    group.addEventListener("pointerenter",()=>setHoverNode(item.id));
-    group.addEventListener("pointerleave",()=>setHoverNode(null));
-    labelGroup.addEventListener("pointerup",event=>{if(physics.dragId)return;event.stopPropagation();selectNode();});
-    labelGroup.addEventListener("dblclick",event=>{event.stopPropagation();openProfile(item.id);});
-    labelGroup.addEventListener("pointerenter",()=>setHoverNode(item.id));
-    labelGroup.addEventListener("pointerleave",()=>setHoverNode(null));
+    // A character's name is drawn across the middle of its circle and lives in the layer above,
+    // so the same gestures have to work from the label as from the shape — otherwise a press in
+    // the middle of a node lands on the text and only the outer ring can start a drag.
+    const bindGestures=target=>{
+      target.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;event.stopPropagation();physics.dragId=item.id;dragMoved=false;dragStartClient={x:event.clientX,y:event.clientY};const c=toContentPoint(event.clientX,event.clientY),p=positions.get(item.id);dragOffset={x:p.x-c.x,y:p.y-c.y};physics.vel.set(item.id,{x:0,y:0});group.classList.add("dragging");target.setPointerCapture(event.pointerId);});
+      target.addEventListener("pointermove",event=>{if(physics.dragId!==item.id)return;const c=toContentPoint(event.clientX,event.clientY),p=positions.get(item.id);p.x=c.x+dragOffset.x;p.y=c.y+dragOffset.y;if(!dragMoved&&Math.hypot(event.clientX-dragStartClient.x,event.clientY-dragStartClient.y)>4)dragMoved=true;});
+      const endDrag=event=>{if(physics.dragId!==item.id)return;physics.dragId=null;group.classList.remove("dragging");if(event.type==="pointerup"){if(dragMoved){const p=physics.pos.get(item.id);if(p)p.pinned=true;}else selectNode();}};
+      target.addEventListener("pointerup",endDrag);target.addEventListener("pointercancel",endDrag);
+      target.addEventListener("dblclick",event=>{event.stopPropagation();const p=physics.pos.get(item.id);if(p?.pinned){p.pinned=false;toast(`${item.name} released back into the layout`);}openProfile(item.id);});
+      target.addEventListener("keydown",event=>{if(event.key!=="Enter"&&event.key!==" ")return;event.preventDefault();selectNode();});
+      target.addEventListener("pointerenter",()=>setHoverNode(item.id));
+      target.addEventListener("pointerleave",()=>setHoverNode(null));
+    };
+    bindGestures(group);bindGestures(labelGroup);
     nodeLayer.appendChild(group);nodeEls.set(item.id,group);
   });
+  // Measure the names once they are all in the document. Guessing width from character count
+  // under-read real text by about a third, which left the separation forces satisfied while
+  // names still overlapped on screen. One pass after the loop keeps the layout thrash to one.
+  labelEls.forEach((entry,id)=>{const box=entry.text.getBBox();if(!box.width)return;entry.halfWidth=box.width/2;entry.halfHeight=box.height/2;entry.offset=box.y+box.height/2;physics.bounds.set(id,{ox:box.x+box.width/2,oy:entry.offset,hw:entry.halfWidth,hh:entry.halfHeight});});
   renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius);
   applyGraphFocus(derived);
   updateLabelVisibility();
@@ -894,21 +910,26 @@ function updateLabelVisibility(){
   labelEls.forEach((entry,id)=>{
     const point=physics.pos.get(id);if(!point)return;
     const classes=entry.group.classList,
-      pinned=classes.contains("selected")||classes.contains("event-active-node")||classes.contains("hover-focus")||classes.contains("hover-neighbor")||classes.contains("selected-neighbor");
-    let rank=pinned?6:entry.kind==="character"?1:3;
+      focused=classes.contains("selected")||classes.contains("event-active-node")||classes.contains("hover-focus"),
+      linked=classes.contains("selected-neighbor")||classes.contains("hover-neighbor");
+    let rank=focused?7:linked?6:entry.kind==="character"?1:3;
     rank+=Math.min(2,(physics.degree.get(id)||0)*.4);
-    entries.push({entry,id,rank,pinned,x:point.x*scale+view.x,y:(point.y+entry.offset)*scale+view.y,hw:entry.halfWidth*textScale*scale+3,hh:9*textScale*scale+3});
+    entries.push({entry,id,rank,focused,linked,x:point.x*scale+view.x,y:(point.y+entry.offset)*scale+view.y,hw:entry.halfWidth*textScale*scale+3,hh:entry.halfHeight*textScale*scale+3});
   });
   entries.sort((a,b)=>b.rank-a.rank||a.id.localeCompare(b.id));
   // On a big graph, naming every node is what makes it unreadable, so quiet nodes give up
   // their label and earn it back on hover or selection. Small graphs keep every name.
-  const budget=labelBudget(entries.length),placed=[];
+  // A small graph has room for every name once the separation forces settle, so nothing is
+  // hidden there; culling is for graphs where names genuinely cannot all fit.
+  const budget=labelBudget(entries.length),crowded=entries.length>10,placed=[];
   let spent=0;
   entries.forEach(item=>{
-    let visible=item.pinned||(!zoomedOut||item.rank>=3)&&spent<budget;
-    if(visible&&!item.pinned)visible=!placed.some(other=>Math.abs(other.x-item.x)<other.hw+item.hw&&Math.abs(other.y-item.y)<other.hh+item.hh);
+    // What the reader is looking at keeps its name whatever happens. Its neighbours skip the
+    // budget but still give way rather than overprint each other; everyone else takes a slot.
+    let visible=item.focused||(item.linked||!zoomedOut||item.rank>=3)&&(item.linked||spent<budget);
+    if(visible&&crowded&&!item.focused)visible=!placed.some(other=>Math.abs(other.x-item.x)<other.hw+item.hw&&Math.abs(other.y-item.y)<other.hh+item.hh);
     item.entry.group.classList.toggle("label-culled",!visible);
-    if(visible){placed.push(item);if(!item.pinned)spent++;}
+    if(visible){placed.push(item);if(!item.focused&&!item.linked)spent++;}
   });
 }
 function applyGraphFocus(derived){if(!selectedId)return;const chosen=entity(selectedId),connected=new Set([selectedId]);document.querySelectorAll("#graph .edge").forEach(edge=>{const match=edge.dataset.a===selectedId||edge.dataset.b===selectedId;if(match){connected.add(edge.dataset.a);connected.add(edge.dataset.b);edge.classList.add("selected-connection");}else edge.classList.add("dim");});document.querySelectorAll("#graph .node").forEach(node=>{if(node.dataset.id===selectedId)node.classList.add("selected");else if(connected.has(node.dataset.id))node.classList.add("selected-neighbor");else node.classList.add("dim");});if(chosen?.kind==="organization"||chosen?.kind==="location")document.querySelectorAll("#graph .relation-edge").forEach(edge=>edge.classList.add("hidden"));}

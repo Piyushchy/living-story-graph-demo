@@ -402,8 +402,19 @@ test("with the toggle on, clicking anywhere in a cited sentence zone navigates t
 test("dragging a node pins it so the physics simulation stops pulling it back, and double-clicking a pinned node releases it", () => {
   const body = functionBody("renderGraph");
   assert.match(body, /if\(dragMoved\)\{const p=physics\.pos\.get\(item\.id\);if\(p\)p\.pinned=true;\}else selectNode\(\);/);
-  assert.match(body, /group\.addEventListener\("dblclick",event=>\{event\.stopPropagation\(\);const p=physics\.pos\.get\(item\.id\);if\(p\?\.pinned\)\{p\.pinned=false;/);
+  assert.match(body, /target\.addEventListener\("dblclick",event=>\{event\.stopPropagation\(\);const p=physics\.pos\.get\(item\.id\);if\(p\?\.pinned\)\{p\.pinned=false;/);
   assert.match(source, /if \(id === physics\.dragId \|\| physics\.pos\.get\(id\)\?\.pinned\) return;/);
+});
+
+test("a node can be dragged from anywhere on it, including from its own name — a character's label covers the middle of its circle, so binding drag only to the shape left just the outer ring grabbable", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const bindGestures=target=>\{/);
+  assert.match(body, /target\.addEventListener\("pointerdown",event=>\{[^}]*physics\.dragId=item\.id;/);
+  assert.match(body, /target\.addEventListener\("pointermove",event=>\{if\(physics\.dragId!==item\.id\)return;/);
+  assert.match(body, /target\.setPointerCapture\(event\.pointerId\);/, "the element that started the drag must capture the pointer");
+  assert.match(body, /group\.classList\.add\("dragging"\)/, "but the shape always carries the dragging state");
+  assert.match(body, /bindGestures\(group\);bindGestures\(labelGroup\);/);
+  assert.match(styleSource, /\.node-labels > \* \{ pointer-events: painted; \}/);
 });
 
 function locationView({ entities, parents, expanded = [], visible }) {
@@ -545,14 +556,15 @@ function pureSandbox(names) {
 test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
   const body = functionBody("renderGraph");
   assert.match(body, /const edgeLayer=svgEl\("g"\),nodeLayer=svgEl\("g"\),labelLayer=svgEl\("g",\{class:"node-label-layer"\}\),podLayer=svgEl\("g",\{class:"location-pod-layer"\}\);viewportGroup\.append\(edgeLayer,nodeLayer,labelLayer,podLayer\);/);
-  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,offset:labelY,kind:item\.kind,halfWidth:/);
+  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,halfWidth:/);
+  assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=entry\.text\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
   assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
   assert.match(styleSource, /\.node-label-layer \{ pointer-events: none; \}/);
 });
 
 test("shapes are pushed apart by their real radii, not just by inverse-square repulsion which let them settle on top of each other", () => {
   const body = functionBody("stepPhysics");
-  assert.match(body, /const clearance=\(physics\.radii\.get\(ids\[i\]\)\|\|24\)\+\(physics\.radii\.get\(ids\[j\]\)\|\|24\)\+16;/);
+  assert.match(body, /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+22;/);
   assert.match(body, /if\(d<clearance\)\{const push=Math\.min\(6,\(clearance-d\)\*\.24\);/);
   assert.match(functionBody("renderGraph"), /physics\.radii\.set\(item\.id,nodeRadius\);/);
 });
@@ -575,9 +587,11 @@ test("a crowded graph hands out only a few names; a small one keeps every name",
   assert.ok(run("labelBudget(67)") < 20, "a sixty-seven node graph labels only the highest-ranked few");
   assert.equal(run("labelBudget(400)"), 9, "the budget bottoms out rather than reaching zero");
   const body = functionBody("updateLabelVisibility");
-  assert.match(body, /pinned=classes\.contains\("selected"\)\|\|classes\.contains\("event-active-node"\)\|\|classes\.contains\("hover-focus"\)\|\|classes\.contains\("hover-neighbor"\)\|\|classes\.contains\("selected-neighbor"\)/);
-  assert.match(body, /let visible=item\.pinned\|\|\(!zoomedOut\|\|item\.rank>=3\)&&spent<budget;/, "selection, the current action and hover always keep their name");
-  assert.match(body, /visible=!placed\.some\(other=>Math\.abs\(other\.x-item\.x\)<other\.hw\+item\.hw&&Math\.abs\(other\.y-item\.y\)<other\.hh\+item\.hh\)/, "and a name that would land on one already placed is dropped");
+  assert.match(body, /focused=classes\.contains\("selected"\)\|\|classes\.contains\("event-active-node"\)\|\|classes\.contains\("hover-focus"\)/);
+  assert.match(body, /linked=classes\.contains\("selected-neighbor"\)\|\|classes\.contains\("hover-neighbor"\)/);
+  assert.match(body, /let visible=item\.focused\|\|\(item\.linked\|\|!zoomedOut\|\|item\.rank>=3\)&&\(item\.linked\|\|spent<budget\)/, "what the reader is looking at always keeps its name; its neighbours skip the budget");
+  assert.match(body, /const budget=labelBudget\(entries\.length\),crowded=entries\.length>10/, "a small graph never hides a name — the separation forces have room to sort it out");
+  assert.match(body, /if\(visible&&crowded&&!item\.focused\)visible=!placed\.some\(other=>Math\.abs\(other\.x-item\.x\)<other\.hw\+item\.hw&&Math\.abs\(other\.y-item\.y\)<other\.hh\+item\.hh\)/, "on a crowded one, a name that would land on one already placed is dropped");
 });
 
 test("a culled name is actually invisible — its rule outranks the action, selection and hover focus rules that force opacity onto every .node", () => {
@@ -592,7 +606,7 @@ test("hovering a node lifts it and its links out of the web, and outranks the ac
   assert.match(body, /viewportGroup\?\.classList\.toggle\("has-hover-focus",Boolean\(id\)\);/);
   assert.match(styleSource, /#graph \.graph-viewport\.has-hover-focus:not\(\.has-selection-focus\)/, "a pinned selection still wins");
   assert.doesNotMatch(styleSource, /has-hover-focus:not\(\.has-selection-focus\):not\(\.has-action-focus\)/, "but the action spotlight must not suppress hover — it is on for almost every action");
-  assert.match(functionBody("renderGraph"), /group\.addEventListener\("pointerenter",\(\)=>setHoverNode\(item\.id\)\);/);
+  assert.match(functionBody("renderGraph"), /target\.addEventListener\("pointerenter",\(\)=>setHoverNode\(item\.id\)\);/);
 });
 
 test("once the simulation settles the view fits the real layout, and any zoom or pan by the reader stops it moving under them", () => {
@@ -602,4 +616,17 @@ test("once the simulation settles the view fits the real layout, and any zoom or
   assert.match(functionBody("scheduleAutoFit"), /if\(!viewPinnedByUser&&!physics\.dragId\)fitGraphToContent\(\)/);
   assert.match(source, /function zoomBy\(factor, atX = 360, atY = 260\) \{\n  viewPinnedByUser = true;/);
   assert.match(source, /if\(!panStart\)return;viewPinnedByUser=true;/);
+});
+
+test("a name never settles on top of another node's shape, which is what still read as cramped once label-versus-label separation was in", () => {
+  const body = functionBody("stepPhysics");
+  assert.match(body, /const clearLabelOfShape=\(labelPos,labelBox,shapePos,shapeRadius,labelForce,shapeForce\)=>\{/);
+  assert.match(body, /overlapX=labelBox\.hw\+shapeRadius\+14-Math\.abs\(dx\),overlapY=labelBox\.hh\+shapeRadius\+12-Math\.abs\(dy\)/);
+  assert.match(body, /clearLabelOfShape\(a,ab,b,rb,fa,fb\);clearLabelOfShape\(b,bb,a,ra,fb,fa\);/, "both directions, so neither node's name camps on the other");
+  assert.match(body, /push=Math\.min\(3\.5,Math\.max\(\.7,\.055\*overlapX\)\)/, "with a floor, so a shallow overlap still clears instead of stalling against the springs");
+});
+
+test("two names that meet in the gap between their nodes slide apart sideways, because separating them vertically would drag the shapes together and the clearance force would just undo it", () => {
+  const body = functionBody("stepPhysics");
+  assert.match(body, /const opposed=\(a\.y-b\.y\)\*labelDy<0;if\(opposed\|\|overlapX<overlapY\)\{const direction=labelDx>=0\?1:-1/);
 });
