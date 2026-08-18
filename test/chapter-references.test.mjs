@@ -93,6 +93,36 @@ test("richInline still supports the existing [[Label|url]] wiki-link syntax unch
   assert.match(html, /<a class="wiki-external-link" href="https:\/\/example\.com\/protos"[^>]*>Protos Energy/);
 });
 
+test("richInline [[Label|url|N]] attaches both an external link and a chapter citation to the same text — the originally reported bug", () => {
+  const ctx = sandbox({ chapterUrlTemplate: "https://example.com/ch-{n}" });
+  const html = vm.runInContext(`richInline(${JSON.stringify("[[Protos Energy|https://wiki.example.com/protos|12]] is important.")})`, ctx);
+  // the external link must be exact — no swallowed "|12" corrupting the URL (the original bug)
+  assert.match(html, /<a class="wiki-external-link" href="https:\/\/wiki\.example\.com\/protos"[^>]*>Protos Energy/);
+  assert.doesNotMatch(html, /protos\|12/);
+  // and a separate, correctly-parsed chapter citation must follow it
+  assert.match(html, /<span class="prose-chapter-ref"><a class="chapter-citation" href="https:\/\/example\.com\/ch-12"/);
+  assert.match(html, / is important\.$/);
+});
+
+test("richInline [[Label|N|url]] works with the URL and chapter given in either order", () => {
+  const ctx = sandbox({});
+  const html = vm.runInContext(`richInline(${JSON.stringify("[[Protos Energy|12|https://wiki.example.com/protos]]")})`, ctx);
+  assert.match(html, /<a class="wiki-external-link" href="https:\/\/wiki\.example\.com\/protos"[^>]*>Protos Energy/);
+  assert.match(html, /<span class="prose-chapter-ref"><span class="chapter-citation uncited"[^>]*>Chapter 12<\/span><\/span>/);
+});
+
+test("richInline [[Label|url|N]] with an invalid chapter number still renders the link, just without a citation", () => {
+  const ctx = sandbox({});
+  const html = vm.runInContext(`richInline(${JSON.stringify("[[Protos Energy|https://wiki.example.com/protos|0]]")})`, ctx);
+  assert.match(html, /^<a class="wiki-external-link" href="https:\/\/wiki\.example\.com\/protos"[^>]*>Protos Energy<span aria-hidden="true">↗<\/span><\/a>$/);
+});
+
+test("the wiki-link button can optionally attach a chapter citation too, producing the three-part syntax", () => {
+  const body = functionBody("installWikiLinkHelpers");
+  assert.match(body, /Also cite a chapter for this\?/);
+  assert.match(body, /textarea\.setRangeText\(chapter\?`\[\[\$\{label\}\|\$\{url\.trim\(\)\}\|\$\{chapter\}\]\]`:`\[\[\$\{label\}\|\$\{url\.trim\(\)\}\]\]`,start,end,"end"\)/);
+});
+
 test("the chapter-links form validates the template, each explicit-link line, and saves both together", () => {
   assert.match(source, /if\(rawTemplate&&!rawTemplate\.includes\("\{n\}"\)\)/);
   assert.match(source, /if\(rawTemplate&&!safeExternalUrl\(rawTemplate\.replaceAll\("\{n\}","1"\)\)\)/);

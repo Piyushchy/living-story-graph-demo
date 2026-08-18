@@ -325,22 +325,32 @@ function safeExternalUrl(value){
   catch { return ""; }
 }
 function richInline(value){
-  const text=String(value??""),pattern=/\[\[([^\]|]+?)\|([^\]]+?)\]\]|\[\[(\d+)\]\]/g;
+  const text=String(value??""),pattern=/\[\[([^\]|]+?)\|([^\]|]+?)(?:\|([^\]|]+?))?\]\]|\[\[(\d+)\]\]/g;
   let html="",lastIndex=0,match;
   while((match=pattern.exec(text))){
     html+=escapeHtml(text.slice(lastIndex,match.index));
-    if(match[3]!==undefined){
-      const chapter=validChapter(match[3]);
+    if(match[4]!==undefined){
+      const chapter=validChapter(match[4]);
       html+=chapter?`<span class="prose-chapter-ref">${chapterCitation({chapter})}</span>`:escapeHtml(match[0]);
       lastIndex=pattern.lastIndex;continue;
     }
-    const label=match[1].trim(),target=match[2].trim(),chapter=validChapter(target);
-    if(chapter){
-      const url=chapterUrl(chapter),tag=url?"a":"span",attrs=url?` href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="Open the source for chapter ${chapter}"`:` title="No source saved for chapter ${chapter} yet"`;
-      html+=`<span class="prose-chapter-ref"><${tag} class="chapter-ref-link${url?"":" uncited"}"${attrs}>${escapeHtml(label)}</${tag}>${chapterCitation({chapter})}</span>`;
+    const label=match[1].trim();
+    const wikiLink=url=>`<a class="wiki-external-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}<span aria-hidden="true">↗</span></a>`;
+    if(match[3]!==undefined){
+      let urlPart=match[2].trim(),chapterPart=match[3].trim();
+      if(!validChapter(chapterPart)&&validChapter(urlPart))[urlPart,chapterPart]=[chapterPart,urlPart];
+      const url=safeExternalUrl(urlPart),chapter=validChapter(chapterPart);
+      const linkHtml=url?wikiLink(url):escapeHtml(label);
+      html+=chapter?linkHtml+`<span class="prose-chapter-ref">${chapterCitation({chapter})}</span>`:linkHtml;
     }else{
-      const url=safeExternalUrl(target);
-      html+=url?`<a class="wiki-external-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}<span aria-hidden="true">↗</span></a>`:escapeHtml(label);
+      const target=match[2].trim(),chapter=validChapter(target);
+      if(chapter){
+        const url=chapterUrl(chapter),tag=url?"a":"span",attrs=url?` href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="Open the source for chapter ${chapter}"`:` title="No source saved for chapter ${chapter} yet"`;
+        html+=`<span class="prose-chapter-ref"><${tag} class="chapter-ref-link${url?"":" uncited"}"${attrs}>${escapeHtml(label)}</${tag}>${chapterCitation({chapter})}</span>`;
+      }else{
+        const url=safeExternalUrl(target);
+        html+=url?wikiLink(url):escapeHtml(label);
+      }
     }
     lastIndex=pattern.lastIndex;
   }
@@ -966,7 +976,7 @@ $("#delete-entity").onclick=()=>deleteIdentity($("#entity-form").elements.editin
 $("#event-form").addEventListener("submit",event=>{event.preventDefault();const editingId=event.currentTarget.elements.editingId.value,previous=editingId?data.events.find(item=>item.id===editingId):null,record=buildEventRecord(event.currentTarget,editingId||undefined);if(!record)return;if(editingId){const index=data.events.findIndex(item=>item.id===editingId);if(index>=0)data.events[index]=record;}else data.events.push(record);if(previous)syncPresenceFromEvents(previous.source,previous.type);syncPresenceFromEvents(record.source,record.type);saveData();resetEventEditor();renderAll();toast(`Change ${editingId?"updated":"saved"}; graph updated`);});
 $("#event-form").elements.type.addEventListener("change",updateEventHelp);
 $("#event-form").elements.level.addEventListener("change",()=>{const form=$("#event-form"),value=form.elements.value.value.trim().toLowerCase();if(form.elements.type.value==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===value))form.elements.value.value="";});
-function installWikiLinkHelpers(){document.querySelectorAll("#admin-view textarea").forEach(textarea=>{if(textarea.parentElement.querySelector(".inline-link-helper"))return;const button=document.createElement("button");button.type="button";button.className="inline-link-helper";button.textContent="＋ Link selected text to a wiki page";button.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd,label=textarea.value.slice(start,end).trim()||prompt("Text readers should see (for example: Protos Energy)");if(!label)return;const url=prompt("Paste the full webpage URL");if(!safeExternalUrl(url)){if(url)toast("Use a complete http:// or https:// link");return;}textarea.setRangeText(`[[${label}|${url.trim()}]]`,start,end,"end");textarea.focus();};const chapterButton=document.createElement("button");chapterButton.type="button";chapterButton.className="inline-link-helper chapter-mark-helper";chapterButton.textContent="＋ Mark chapter for selected text";chapterButton.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd;if(start===end){toast("Select the text this chapter reference belongs to first");return;}const selectedText=textarea.value.slice(start,end);const input=prompt("Which chapter does this text belong to?"),chapter=validChapter(input);if(!chapter){if(input!==null)toast("Enter a whole chapter number greater than 0");return;}if(!chapterUrl(chapter)){const urlInput=prompt(`No link is saved for chapter ${chapter} yet. Paste its URL to save it once — every future reference to chapter ${chapter} anywhere will use it automatically. Leave blank to skip.`);const savedUrl=urlInput?safeExternalUrl(urlInput.trim()):"";if(urlInput&&!savedUrl)toast("That wasn't a complete http:// or https:// link — marker added without one");if(savedUrl){data.chapterSources={...(data.chapterSources||{}),[chapter]:savedUrl};saveData();}}textarea.setRangeText(`[[${selectedText}|${chapter}]]`,start,end,"end");textarea.focus();};textarea.insertAdjacentElement("afterend",button);button.insertAdjacentElement("afterend",chapterButton);});}
+function installWikiLinkHelpers(){document.querySelectorAll("#admin-view textarea").forEach(textarea=>{if(textarea.parentElement.querySelector(".inline-link-helper"))return;const button=document.createElement("button");button.type="button";button.className="inline-link-helper";button.textContent="＋ Link selected text to a wiki page";button.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd,label=textarea.value.slice(start,end).trim()||prompt("Text readers should see (for example: Protos Energy)");if(!label)return;const url=prompt("Paste the full webpage URL");if(!safeExternalUrl(url)){if(url)toast("Use a complete http:// or https:// link");return;}const chapterInput=prompt("Also cite a chapter for this? Enter a chapter number, or leave blank to skip."),chapter=validChapter(chapterInput);if(chapterInput&&!chapter){toast("Enter a whole chapter number greater than 0 — link added without a chapter citation");}textarea.setRangeText(chapter?`[[${label}|${url.trim()}|${chapter}]]`:`[[${label}|${url.trim()}]]`,start,end,"end");textarea.focus();};const chapterButton=document.createElement("button");chapterButton.type="button";chapterButton.className="inline-link-helper chapter-mark-helper";chapterButton.textContent="＋ Mark chapter for selected text";chapterButton.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd;if(start===end){toast("Select the text this chapter reference belongs to first");return;}const selectedText=textarea.value.slice(start,end);const input=prompt("Which chapter does this text belong to?"),chapter=validChapter(input);if(!chapter){if(input!==null)toast("Enter a whole chapter number greater than 0");return;}if(!chapterUrl(chapter)){const urlInput=prompt(`No link is saved for chapter ${chapter} yet. Paste its URL to save it once — every future reference to chapter ${chapter} anywhere will use it automatically. Leave blank to skip.`);const savedUrl=urlInput?safeExternalUrl(urlInput.trim()):"";if(urlInput&&!savedUrl)toast("That wasn't a complete http:// or https:// link — marker added without one");if(savedUrl){data.chapterSources={...(data.chapterSources||{}),[chapter]:savedUrl};saveData();}}textarea.setRangeText(`[[${selectedText}|${chapter}]]`,start,end,"end");textarea.focus();};textarea.insertAdjacentElement("afterend",button);button.insertAdjacentElement("afterend",chapterButton);});}
 document.addEventListener("click",event=>{const link=event.target.closest("[data-open-event]");if(!link)return;event.preventDefault();event.stopPropagation();openProfile(link.dataset.openEvent,Number(link.dataset.eventChapter));});
 $("#cancel-event-edit").onclick=resetEventEditor;
 $("#queue-event").onclick=()=>{const record=buildEventRecord($("#event-form"));if(!record)return;if(eventDrafts.length&&record.chapter!==eventDrafts[0].chapter){toast(`This batch is for chapter ${eventDrafts[0].chapter}. Save or clear it before changing chapters.`);return;}eventDrafts.push(record);renderEventBatch();clearEventInputsForNext();toast("Change added to the chapter batch");};
