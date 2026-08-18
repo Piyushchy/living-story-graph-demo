@@ -1047,6 +1047,7 @@ syncChapterRefToggles(localStorage.getItem(CHAPTER_REF_TOGGLE_KEY)==="1");
 if(localStorage.getItem(CHAPTER_REF_HINT_SEEN_KEY)!=="1"){const hint=$("#chapter-ref-hint");if(hint)hint.hidden=false;}
 $("#dismiss-chapter-ref-hint")?.addEventListener("click",event=>{event.stopPropagation();dismissChapterRefHint();});
 document.addEventListener("click",event=>{if(event.target.closest("[data-chapter-ref-toggle]"))toggleChapterRefs();});
+document.addEventListener("click",event=>{if(!document.body.classList.contains("show-chapter-refs"))return;if(event.target.closest("a"))return;const zone=event.target.closest(".sentence-cite");if(!zone)return;const url=zone.querySelector(".chapter-citation")?.getAttribute("href");if(url)window.open(url,"_blank","noopener,noreferrer");});
 document.addEventListener("keydown",event=>{if(event.key==="Alt"&&!event.repeat){event.preventDefault();toggleChapterRefs();}});
 graph.addEventListener("wheel",event=>{event.preventDefault();const {x:ux,y:uy}=toSvgPoint(event.clientX,event.clientY);zoomBy(event.deltaY>0?0.9:1.11,ux,uy);},{passive:false});
 graph.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;const p=toSvgPoint(event.clientX,event.clientY);panStart={ux:p.x,uy:p.y,viewX:view.x,viewY:view.y};graph.setPointerCapture(event.pointerId);});

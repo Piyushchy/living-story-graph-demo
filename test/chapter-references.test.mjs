@@ -393,3 +393,8 @@ test("the recommended simple form for citing a custom infobox fact — no zone s
   const html = vm.runInContext(`fact(${JSON.stringify(facts[0].label)}, ${JSON.stringify(facts[0].value)})`, ctx);
   assert.match(html, /<dt>Age<\/dt><dd><span class="cited-prose-line"><span>12 Elysian Cycle<\/span><a class="chapter-citation" href="https:\/\/example\.com\/ch-1"/);
 });
+
+test("with the toggle on, clicking anywhere in a cited sentence zone navigates to its chapter source — not just the tiny floating badge — while an embedded word-link or the badge itself still takes priority", () => {
+  assert.match(source, /document\.addEventListener\("click",event=>\{if\(!document\.body\.classList\.contains\("show-chapter-refs"\)\)return;if\(event\.target\.closest\("a"\)\)return;const zone=event\.target\.closest\("\.sentence-cite"\);if\(!zone\)return;const url=zone\.querySelector\("\.chapter-citation"\)\?\.getAttribute\("href"\);if\(url\)window\.open\(url,"_blank","noopener,noreferrer"\);\}\);/);
+  assert.match(styleSource, /body\.show-chapter-refs \.prose-chapter-ref\.sentence-cite:hover:has\(\.chapter-citation:not\(\.uncited\)\)\{cursor:pointer\}/);
+});
