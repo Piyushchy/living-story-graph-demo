@@ -117,7 +117,7 @@ input[type="range"] { padding: 0; accent-color: var(--blue); }
 .dot.female { background: var(--pink); }.dot.male { background: var(--blue); }
 .ring { border-radius: 50%; border: 3px solid var(--green); }.ring.dead { border-color: var(--red); border-style: dashed; }
 .hex { background: var(--panel-2); border: 1px solid var(--muted); clip-path: polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%); }
-.pin { width: 11px; height: 11px; border: 2px solid #22c7b8; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: #123638; }
+.pin { width: 11px; height: 11px; border: 2px solid #6de0d5; border-radius: 4px; background: rgba(18,54,56,.92); }
 .diamond { background: var(--violet); transform: rotate(45deg); width: 9px; height: 9px; }
 .line-key { width: 22px; height: 4px; border-radius: 3px; display: inline-block; }.line-key.friendly{background:var(--green)}.line-key.hostile{background:var(--red)}.line-key.neutral{background:var(--muted)}.line-key.member{background:repeating-linear-gradient(90deg,var(--muted) 0 6px,transparent 6px 10px)}.line-key.location{background:repeating-linear-gradient(90deg,#22c7b8 0 5px,transparent 5px 8px)}.line-key.residence{background:repeating-linear-gradient(90deg,#55d6a7 0 3px,transparent 3px 7px)}.line-key.hierarchy{background:repeating-linear-gradient(90deg,#f2c95e 0 9px,transparent 9px 13px)}.line-key.organization-location{background:repeating-linear-gradient(90deg,#c084fc 0 8px,transparent 8px 11px,#c084fc 11px 13px,transparent 13px 17px)}
 .corona-key { width: 16px; height: 16px; border-radius: 50%; border: 4px solid var(--amber); display: inline-block; border-right-color: var(--border); }
@@ -290,13 +290,54 @@ th { color: var(--muted); font-weight: 600; }
 .event-type.event-corpse_appearance{background:#3a1820;color:#ff9ba3}
 .event-detail-list { display: grid; gap: 8px; margin-top: 10px; }.event-detail-list article{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding-top:8px;border-top:1px solid #202c40}.event-detail-list p{margin:0;color:#c2ccdb;font-size:12px;line-height:1.5}.event-detail-list small{display:block;margin-top:4px;color:#718096}
 .node { cursor: grab; transition: opacity .18s ease,filter .18s ease; touch-action: none; }.node-hit-target{fill:transparent;stroke:none;pointer-events:all}.node.dim { opacity: .055; filter: saturate(.1); }.node.selected { filter: drop-shadow(0 0 11px rgba(255,255,255,.48)); }.node.dragging { cursor: grabbing; filter: drop-shadow(0 0 9px rgba(255,255,255,.35)); }.edge { transition: opacity .18s ease; }.edge.dim { opacity: .035; }.edge.hidden { display: none; }
-.node-label { fill: var(--text); text-anchor: middle; font-size: 14px; font-weight: 600; pointer-events: painted; cursor: pointer; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+#graph { --label-size: 14px; }
+.node-label { fill: var(--text); text-anchor: middle; font-size: calc(var(--label-size) * var(--label-scale,1)); font-weight: 600; pointer-events: painted; cursor: grab; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+/* Names sit in a layer above every shape, so nothing is ever drawn over a label, and the
+   declutter pass can drop individual names without touching the nodes they belong to. */
+.node-label-layer { pointer-events: none; }
+.node-labels { pointer-events: none; cursor: grab; }
+.node-labels > * { pointer-events: painted; }
+.node-labels.label-culled { pointer-events: none; transition: opacity .16s ease; }
+/* Outranks the action/selection focus rules, which force opacity on every .node. */
+#graph .node-label-layer .node-labels.label-culled { opacity: 0 !important; }
+.node-labels.label-culled > * { pointer-events: none; }
 .org-shape { fill: var(--panel-2); stroke: var(--muted); stroke-width: 2; }
-.location-shape { fill: #123638; stroke: #22c7b8; stroke-width: 2.5; }.location-core{fill:#0b1720;stroke:#6de0d5;stroke-width:1.5}.location-edge{fill:none;stroke:#22c7b8;stroke-width:3;opacity:.68}.location-edge.visited{stroke-dasharray:4 5}.residence-edge{fill:none;stroke:#55d6a7;stroke-width:2.5;stroke-dasharray:2 6;opacity:.8}.hierarchy-edge{fill:none;stroke:#f2c95e;stroke-width:2.5;stroke-dasharray:9 5;opacity:.75}.organization-location-edge{fill:none;stroke:#c084fc;stroke-width:3;stroke-dasharray:10 4 2 4;opacity:.7}
-.location-region{fill:rgba(34,199,184,.075);stroke:rgba(109,224,213,.62);stroke-width:2;stroke-dasharray:7 5;pointer-events:visibleStroke;transition:fill .2s ease,stroke .2s ease}
-.location:hover .location-region,.location.selected .location-region{fill:rgba(34,199,184,.14);stroke:#6de0d5}
-.location-region-core{fill:#6de0d5;opacity:.72;pointer-events:none}
+.location-edge{fill:none;stroke:#22c7b8;stroke-width:3;opacity:.68}.location-edge.visited{stroke-dasharray:4 5}.residence-edge{fill:none;stroke:#55d6a7;stroke-width:2.5;stroke-dasharray:2 6;opacity:.8}.hierarchy-edge{fill:none;stroke:#f2c95e;stroke-width:2.5;stroke-dasharray:9 5;opacity:.75}.organization-location-edge{fill:none;stroke:#c084fc;stroke-width:3;stroke-dasharray:10 4 2 4;opacity:.7}
+/* Places are drawn as compact rounded tiles — clearly not a character circle, but the same
+   visual weight, so a realm never swallows the graph the way the old ellipses did. */
+.location-glyph{fill:rgba(18,54,56,.92);stroke:#6de0d5;stroke-width:2.4;pointer-events:none;transition:fill .18s ease,stroke .18s ease}
+.location-glyph-core{fill:rgba(109,224,213,.34);stroke:none;pointer-events:none}
+.location:hover .location-glyph{fill:rgba(34,199,184,.3);stroke:#a7f4ea}
+.location.selected .location-glyph{fill:rgba(34,199,184,.36);stroke:#c4fff8}
+.location-child-badge{fill:#0b1720;stroke:#f2c95e;stroke-width:1.6;pointer-events:none}
+.location-child-badge-text{fill:#f2c95e;font-size:10px;font-weight:800;text-anchor:middle;pointer-events:none}
+.location-tier-label{fill:#5f8f92;font-size:7.5px;font-weight:700;letter-spacing:.16em;text-anchor:middle;pointer-events:none}
+/* Opened place: the tile itself becomes a dot the children orbit around. */
+.location-open-dot{fill:#f2c95e;pointer-events:none}
+.location-open-halo{fill:rgba(242,201,94,.09);stroke:rgba(242,201,94,.6);stroke-width:1.6;stroke-dasharray:3 4;pointer-events:none;animation:opened-location-spin 9s linear infinite}
+.node.location-opened .location-region-label{fill:#f2c95e;font-size:10px}
+.node.location-opened .location-tier-label{fill:#8a7638}
+.opened-location-edge{opacity:.16!important}
+@keyframes opened-location-spin{to{transform:rotate(360deg)}}
+/* Opening and closing a place. Children scale out of the dot and shrink back into it. */
+.location-shell{transform-origin:0 0}
+.node.location-emerging .location-shell{animation:location-emerge .58s cubic-bezier(.22,1.15,.36,1) both}
+@keyframes location-emerge{0%{transform:scale(.05);opacity:0}60%{transform:scale(1.16);opacity:1}100%{transform:scale(1);opacity:1}}
+.node.location-retracting{pointer-events:none}
+.node.location-retracting .location-shell{animation:location-retract .42s cubic-bezier(.55,0,.68,.2) both}
+@keyframes location-retract{0%{transform:scale(1);opacity:1}70%{opacity:.45}100%{transform:scale(.06);opacity:0}}
+.node.location-retracting.location-opened .location-shell{animation:location-dot-settle .42s ease both}
+@keyframes location-dot-settle{0%{transform:scale(1)}55%{transform:scale(.78)}100%{transform:scale(1)}}
 .location-region-label{fill:#9fe8df;font-size:11px;font-weight:750;letter-spacing:.02em;paint-order:stroke;stroke:#081018;stroke-width:5px;stroke-linejoin:round}
+/* Hover focus — the main way to read a dense graph. Sweeping the pointer over a node lifts it
+   and its links out of the web. A pinned selection outranks it, but the action spotlight does
+   not: hovering is a deliberate gesture, so it wins over the ambient dimming (hence the
+   #graph prefix, which outweighs the !important focus rules below). */
+#graph .graph-viewport.has-hover-focus:not(.has-selection-focus) .node:not(.hover-focus):not(.hover-neighbor):not(.label-culled){opacity:.12!important;filter:saturate(.12) brightness(.5)!important}
+#graph .graph-viewport.has-hover-focus:not(.has-selection-focus) .edge:not(.hover-connection){opacity:.04!important}
+#graph .graph-viewport.has-hover-focus:not(.has-selection-focus) .node.hover-neighbor{opacity:1!important;filter:brightness(.95) drop-shadow(0 0 6px rgba(148,205,255,.35))!important}
+#graph .graph-viewport.has-hover-focus:not(.has-selection-focus) .edge.hover-connection{opacity:.95!important}
+#graph .graph-viewport.has-hover-focus:not(.has-selection-focus) .node.hover-focus{opacity:1!important;filter:drop-shadow(0 0 13px rgba(255,255,255,.62))!important}
 .identity-edge{fill:none;stroke:#c084fc;stroke-width:2.75;stroke-dasharray:4 4;opacity:.82}
 .line-key.clone{border-top-color:#c084fc!important;border-top-style:dashed!important}
 .graph-viewport.has-action-focus .node:not(.event-active-node){opacity:1!important;filter:brightness(.34) saturate(.38)}
@@ -308,10 +349,27 @@ th { color: var(--muted); font-weight: 600; }
 .graph-viewport.has-selection-focus .node.selected{opacity:1!important;filter:brightness(1.06) saturate(1.08) drop-shadow(0 0 18px rgba(255,255,255,.92))!important}
 .graph-viewport.has-selection-focus .edge.dim{opacity:.025!important}
 .graph-viewport.has-selection-focus .edge.selected-connection{opacity:.94!important;filter:drop-shadow(0 0 4px rgba(148,205,255,.58))}
-.graph-viewport.has-selection-focus .location.selected-neighbor .location-region{fill:rgba(34,199,184,.12);stroke:rgba(127,247,235,.84)}
-.location.event-active-node .location-region{fill:rgba(34,199,184,.23);stroke:#7ff7eb;stroke-width:3;stroke-dasharray:none;animation:active-location-pulse 1.1s ease-in-out infinite alternate}
+.graph-viewport.has-selection-focus .location.selected-neighbor .location-glyph{fill:rgba(34,199,184,.2);stroke:rgba(127,247,235,.84)}
+.location.event-active-node .location-glyph{fill:rgba(34,199,184,.42);stroke:#7ff7eb;stroke-width:3;animation:active-location-pulse 1.1s ease-in-out infinite alternate}
 .location.event-active-node .location-region-label{fill:#d9fffb;font-size:13px}
 @keyframes active-location-pulse{from{filter:drop-shadow(0 0 3px rgba(34,199,184,.3))}to{filter:drop-shadow(0 0 13px rgba(34,199,184,.8))}}
+/* Action pods: a place that lives inside a collapsed parent surfaces for the length of the
+   action, then sinks back into the ancestor it came from. */
+.location-pod-layer{pointer-events:none}
+.location-pod{pointer-events:auto;cursor:pointer}
+.location-pod-shell{transform-origin:0 0;animation:pod-emerge .5s cubic-bezier(.22,1.15,.36,1) both}
+.location-pod.pod-retracting .location-pod-shell{animation:pod-retract .5s cubic-bezier(.55,0,.68,.2) both}
+.location-pod-ring{fill:rgba(34,199,184,.16);stroke:#7ff7eb;stroke-width:2.4;animation:active-location-pulse 1.2s ease-in-out infinite alternate}
+.location-pod-core{fill:#d9fffb}
+.location-pod-tier{fill:#7ff7eb;font-size:7.5px;font-weight:700;letter-spacing:.16em;text-anchor:middle}
+.location-pod-label{fill:#d9fffb;font-size:11px;font-weight:750;text-anchor:middle;paint-order:stroke;stroke:#081018;stroke-width:5px;stroke-linejoin:round}
+.location-pod-tether{stroke:#7ff7eb;stroke-width:1.6;stroke-dasharray:3 5;opacity:.55}
+.location-pod.pod-retracting .location-pod-tether{opacity:.2}
+.location-pod:hover .location-pod-ring{fill:rgba(34,199,184,.34)}
+@keyframes pod-emerge{0%{transform:translate(var(--pod-origin-x,0px),var(--pod-origin-y,0px)) scale(.02);opacity:0}100%{transform:translate(0,0) scale(1);opacity:1}}
+@keyframes pod-retract{0%{transform:translate(0,0) scale(1);opacity:1}100%{transform:translate(var(--pod-origin-x,0px),var(--pod-origin-y,0px)) scale(.02);opacity:0}}
+.graph-viewport.has-action-focus .location-pod{opacity:1!important;filter:none!important}
+.location-drill-hint{margin:10px 0 0;padding:8px 10px;border:1px dashed #3b5a6c;border-radius:9px;color:#8fb4b8;font-size:10px;line-height:1.5}
 .location-up-link { margin: 0 0 12px; padding: 8px 11px; border: 1px solid #496578; border-radius: 9px; background: #102231; color: #9fe8df; font-size: 11px; font-weight: 700; }
 .location-up-link:hover { border-color: #6be2d7; color: white; }
 .location-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 16px; color: #f2c95e; font: 600 12px Georgia,serif; }
@@ -428,7 +486,7 @@ th { color: var(--muted); font-weight: 600; }
   #event-form .form-actions .button { width: 100%; }
   .event-batch li { grid-template-columns: auto minmax(0,1fr); }
   .event-batch .remove-draft { grid-column: 2; justify-self: start; }
-  .node-label { font-size: 21px; }
+  #graph { --label-size: 21px; }
   .profile-hero { min-height: 245px; padding: 25px 18px; align-items: end; }
   .hero-kicker { font-size: 9px; letter-spacing: .11em; }
   .hero-copy h1 { margin-top: 9px; font-size: 46px; }

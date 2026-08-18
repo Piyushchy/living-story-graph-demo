@@ -399,26 +399,234 @@ test("with the toggle on, clicking anywhere in a cited sentence zone navigates t
   assert.match(styleSource, /body\.show-chapter-refs \.prose-chapter-ref\.sentence-cite:hover:has\(\.chapter-citation:not\(\.uncited\)\)\{cursor:pointer\}/);
 });
 
-test("locations now push unrelated (non-member) nodes back out of their visual footprint, not just pull actual members inward — this is what was making unrelated characters look attached to a location cluster", () => {
-  assert.match(source, /physics\.exclusions=\[\.\.\.locationPopulation\.entries\(\)\]\.map\(\(\[location,members\]\)=>\(\{location,members,\.\.\.locationMetrics\(location\)\}\)\);/);
-  assert.match(source, /physics\.exclusions\.forEach\(rule=>\{const location=physics\.pos\.get\(rule\.location\);if\(!location\)return;ids\.forEach\(id=>\{if\(id===rule\.location\|\|rule\.members\.has\(id\)\)return;/);
-});
-
 test("dragging a node pins it so the physics simulation stops pulling it back, and double-clicking a pinned node releases it", () => {
   const body = functionBody("renderGraph");
   assert.match(body, /if\(dragMoved\)\{const p=physics\.pos\.get\(item\.id\);if\(p\)p\.pinned=true;\}else selectNode\(\);/);
-  assert.match(body, /group\.addEventListener\("dblclick",event=>\{event\.stopPropagation\(\);const p=physics\.pos\.get\(item\.id\);if\(p\?\.pinned\)\{p\.pinned=false;/);
+  assert.match(body, /target\.addEventListener\("dblclick",event=>\{event\.stopPropagation\(\);const p=physics\.pos\.get\(item\.id\);if\(p\?\.pinned\)\{p\.pinned=false;/);
   assert.match(source, /if \(id === physics\.dragId \|\| physics\.pos\.get\(id\)\?\.pinned\) return;/);
 });
 
-test("the exclusion force is gentle and proportional (like the existing containment force), not a large fixed-magnitude shove — the earlier version threw unrelated nodes off-screen", () => {
-  assert.match(source, /const overflow=1-norm,f=force\.get\(id\);if\(!f\)return;if\(dx\|\|dy\)\{f\.x\+=dx\*overflow\*\.14;f\.y\+=dy\*overflow\*\.14;\}/);
-  assert.doesNotMatch(source, /const push=\(1-norm\)\*9\+2/, "the old large fixed-magnitude push must be gone");
+test("a node can be dragged from anywhere on it, including from its own name — a character's label covers the middle of its circle, so binding drag only to the shape left just the outer ring grabbable", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const bindGestures=target=>\{/);
+  assert.match(body, /target\.addEventListener\("pointerdown",event=>\{[^}]*physics\.dragId=item\.id;/);
+  assert.match(body, /target\.addEventListener\("pointermove",event=>\{if\(physics\.dragId!==item\.id\)return;/);
+  assert.match(body, /target\.setPointerCapture\(event\.pointerId\);/, "the element that started the drag must capture the pointer");
+  assert.match(body, /group\.classList\.add\("dragging"\)/, "but the shape always carries the dragging state");
+  assert.match(body, /bindGestures\(group\);bindGestures\(labelGroup\);/);
+  assert.match(styleSource, /\.node-labels > \* \{ pointer-events: painted; \}/);
 });
 
-test("nested location ellipses are appended in size order (largest first, smallest last/on top) so a small nested location's hit-target is never swallowed by a larger ancestor's fill rendered after it", () => {
+function locationView({ entities, parents, expanded = [], visible }) {
+  const helperSource = [
+    source.match(/^const LOCATION_ROOT_TYPE=.*$/m)[0],
+    source.match(/^const LOCATION_TIER_RADIUS=.*$/m)[0],
+    "var ENTITIES=new Map(__entities.map(item=>[item.id,item]));",
+    "function entity(id){return ENTITIES.get(id)||null;}",
+    "var expandedLocations=new Set(__expanded);",
+    "var derived={locationParents:__parents};",
+    functionBody("isLocationRoot"),
+    functionBody("locationParentOf"),
+    functionBody("buildLocationView"),
+    functionBody("renderedLocationSubtree"),
+    functionBody("locationGlyphRadius"),
+  ].join("\n");
+  const ctx = { __entities: entities, __parents: parents, __expanded: expanded };
+  vm.createContext(ctx);
+  vm.runInContext(helperSource, ctx);
+  vm.runInContext(`var view=buildLocationView(derived,new Set(${JSON.stringify(visible)}));`, ctx);
+  const read = expression => JSON.parse(vm.runInContext(`JSON.stringify(${expression})`, ctx));
+  return {
+    ctx,
+    read,
+    rendered: read("[...view.rendered].sort()"),
+    opened: read("[...view.expanded].sort()"),
+    anchorOf: read("Object.fromEntries(view.anchorOf)"),
+    childrenOf: read("Object.fromEntries(view.children)"),
+    parentOf: read("Object.fromEntries(view.parentOf)"),
+  };
+}
+
+const NESTED_WORLD = {
+  entities: [
+    { id: "cosmos", kind: "location", locationType: "Universe", name: "Cosmos" },
+    { id: "realm", kind: "location", locationType: "Realm", name: "Azure Realm" },
+    { id: "world", kind: "location", locationType: "World", name: "Verdan" },
+    { id: "city", kind: "location", locationType: "City", name: "Stonevale" },
+    { id: "inn", kind: "location", locationType: "Site", name: "The Inn" },
+    { id: "lex", kind: "character", name: "Lex" },
+  ],
+  parents: [
+    { child: "realm", parent: "cosmos" },
+    { child: "world", parent: "realm" },
+    { child: "city", parent: "world" },
+    { child: "inn", parent: "city" },
+  ],
+  visible: ["cosmos", "realm", "world", "city", "inn", "lex"],
+};
+
+test("a realm is the widest place the graph draws: it ignores any parent above it, and everything nested inside stays folded away until the realm is opened", () => {
+  const view = locationView(NESTED_WORLD);
+  assert.equal(view.parentOf.realm, null, "a realm never reports a parent, so nothing above it can be drawn");
+  assert.deepEqual(view.rendered, ["cosmos", "realm"], "only top-level places are drawn while everything is closed");
+  assert.deepEqual(view.childrenOf.cosmos, [], "the realm is not treated as a child of the universe above it");
+  assert.deepEqual(view.childrenOf.realm, ["world"]);
+});
+
+test("every place folded inside a closed parent reports through that parent, so the parent carries all of its children's connections", () => {
+  const view = locationView(NESTED_WORLD);
+  assert.equal(view.anchorOf.world, "realm");
+  assert.equal(view.anchorOf.city, "realm");
+  assert.equal(view.anchorOf.inn, "realm", "a place four levels down still connects through the realm on screen");
   const body = functionBody("renderGraph");
-  assert.match(body, /const locationAppendQueue=\[\];/);
-  assert.match(body, /\(item\.kind==="location"\?locationAppendQueue\.push\(\{item,group\}\):nodeLayer\.appendChild\(group\)\);/);
-  assert.match(body, /locationAppendQueue\.sort\(\(a,b\)=>\{const ma=locationMetrics\(a\.item\.id\),mb=locationMetrics\(b\.item\.id\);return \(mb\.rx\*mb\.ry\)-\(ma\.rx\*ma\.ry\);\}\)\.forEach\(\(\{group\}\)=>regionLayer\.appendChild\(group\)\);/);
+  assert.match(body, /const resolveLocationId=id=>entity\(id\)\?\.kind==="location"\?\(locView\.anchorOf\.get\(id\)\|\|id\):id;/);
+  assert.match(body, /const target=resolveLocationId\(to\);if\(!target\|\|from===target\)return;/);
+});
+
+test("opening a place moves the drill-down one level down: its children are drawn and now carry the connections that used to roll up to it", () => {
+  const view = locationView({ ...NESTED_WORLD, expanded: ["realm"] });
+  assert.deepEqual(view.rendered, ["cosmos", "realm", "world"]);
+  assert.deepEqual(view.opened, ["realm"], "the opened parent is the one drawn as a dot");
+  assert.equal(view.anchorOf.city, "world", "the child that came out now owns the connections below it");
+  assert.equal(view.anchorOf.inn, "world");
+  const deeper = locationView({ ...NESTED_WORLD, expanded: ["realm", "world"] });
+  assert.deepEqual(deeper.rendered, ["city", "cosmos", "realm", "world"]);
+  assert.deepEqual(deeper.opened, ["realm", "world"], "a child with children of its own opens the same way");
+  assert.equal(deeper.anchorOf.inn, "city");
+});
+
+test("a place with no revealed children is never drawn as a dot, and closing a parent takes its whole opened subtree with it", () => {
+  const view = locationView({ ...NESTED_WORLD, expanded: ["realm", "world", "city"] });
+  assert.deepEqual(view.opened, ["city", "realm", "world"]);
+  assert.deepEqual(view.read('renderedLocationSubtree("realm",view).sort()'), ["city", "inn", "world"]);
+  const leafOpen = locationView({ ...NESTED_WORLD, expanded: ["inn"], visible: ["realm", "inn"] });
+  assert.deepEqual(leafOpen.opened, [], "opening a place that contains nothing revealed is a no-op");
+});
+
+test("a place skips ancestors the reader has not met yet, so a deep location still attaches to the closest place actually on screen", () => {
+  const view = locationView({ ...NESTED_WORLD, visible: ["realm", "inn", "lex"] });
+  assert.equal(view.parentOf.inn, "realm", "Stonevale and Verdan are unrevealed, so the Inn hangs straight off the realm");
+  assert.deepEqual(view.rendered, ["realm"]);
+  assert.equal(view.anchorOf.inn, "realm");
+});
+
+test("place glyphs stay in the same size band as characters — a realm never swallows the graph the way the old ellipse regions did", () => {
+  const view = locationView({ ...NESTED_WORLD, expanded: ["realm", "world"] });
+  const sizes = ["realm", "world", "city"].map(id => view.read(`locationGlyphRadius(${JSON.stringify(id)},view)`));
+  assert.ok(sizes.every(size => size >= 17 && size <= 34), `place glyph radii stayed small: ${sizes.join(", ")}`);
+  assert.ok(sizes[0] > sizes[2], "wider tiers still read as bigger, just not by orders of magnitude");
+  assert.doesNotMatch(source, /class:"location-region"/, "the venn-style ellipse regions are gone");
+  assert.doesNotMatch(source, /physics\.exclusions/, "and so is the force that shoved unrelated nodes out of those ellipses");
+});
+
+test("clicking a place cycles select -> open into a dot -> close, and the dot itself is the close control rather than a second selection", () => {
+  const body = functionBody("activateLocation");
+  assert.match(body, /if\(view\.expanded\.has\(id\)\)\{closeLocation\(id\);return;\}/);
+  assert.match(body, /if\(selectedId===id&&\(view\.children\.get\(id\)\|\|\[\]\)\.length\)\{openLocation\(id\);return;\}/);
+  assert.match(functionBody("openLocation"), /expandedLocations\.add\(id\);selectedId=null;/);
+  const closeBody = functionBody("closeLocation");
+  assert.match(closeBody, /collapsingLocationId=id;renderAll\(\);/, "the retract animation runs before the children are actually removed");
+  assert.match(closeBody, /subtree\.forEach\(child=>\{expandedLocations\.delete\(child\);/, "closing a parent also closes everything opened inside it");
+  assert.match(functionBody("renderGraph"), /if\(item\.kind==="location"\)\{activateLocation\(item\.id\);return;\}/);
+});
+
+test("children scale out of the dot when a place opens and shrink back into it when it closes", () => {
+  assert.match(styleSource, /\.node\.location-emerging \.location-shell\{animation:location-emerge/);
+  assert.match(styleSource, /@keyframes location-emerge\{0%\{transform:scale\(\.05\);opacity:0\}/);
+  assert.match(styleSource, /\.node\.location-retracting \.location-shell\{animation:location-retract/);
+  assert.match(styleSource, /@keyframes location-retract\{0%\{transform:scale\(1\);opacity:1\}70%\{opacity:\.45\}100%\{transform:scale\(\.06\);opacity:0\}\}/);
+});
+
+test("an action that names a place hidden inside a closed parent pops it out as a round pod, which sinks back into that parent once the action moves on", () => {
+  const body = functionBody("renderLocationPods");
+  assert.match(body, /podIds=\[\.\.\.new Set\(eventLocationIds\)\]\.filter\(id=>view\.present\.has\(id\)&&!view\.rendered\.has\(id\)&&view\.anchorOf\.get\(id\)\)/);
+  assert.match(body, /if\(gone\.length\)\{retiringPodIds=gone;clearTimeout\(podRetireTimer\);podRetireTimer=setTimeout\(\(\)=>\{retiringPodIds=\[\];podRetireTimer=null;renderGraph\(\);\},520\);\}/);
+  assert.match(body, /retiringPodIds\.filter\(id=>!podIds\.includes\(id\)\)\.forEach\(id=>draw\(id,true\)\);/);
+  assert.match(styleSource, /@keyframes pod-emerge\{0%\{transform:translate\(var\(--pod-origin-x,0px\),var\(--pod-origin-y,0px\)\) scale\(\.02\);opacity:0\}/);
+  assert.match(styleSource, /@keyframes pod-retract\{0%\{transform:translate\(0,0\) scale\(1\);opacity:1\}100%\{transform:translate\(var\(--pod-origin-x,0px\),var\(--pod-origin-y,0px\)\) scale\(\.02\);opacity:0\}\}/);
+});
+
+function pureSandbox(names) {
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext(names.map(name => functionBody(name)).join("\n"), ctx);
+  return expression => JSON.parse(vm.runInContext(`JSON.stringify(${expression})`, ctx));
+}
+
+test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const edgeLayer=svgEl\("g"\),nodeLayer=svgEl\("g"\),labelLayer=svgEl\("g",\{class:"node-label-layer"\}\),podLayer=svgEl\("g",\{class:"location-pod-layer"\}\);viewportGroup\.append\(edgeLayer,nodeLayer,labelLayer,podLayer\);/);
+  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,halfWidth:/);
+  assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=entry\.text\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
+  assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
+  assert.match(styleSource, /\.node-label-layer \{ pointer-events: none; \}/);
+});
+
+test("shapes are pushed apart by their real radii, not just by inverse-square repulsion which let them settle on top of each other", () => {
+  const body = functionBody("stepPhysics");
+  assert.match(body, /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+22;/);
+  assert.match(body, /if\(d<clearance\)\{const push=Math\.min\(6,\(clearance-d\)\*\.24\);/);
+  assert.match(functionBody("renderGraph"), /physics\.radii\.set\(item\.id,nodeRadius\);/);
+});
+
+test("label text keeps a readable size across the zoom range instead of ballooning when zoomed out", () => {
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext("var view={scale:1};\n" + functionBody("labelScale"), ctx);
+  const measure = scale => { ctx.view.scale = scale; return vm.runInContext("labelScale()", ctx); };
+  assert.equal(measure(1), 1);
+  assert.ok(measure(0.35) <= 1.25, "zoomed far out, text must not balloon over the graph");
+  assert.ok(measure(3) >= 0.8, "zoomed far in, text must not collapse");
+  assert.ok(measure(0.8) > measure(1.4), "text still grows as the view shrinks, within those bounds");
+});
+
+test("a crowded graph hands out only a few names; a small one keeps every name", () => {
+  const run = pureSandbox(["labelBudget"]);
+  assert.ok(run("labelBudget(7)") >= 7, "a seven-node graph labels everything");
+  assert.ok(run("labelBudget(20)") >= 20, "a twenty-node graph still labels everything");
+  assert.ok(run("labelBudget(67)") < 20, "a sixty-seven node graph labels only the highest-ranked few");
+  assert.equal(run("labelBudget(400)"), 9, "the budget bottoms out rather than reaching zero");
+  const body = functionBody("updateLabelVisibility");
+  assert.match(body, /focused=classes\.contains\("selected"\)\|\|classes\.contains\("event-active-node"\)\|\|classes\.contains\("hover-focus"\)/);
+  assert.match(body, /linked=classes\.contains\("selected-neighbor"\)\|\|classes\.contains\("hover-neighbor"\)/);
+  assert.match(body, /let visible=item\.focused\|\|\(item\.linked\|\|!zoomedOut\|\|item\.rank>=3\)&&\(item\.linked\|\|spent<budget\)/, "what the reader is looking at always keeps its name; its neighbours skip the budget");
+  assert.match(body, /const budget=labelBudget\(entries\.length\),crowded=entries\.length>10/, "a small graph never hides a name — the separation forces have room to sort it out");
+  assert.match(body, /if\(visible&&crowded&&!item\.focused\)visible=!placed\.some\(other=>Math\.abs\(other\.x-item\.x\)<other\.hw\+item\.hw&&Math\.abs\(other\.y-item\.y\)<other\.hh\+item\.hh\)/, "on a crowded one, a name that would land on one already placed is dropped");
+});
+
+test("a culled name is actually invisible — its rule outranks the action, selection and hover focus rules that force opacity onto every .node", () => {
+  assert.match(styleSource, /#graph \.node-label-layer \.node-labels\.label-culled \{ opacity: 0 !important; \}/);
+  assert.match(styleSource, /#graph \.graph-viewport\.has-hover-focus:not\(\.has-selection-focus\) \.node:not\(\.hover-focus\):not\(\.hover-neighbor\):not\(\.label-culled\)\{opacity:\.12!important/);
+});
+
+test("hovering a node lifts it and its links out of the web, and outranks the action spotlight but not a pinned selection", () => {
+  const body = functionBody("setHoverNode");
+  assert.match(body, /node\.classList\.toggle\("hover-focus",Boolean\(id\)&&node\.dataset\.id===id\)/);
+  assert.match(body, /edge\.classList\.toggle\("hover-connection",Boolean\(id\)&&\(edge\.dataset\.a===id\|\|edge\.dataset\.b===id\)\)/);
+  assert.match(body, /viewportGroup\?\.classList\.toggle\("has-hover-focus",Boolean\(id\)\);/);
+  assert.match(styleSource, /#graph \.graph-viewport\.has-hover-focus:not\(\.has-selection-focus\)/, "a pinned selection still wins");
+  assert.doesNotMatch(styleSource, /has-hover-focus:not\(\.has-selection-focus\):not\(\.has-action-focus\)/, "but the action spotlight must not suppress hover — it is on for almost every action");
+  assert.match(functionBody("renderGraph"), /target\.addEventListener\("pointerenter",\(\)=>setHoverNode\(item\.id\)\);/);
+});
+
+test("once the simulation settles the view fits the real layout, and any zoom or pan by the reader stops it moving under them", () => {
+  const body = functionBody("fitGraphToContent");
+  assert.match(body, /scale=Math\.max\(\.3,Math\.min\(1\.3,Math\.min\(\(720-padding\*2\)\/width,\(520-padding\*2\)\/height\)\)\)/);
+  assert.match(body, /view\.x=360-\(minX\+maxX\)\/2\*scale;view\.y=260-\(minY\+maxY\)\/2\*scale;/);
+  assert.match(functionBody("scheduleAutoFit"), /if\(!viewPinnedByUser&&!physics\.dragId\)fitGraphToContent\(\)/);
+  assert.match(source, /function zoomBy\(factor, atX = 360, atY = 260\) \{\n  viewPinnedByUser = true;/);
+  assert.match(source, /if\(!panStart\)return;viewPinnedByUser=true;/);
+});
+
+test("a name never settles on top of another node's shape, which is what still read as cramped once label-versus-label separation was in", () => {
+  const body = functionBody("stepPhysics");
+  assert.match(body, /const clearLabelOfShape=\(labelPos,labelBox,shapePos,shapeRadius,labelForce,shapeForce\)=>\{/);
+  assert.match(body, /overlapX=labelBox\.hw\+shapeRadius\+14-Math\.abs\(dx\),overlapY=labelBox\.hh\+shapeRadius\+12-Math\.abs\(dy\)/);
+  assert.match(body, /clearLabelOfShape\(a,ab,b,rb,fa,fb\);clearLabelOfShape\(b,bb,a,ra,fb,fa\);/, "both directions, so neither node's name camps on the other");
+  assert.match(body, /push=Math\.min\(3\.5,Math\.max\(\.7,\.055\*overlapX\)\)/, "with a floor, so a shallow overlap still clears instead of stalling against the springs");
+});
+
+test("two names that meet in the gap between their nodes slide apart sideways, because separating them vertically would drag the shapes together and the clearance force would just undo it", () => {
+  const body = functionBody("stepPhysics");
+  assert.match(body, /const opposed=\(a\.y-b\.y\)\*labelDy<0;if\(opposed\|\|overlapX<overlapY\)\{const direction=labelDx>=0\?1:-1/);
 });
