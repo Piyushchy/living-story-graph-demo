@@ -13,7 +13,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const CULTIVATION_LEVELS = ["Mortal","Body Tempering","Qi Training","Foundation Establishment","Golden Core","Nascent Soul","Earth Immortal","Heaven Immortal","Celestial Immortal","Demi Dao Lord","Dao Lord","Above Dao Lord"];
 
 const sampleData = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   novel: "The Innkeeper — graph demonstration",
   volumes: [
     { id: "v1", name: "Volume 1", from: 1, to: 40 },
@@ -28,6 +28,10 @@ const sampleData = {
     { id: "inn-estate", kind: "location", locationType: "Site", name: "Midnight Inn Estate", intro: 1, description: "The complete grounds and buildings controlled by the Midnight Inn." },
     { id: "inn-lobby", kind: "location", locationType: "Room", name: "Midnight Inn Lobby", intro: 1, description: "The Inn's central arrival hall and meeting place." },
     { id: "garden-realm", kind: "location", locationType: "Realm", name: "Primordial Garden Realm", intro: 45, description: "An ancient garden realm where primordial beings gather." },
+    { id: "azure-realm", kind: "location", locationType: "Realm", name: "Azure Mortal Realm", intro: 1, description: "The mortal realm that contains the worlds where the Midnight Inn first took root." },
+    { id: "verdan", kind: "location", locationType: "World", name: "Verdan", intro: 1, description: "A temperate world inside the Azure Mortal Realm." },
+    { id: "stonevale", kind: "location", locationType: "City", name: "Stonevale", intro: 1, description: "The trade city on Verdan where the Midnight Inn was built." },
+    { id: "garden-heart", kind: "location", locationType: "Site", name: "Heart of the Garden", intro: 45, description: "The still centre of the Primordial Garden Realm." },
     { id: "lex", kind: "character", name: "Lex", gender: "male", mentioned: 1, appeared: 1, description: "Founder and central figure of the Midnight Inn." },
     { id: "mary", kind: "character", name: "Mary", gender: "female", mentioned: 8, appeared: 8, description: "An administrator and adviser within the Inn." },
     { id: "gerald", kind: "character", name: "Gerald", gender: "male", mentioned: 18, appeared: 22, description: "A charming host known for welcoming guests." },
@@ -82,10 +86,15 @@ const sampleData = {
     { id: "loc-5", chapter: 45, order: 1, type: "movement", source: "eclipse", location: "garden-realm", description: "Eclipse is present somewhere within the Primordial Garden Realm." },
     { id: "loc-6", chapter: 58, order: 1, type: "movement", source: "gerald", location: "garden-realm", description: "Gerald enters the Primordial Garden Realm." },
     { id: "loc-7", chapter: 58, order: 2, type: "movement", source: "lex", location: "garden-realm", description: "Lex enters the Primordial Garden Realm." },
+    { id: "loc-9", chapter: 58, order: 3, type: "movement", source: "eclipse", location: "garden-heart", description: "Eclipse withdraws into the Heart of the Garden." },
     { id: "loc-8", chapter: 58, order: 99, type: "movement", source: "lex", location: "inn-lobby", description: "Lex returns to the Midnight Inn Lobby later in the chapter." },
     { id: "orgloc-1", chapter: 1, order: 2, type: "organization_location", source: "inn", location: "inn-lobby", value: "Headquarters", action: "open", description: "The Midnight Inn Lobby serves as the Midnight Inn's headquarters." },
     { id: "orgloc-2", chapter: 45, order: 2, type: "organization_location", source: "garden", location: "garden-realm", value: "Headquarters", action: "open", description: "The Primordial Garden Realm is the Primordial Garden's headquarters." },
     { id: "hier-1", chapter: 1, order: 3, type: "location_parent", source: "inn-lobby", location: "inn-estate", action: "add", description: "The Midnight Inn Lobby is inside the Midnight Inn Estate." },
+    { id: "hier-2", chapter: 1, order: 3, type: "location_parent", source: "inn-estate", location: "stonevale", action: "add", description: "The Midnight Inn Estate stands inside the city of Stonevale." },
+    { id: "hier-3", chapter: 1, order: 3, type: "location_parent", source: "stonevale", location: "verdan", action: "add", description: "Stonevale is a city of the world Verdan." },
+    { id: "hier-4", chapter: 1, order: 3, type: "location_parent", source: "verdan", location: "azure-realm", action: "add", description: "Verdan is one of the worlds held by the Azure Mortal Realm." },
+    { id: "hier-5", chapter: 45, order: 3, type: "location_parent", source: "garden-heart", location: "garden-realm", action: "add", description: "The Heart of the Garden lies at the centre of the Primordial Garden Realm." },
     { id: "home-1", chapter: 1, order: 4, type: "residency", source: "lex", location: "inn-estate", value: "Home", action: "begin", description: "Lex makes the Midnight Inn Estate his home." },
     { id: "home-2", chapter: 8, order: 4, type: "residency", source: "mary", location: "inn-estate", value: "Resident staff", action: "begin", description: "Mary begins residing at the Midnight Inn Estate as resident staff." },
     { id: "home-3", chapter: 22, order: 4, type: "residency", source: "gerald", location: "inn-estate", value: "Resident staff", action: "begin", description: "Gerald begins residing at the Midnight Inn Estate as resident staff." },
@@ -114,6 +123,11 @@ let data = deepClone(sampleData);
 let selectedId = null;
 let openProfileId = null;
 let locationPovId = null;
+let expandedLocations = new Set();
+let lastLocationView = null;
+let collapsingLocationId = null, locationCollapseTimer = null;
+let emergingLocations = new Set(), emergeTimer = null;
+let activePodIds = [], activePodKey = "", retiringPodIds = [], podRetireTimer = null;
 let currentChapter = 1;
 let currentActionIndex = 0;
 let chapterAutoplayTimer=null,expandedChapter=null;
@@ -158,14 +172,14 @@ app.innerHTML = `
               <section id="summary" class="side-card summary mobile-active" data-panel-content="info"><div class="empty">Select a character, organization, or location. Double-click a node for full details.</div></section>
               <section class="side-card events-card" data-panel-content="events"><div class="events-head"><strong id="events-title">Chapter events</strong><span id="events-count"></span></div><ul id="events-list" class="events-list"></ul></section>
               <section class="side-card mobile-legend" data-panel-content="legend" aria-label="Mobile graph legend">
-                <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Location region</span>
+                <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span>
                 <span><i class="line-key friendly"></i>Friendly</span><span><i class="line-key hostile"></i>Hostile</span><span><i class="line-key neutral"></i>Neutral / awareness</span><span><i class="line-key clone"></i>Clone / avatar</span><span><i class="line-key member"></i>Membership</span><span><i class="line-key location"></i>Travel / activity</span><span><i class="line-key residence"></i>Residence</span><span><i class="line-key hierarchy"></i>Inside location</span><span><i class="line-key organization-location"></i>Organization place</span>
                 <span><i class="ring mentioned"></i>Mentioned only</span><span><i class="ring unknown"></i>Unknown status</span><span><i class="ring"></i>Alive</span><span><i class="ring dead"></i>Dead</span><span><i class="diamond"></i>Alias count</span><span><i class="corona-key"></i>Cultivation level</span>
               </section>
             </aside>
           </div>
           <div class="legend desktop-legend" aria-label="Graph legend">
-            <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Location region</span>
+            <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span>
             <span><i class="line-key friendly"></i>Friendly</span><span><i class="line-key hostile"></i>Hostile</span><span><i class="line-key neutral"></i>Neutral / awareness arrow</span><span><i class="line-key clone"></i>Clone / avatar</span><span><i class="line-key member"></i>Membership</span><span><i class="line-key location"></i>Travel / activity</span><span><i class="line-key residence"></i>Residence</span><span><i class="line-key hierarchy"></i>Inside location</span><span><i class="line-key organization-location"></i>Organization place</span>
             <span><i class="ring mentioned"></i>Mentioned only</span><span><i class="ring unknown"></i>Unknown status</span><span><i class="ring"></i>Alive</span><span><i class="ring dead"></i>Dead</span><span><i class="diamond"></i>Alias count</span><span><i class="corona-key"></i>Cultivation level</span>
           </div>
@@ -305,7 +319,13 @@ function loadLocalData() {
       if(isBundledDemo){const entityIds=new Set(stored.entities.map(item=>item.id));sampleData.entities.filter(item=>item.id==="inn-estate"&&!entityIds.has(item.id)).forEach(item=>stored.entities.push(deepClone(item)));const eventIds=new Set((stored.events||[]).map(event=>event.id));sampleData.events.filter(event=>["residency","location_parent"].includes(event.type)&&!eventIds.has(event.id)).forEach(event=>stored.events.push(deepClone(event)));}
       stored.schemaVersion=4;localStorage.setItem(STORAGE_KEY,JSON.stringify(stored));
     }
-    const migrated=migrateCultivationData(stored);localStorage.setItem(STORAGE_KEY,JSON.stringify(migrated));return migrated;
+    const migrated=migrateCultivationData(stored);
+    if((migrated.schemaVersion||1)<6){
+      const isBundledDemo=migrated.novel===sampleData.novel&&migrated.entities.some(item=>item.id==="lex")&&migrated.entities.some(item=>item.id==="eclipse");
+      if(isBundledDemo){const entityIds=new Set(migrated.entities.map(item=>item.id));sampleData.entities.filter(item=>["azure-realm","verdan","stonevale","garden-heart"].includes(item.id)&&!entityIds.has(item.id)).forEach(item=>migrated.entities.push(deepClone(item)));const eventIds=new Set((migrated.events||[]).map(event=>event.id));sampleData.events.filter(event=>["hier-2","hier-3","hier-4","hier-5","loc-9"].includes(event.id)&&!eventIds.has(event.id)).forEach(event=>migrated.events.push(deepClone(event)));}
+      migrated.schemaVersion=6;
+    }
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(migrated));return migrated;
   }
   catch { return deepClone(sampleData); }
 }
@@ -445,8 +465,34 @@ function resolvePublicEntity(text){const q=text.trim().toLowerCase();if(!q)retur
 function relationHistoryFor(a,b,chapter) { return data.events.filter(e => e.type === "relationship" && e.chapter <= chapter && pairKey(e.source,e.target) === pairKey(a,b)).sort((x,y)=>x.chapter-y.chapter); }
 function meetingFor(a,b,chapter) { return data.events.find(e => e.type === "meeting" && e.chapter <= chapter && pairKey(e.source,e.target) === pairKey(a,b)); }
 function currentRelation(a,b,chapter) { const history = relationHistoryFor(a,b,chapter); return history.length ? String(history.at(-1).value || "neutral").toLowerCase() : "neutral"; }
-function locationLineage(id,derived){const chain=[],seen=new Set([id]);let cursor=id;while(true){const link=derived.locationParents.find(item=>item.child===cursor);if(!link||seen.has(link.parent))break;chain.unshift(link.parent);seen.add(link.parent);cursor=link.parent;}return [...chain,id];}
+function locationLineage(id,derived){const chain=[],seen=new Set([id]);let cursor=id;while(true){const parent=locationParentOf(cursor,derived);if(!parent||seen.has(parent))break;chain.unshift(parent);seen.add(parent);cursor=parent;}return [...chain,id];}
 function locationDescendants(id,derived){const result=[],queue=[id],seen=new Set([id]);while(queue.length){const parent=queue.shift();derived.locationParents.filter(link=>link.parent===parent).forEach(link=>{if(seen.has(link.child))return;seen.add(link.child);result.push(link.child);queue.push(link.child);});}return result;}
+
+// ---- Location hierarchy model -------------------------------------------------
+// The graph never draws anything above a Realm: a Realm is always a root, and
+// everything nested inside a location stays hidden until that location is opened
+// (or an action highlights it, which pops it out as a temporary pod).
+const LOCATION_ROOT_TYPE="Realm";
+const LOCATION_TIER_RADIUS={Universe:33,Realm:31,World:28,Continent:27,Country:26,State:25,City:24,District:23,Site:22,Building:21,Room:20,Other:22};
+function isLocationRoot(id,derived){const item=entity(id);if(!item)return true;if(String(item.locationType||"")===LOCATION_ROOT_TYPE)return true;return !derived.locationParents.some(link=>link.child===id);}
+function locationParentOf(id,derived){if(isLocationRoot(id,derived))return null;return derived.locationParents.find(link=>link.child===id)?.parent||null;}
+function roundedSquarePath(r,corner){const c=Math.min(corner,r);return `M ${-r+c} ${-r} H ${r-c} Q ${r} ${-r} ${r} ${-r+c} V ${r-c} Q ${r} ${r} ${r-c} ${r} H ${-r+c} Q ${-r} ${r} ${-r} ${r-c} V ${-r+c} Q ${-r} ${-r} ${-r+c} ${-r} Z`;}
+// Builds the drawable location tree for the ids the current action has revealed.
+// `parentOf` skips ancestors that are not revealed yet, so a deep location still
+// attaches to the closest place the reader can actually see.
+function buildLocationView(derived,visibleIds){
+  const locationIds=[...visibleIds].filter(id=>entity(id)?.kind==="location"),present=new Set(locationIds),parentOf=new Map(),children=new Map(locationIds.map(id=>[id,[]]));
+  locationIds.forEach(id=>{const seen=new Set([id]);let cursor=id,found=null;while(true){const parent=locationParentOf(cursor,derived);if(!parent||seen.has(parent))break;seen.add(parent);if(present.has(parent)){found=parent;break;}cursor=parent;}parentOf.set(id,found);});
+  locationIds.forEach(id=>{const parent=parentOf.get(id);if(parent)children.get(parent).push(id);});
+  const rendered=new Set(),expanded=new Set(),depth=new Map();
+  const walk=(id,level)=>{if(rendered.has(id))return;rendered.add(id);depth.set(id,level);const kids=children.get(id)||[];if(kids.length&&expandedLocations.has(id)){expanded.add(id);kids.forEach(kid=>walk(kid,level+1));}};
+  locationIds.filter(id=>!parentOf.get(id)).forEach(id=>walk(id,0));
+  const anchorOf=new Map();
+  locationIds.forEach(id=>{let cursor=id;const guard=new Set();while(cursor&&!rendered.has(cursor)&&!guard.has(cursor)){guard.add(cursor);cursor=parentOf.get(cursor);}anchorOf.set(id,cursor||null);});
+  return {locationIds,present,rendered,expanded,children,parentOf,anchorOf,depth};
+}
+function renderedLocationSubtree(id,view){const result=[],stack=[...(view.children.get(id)||[])];while(stack.length){const current=stack.pop();if(!view.rendered.has(current))continue;result.push(current);(view.children.get(current)||[]).forEach(kid=>stack.push(kid));}return result;}
+function locationGlyphRadius(id,view){const base=LOCATION_TIER_RADIUS[entity(id)?.locationType]||LOCATION_TIER_RADIUS.Other;return Math.max(17,base-(view.depth.get(id)||0)*2);}
 
 function derive(chapter,eventSubset=null) {
   const states = new Map();
@@ -568,7 +614,7 @@ function createGradient(defs,id,history,chapter){
 // --- Flowy force-directed layout engine (Obsidian-style): positions persist across
 // renders and drift continuously under simple physics, so the graph never "snaps" —
 // it drags, settles, and re-flows smoothly whenever the underlying data changes.
-const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), edges: [], containments:[], dragId: null };
+const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), edges: [], dragId: null };
 const view = { x: 0, y: 0, scale: 1 };
 let lastAutoFitSignature="";
 let viewportGroup = null;
@@ -603,8 +649,6 @@ function stepPhysics() {
     const fa = force.get(edge.a), fb = force.get(edge.b);
     if (fa) { fa.x += fx; fa.y += fy; } if (fb) { fb.x -= fx; fb.y -= fy; }
   });
-  physics.containments.forEach(rule=>{const member=physics.pos.get(rule.member),location=physics.pos.get(rule.location);if(!member||!location)return;const dx=member.x-location.x,dy=member.y-location.y,norm=Math.hypot(dx/Math.max(1,rule.rx*.72),dy/Math.max(1,rule.ry*.72));if(norm<=1)return;const overflow=norm-1,fx=-dx*overflow*.075,fy=-dy*overflow*.075,fm=force.get(rule.member),fl=force.get(rule.location);if(fm){fm.x+=fx;fm.y+=fy;}if(fl){fl.x-=fx*.08;fl.y-=fy*.08;}});
-  physics.exclusions.forEach(rule=>{const location=physics.pos.get(rule.location);if(!location)return;ids.forEach(id=>{if(id===rule.location||rule.members.has(id))return;const node=physics.pos.get(id);if(!node)return;const dx=node.x-location.x,dy=node.y-location.y,norm=Math.hypot(dx/Math.max(1,rule.rx*.88),dy/Math.max(1,rule.ry*.88));if(norm>=1)return;const overflow=1-norm,f=force.get(id);if(!f)return;if(dx||dy){f.x+=dx*overflow*.14;f.y+=dy*overflow*.14;}else{f.x+=(Math.random()-.5)*3;f.y+=(Math.random()-.5)*3;}});});
   const DAMP = 0.82, MAXV = 13;
   ids.forEach(id => {
     if (id === physics.dragId || physics.pos.get(id)?.pinned) return;
@@ -639,31 +683,35 @@ function tickGraph() {
 }
 function renderGraph() {
   const awaitingAction=currentActionIndex===0,layout=$("#graph-layout"),onboarding=$("#slider-onboarding");layout.classList.toggle("awaiting-action",awaitingAction);onboarding.hidden=!awaitingAction;
-  if(awaitingAction){nodeEls=new Map();edgeUpdaters=[];physics.edges=[];physics.containments=[];graph.replaceChildren();requestAnimationFrame(positionSliderOnboarding);return;}
-  const volumeApplied=revealedVolumeActions(),previousApplied=volumeActions().slice(0,Math.max(0,currentActionIndex-1)),currentEvent=currentActionEvent(),appliedNow=appliedEvents(),fullDerived=derive(currentChapter,appliedNow),priorCultivationDerived=currentEvent?.type==="cultivation"?derive(currentChapter,appliedNow.filter(event=>event.id!==currentEvent.id)):null,volumeDerived=derive(currentChapter,volumeApplied),derived={...volumeDerived,states:fullDerived.states},visibleIds=new Set(volumeApplied.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),previousVisibleIds=new Set(previousApplied.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),chapterChangedIds=new Set(volumeApplied.filter(event=>event.chapter===currentChapter).flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),visible=data.entities.filter(item=>visibleIds.has(item.id));
-  if(selectedId&&!visibleIds.has(selectedId))selectedId=null;
-  [...physics.pos.keys()].filter(id=>!visibleIds.has(id)).forEach(id=>{physics.pos.delete(id);physics.vel.delete(id);physics.bounds.delete(id);});
+  if(awaitingAction){nodeEls=new Map();edgeUpdaters=[];physics.edges=[];graph.replaceChildren();requestAnimationFrame(positionSliderOnboarding);return;}
+  const volumeApplied=revealedVolumeActions(),previousApplied=volumeActions().slice(0,Math.max(0,currentActionIndex-1)),currentEvent=currentActionEvent(),appliedNow=appliedEvents(),fullDerived=derive(currentChapter,appliedNow),priorCultivationDerived=currentEvent?.type==="cultivation"?derive(currentChapter,appliedNow.filter(event=>event.id!==currentEvent.id)):null,volumeDerived=derive(currentChapter,volumeApplied),derived={...volumeDerived,states:fullDerived.states,locationParents:fullDerived.locationParents},visibleIds=new Set(volumeApplied.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),previousVisibleIds=new Set(previousApplied.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),chapterChangedIds=new Set(volumeApplied.filter(event=>event.chapter===currentChapter).flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean)));
+  const locView=buildLocationView(derived,visibleIds);lastLocationView=locView;
+  [...expandedLocations].forEach(id=>{if(!locView.expanded.has(id))expandedLocations.delete(id);});
+  if(collapsingLocationId&&!locView.expanded.has(collapsingLocationId))collapsingLocationId=null;
+  const renderIds=new Set([...visibleIds].filter(id=>entity(id)?.kind!=="location"||locView.rendered.has(id))),visible=data.entities.filter(item=>renderIds.has(item.id));
+  const resolveLocationId=id=>entity(id)?.kind==="location"?(locView.anchorOf.get(id)||id):id;
+  if(selectedId&&!renderIds.has(selectedId))selectedId=null;
+  [...physics.pos.keys()].filter(id=>!renderIds.has(id)).forEach(id=>{physics.pos.delete(id);physics.vel.delete(id);physics.bounds.delete(id);});
   visible.forEach((item,index)=>ensurePos(item.id,()=>seedPosition(item,index,visible.length)));
   fitGraphToCount(visible.length);
   const positions=physics.pos;
-  const locationPopulation=new Map(),addLocationMember=(location,id)=>{if(!locationPopulation.has(location))locationPopulation.set(location,new Set());locationPopulation.get(location).add(id);};derived.locations.forEach(visit=>addLocationMember(visit.location,visit.character));derived.residences.forEach(link=>addLocationMember(link.location,link.character));derived.organizationLocations.forEach(link=>addLocationMember(link.location,link.organization));derived.locationParents.forEach(link=>addLocationMember(link.parent,link.child));for(let pass=0;pass<8;pass++)derived.locationParents.forEach(link=>{const childMembers=locationPopulation.get(link.child);if(childMembers)childMembers.forEach(id=>addLocationMember(link.parent,id));});const directChildren=location=>derived.locationParents.filter(link=>link.parent===location).length,locationMetrics=location=>{const load=locationPopulation.get(location)?.size||0,nested=directChildren(location);return {rx:Math.min(520,105+Math.sqrt(Math.max(1,load))*38+nested*110),ry:Math.min(380,70+Math.sqrt(Math.max(1,load))*27+nested*90),orbit:Math.min(185,55+Math.sqrt(Math.max(1,load))*14)};},locationDistance=location=>locationMetrics(location).orbit;
-  physics.bounds.clear();visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,labelY=item.kind==="character"?5:item.kind==="location"?-locationMetrics(item.id).ry-10:58;physics.bounds.set(item.id,{ox:0,oy:labelY-5,hw:Math.min(150,Math.max(28,String(shownName).length*4.2)),hh:9});});
-  physics.edges=[
-    ...derived.memberships.map(m=>({a:m.character,b:m.organization,length:105,strength:0.022})),
-    ...derived.identityParents.map(link=>({a:link.child,b:link.parent,length:68,strength:0.09})),
-    ...derived.organizationLocations.map(l=>({a:l.organization,b:l.location,length:locationDistance(l.location),strength:0.032})),
-    ...derived.residences.map(l=>({a:l.character,b:l.location,length:locationDistance(l.location),strength:0.04})),
-    ...derived.locationParents.map(l=>({a:l.child,b:l.parent,length:52,strength:0.075})),
-    ...[...derived.locations.values()].map(l=>({a:l.character,b:l.location,length:locationDistance(l.location),strength:0.047})),
-    ...[...derived.relations.keys(),...derived.awareness.keys()].map(key=>{const [a,b]=key.split("|");return {a,b,length:150,strength:0.02};}),
-  ];
-  physics.containments=[...derived.organizationLocations.map(link=>({member:link.organization,location:link.location,...locationMetrics(link.location)})),...derived.residences.map(link=>({member:link.character,location:link.location,...locationMetrics(link.location)})),...[...derived.locations.values()].map(visit=>({member:visit.character,location:visit.location,...locationMetrics(visit.location)})),...derived.locationParents.map(link=>({member:link.child,location:link.parent,...locationMetrics(link.parent)}))];
-  physics.exclusions=[...locationPopulation.entries()].map(([location,members])=>({location,members,...locationMetrics(location)}));
+  const glyphRadius=id=>locView.expanded.has(id)?9:locationGlyphRadius(id,locView),locationDistance=id=>locView.expanded.has(id)?74:glyphRadius(id)+58;
+  physics.bounds.clear();visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,labelY=item.kind==="character"?5:item.kind==="location"?-glyphRadius(item.id)-13:58;physics.bounds.set(item.id,{ox:0,oy:labelY-5,hw:Math.min(150,Math.max(28,String(shownName).length*4.2)),hh:9});});
+  const springs=new Map(),addSpring=(a,b,length,strength)=>{if(!a||!b||a===b||!renderIds.has(a)||!renderIds.has(b))return;const key=a<b?`${a}|${b}`:`${b}|${a}`,existing=springs.get(key);if(existing){existing.length=Math.min(existing.length,length);existing.strength=Math.max(existing.strength,strength);return;}springs.set(key,{a,b,length,strength});};
+  derived.memberships.forEach(m=>addSpring(m.character,m.organization,105,.022));
+  derived.identityParents.forEach(link=>addSpring(link.child,link.parent,68,.09));
+  derived.organizationLocations.forEach(link=>{const place=resolveLocationId(link.location);addSpring(link.organization,place,locationDistance(place),.032);});
+  derived.residences.forEach(link=>{const place=resolveLocationId(link.location);addSpring(link.character,place,locationDistance(place),.04);});
+  [...derived.locations.values()].forEach(visit=>{const place=resolveLocationId(visit.location);addSpring(visit.character,place,locationDistance(place),.047);});
+  // An opened location keeps its children in a tight ring so the drill-down reads as one cluster.
+  locView.rendered.forEach(id=>{if(!locView.expanded.has(id))return;(locView.children.get(id)||[]).forEach(kid=>addSpring(kid,id,86+glyphRadius(kid),.14));});
+  [...derived.relations.keys(),...derived.awareness.keys()].forEach(key=>{const [a,b]=key.split("|");addSpring(a,b,150,.02);});
+  physics.edges=[...springs.values()];
   nodeEls=new Map(); edgeUpdaters=[];
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
-  const regionLayer=svgEl("g",{class:"location-region-layer"}),edgeLayer=svgEl("g"),nodeLayer=svgEl("g");viewportGroup.append(regionLayer,edgeLayer,nodeLayer);graph.appendChild(viewportGroup);applyViewTransform();
-  const straightEdge=(a,b,className,dataA,dataB)=>{const aPos=positions.get(a),bPos=positions.get(b);if(!aPos||!bPos)return null;const element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:className,"data-a":dataA,"data-b":dataB});edgeLayer.appendChild(element);edgeUpdaters.push(()=>{const p1=positions.get(a),p2=positions.get(b);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);});return element;};
+  const edgeLayer=svgEl("g"),nodeLayer=svgEl("g"),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,nodeLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
+  const straightEdge=(a,b,className,dataA,dataB)=>{if(!a||!b||a===b)return null;const aPos=positions.get(a),bPos=positions.get(b);if(!aPos||!bPos)return null;const muted=locView.expanded.has(a)||locView.expanded.has(b),element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:`${className}${muted?" opened-location-edge":""}`,"data-a":dataA,"data-b":dataB});edgeLayer.appendChild(element);edgeUpdaters.push(()=>{const p1=positions.get(a),p2=positions.get(b);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);});return element;};
   const pairKeys=new Set([...derived.relations.keys(),...derived.awareness.keys()]);
   pairKeys.forEach((key,index)=>{const [aId,bId]=key.split("|"),aPos=positions.get(aId),bPos=positions.get(bId);if(!aPos||!bPos)return;const history=derived.relations.get(key)||[],met=derived.meetings.get(key),aware=derived.awareness.get(key),type=history.length?String(history.at(-1).value).toLowerCase():"neutral";let element;
     const newPair=Boolean(currentEvent&&["awareness","relationship"].includes(currentEvent.type)&&pairKey(currentEvent.source,currentEvent.target)===key),edgeClass=`edge relation-edge${newPair?" newly-revealed-edge":""}`;
@@ -676,29 +724,111 @@ function renderGraph() {
     if(element)edgeLayer.appendChild(element);
   });
   derived.memberships.forEach(m=>straightEdge(m.character,m.organization,`edge membership-edge${currentEvent?.type==="membership"&&currentEvent.source===m.character&&currentEvent.target===m.organization?" newly-revealed-edge":""}`,m.character,m.organization));
-  derived.organizationLocations.forEach(link=>straightEdge(link.organization,link.location,`edge organization-location-edge${currentEvent?.type==="organization_location"&&currentEvent.source===link.organization&&currentEvent.location===link.location?" newly-revealed-edge":""}`,link.organization,link.location));
-  derived.residences.forEach(link=>straightEdge(link.character,link.location,`edge residence-edge${currentEvent?.type==="residency"&&currentEvent.source===link.character&&currentEvent.location===link.location?" newly-revealed-edge":""}`,link.character,link.location));derived.locationParents.forEach(link=>straightEdge(link.child,link.parent,`edge hierarchy-edge${currentEvent?.type==="location_parent"&&currentEvent.source===link.child&&currentEvent.location===link.parent?" newly-revealed-edge":""}`,link.child,link.parent));
-  derived.locations.forEach((visit,character)=>straightEdge(character,visit.location,`edge location-edge${currentEvent?.type==="movement"&&currentEvent.source===character&&currentEvent.location===visit.location?" newly-revealed-edge":""}`,character,visit.location));
+  // Location links are re-pointed at the deepest place the reader can currently see, so a
+  // collapsed realm inherits every connection of the places folded inside it.
+  const locationEdgeSeen=new Set(),locationEdge=(from,to,baseClass,active)=>{const target=resolveLocationId(to);if(!target||from===target)return;const key=`${baseClass}|${from}|${target}`;if(locationEdgeSeen.has(key)&&!active)return;locationEdgeSeen.add(key);straightEdge(from,target,`edge ${baseClass}${active?" newly-revealed-edge":""}`,from,target);};
+  derived.organizationLocations.forEach(link=>locationEdge(link.organization,link.location,"organization-location-edge",currentEvent?.type==="organization_location"&&currentEvent.source===link.organization&&currentEvent.location===link.location));
+  derived.residences.forEach(link=>locationEdge(link.character,link.location,"residence-edge",currentEvent?.type==="residency"&&currentEvent.source===link.character&&currentEvent.location===link.location));
+  derived.locations.forEach((visit,character)=>locationEdge(character,visit.location,"location-edge",currentEvent?.type==="movement"&&currentEvent.source===character&&currentEvent.location===visit.location));
+  derived.locationParents.forEach(link=>{const child=resolveLocationId(link.child),parent=resolveLocationId(link.parent);if(!child||!parent||child===parent)return;straightEdge(child,parent,`edge hierarchy-edge${currentEvent?.type==="location_parent"&&currentEvent.source===link.child&&currentEvent.location===link.parent?" newly-revealed-edge":""}`,child,parent);});
   derived.identityParents.forEach(link=>straightEdge(link.child,link.parent,`edge identity-edge${currentEvent?.type==="identity_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent));
-  const activeIds=new Set(currentEvent?[currentEvent.source,currentEvent.target,currentEvent.location,...(currentEvent.characters||[])].filter(Boolean):[]);
-  const locationAppendQueue=[];
-  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),group=svgEl("g",{class:`node ${item.kind}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58;
+  const activeIds=new Set(currentEvent?[currentEvent.source,currentEvent.target,currentEvent.location,...(currentEvent.characters||[])].filter(Boolean).map(resolveLocationId):[]);
+  const retractingIds=collapsingLocationId?new Set([...renderedLocationSubtree(collapsingLocationId,locView)]):new Set();
+  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=item.kind==="location"&&locView.expanded.has(item.id),emerging=item.kind==="location"&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null;
     if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));
-    }else if(item.kind==="location"){const {rx,ry}=locationMetrics(item.id);labelY=-ry-10;group.append(svgEl("ellipse",{cx:0,cy:0,rx,ry,class:"location-region"}),svgEl("circle",{cx:0,cy:0,r:24,class:"node-hit-target location-hit-target"}),svgEl("circle",{cx:0,cy:0,r:4,class:"location-region-core"}));
+    }else if(item.kind==="location"){const r=locationGlyphRadius(item.id,locView),childCount=(locView.children.get(item.id)||[]).length;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(38,r+16),class:"node-hit-target"}));
+      locationShell=svgEl("g",{class:"location-shell"});
+      if(openedLocation){labelY=-26;locationShell.append(svgEl("circle",{cx:0,cy:0,r:17,class:"location-open-halo"}),svgEl("circle",{cx:0,cy:0,r:6.5,class:"location-open-dot"}));group.setAttribute("aria-label",`${shownName}, opened — ${childCount} place${childCount===1?"":"s"} shown, activate to close`);
+      }else{labelY=-r-13;locationShell.append(svgEl("path",{d:roundedSquarePath(r,r*.42),class:"location-glyph"}),svgEl("path",{d:roundedSquarePath(r*.44,r*.22),class:"location-glyph-core"}));
+        if(childCount){locationShell.append(svgEl("circle",{cx:r-1,cy:-r+1,r:9.5,class:"location-child-badge"}));const badge=svgEl("text",{x:r-1,y:-r+4.4,class:"location-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);group.setAttribute("aria-label",`${shownName}, contains ${childCount} place${childCount===1?"":"s"}`);}
+      }
+      const tier=svgEl("text",{x:0,y:labelY-12,class:"location-tier-label"});tier.textContent=String(item.locationType||"Place").toUpperCase();locationShell.appendChild(tier);group.appendChild(locationShell);
     }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));if(!appeared){group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:"ghost-ring"}),svgEl("circle",{cx:0,cy:0,r,class:`ghost-core ${state.gender==="female"?"core-female":"core-male"}`}));}else{const lifeClass=state.status==="dead"?"life-dead":state.status==="alive"?"life-alive":"life-unknown";group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:lifeClass}),svgEl("circle",{cx:0,cy:0,r,class:state.gender==="female"?"core-female":"core-male"}));if(cultivationReveal)group.appendChild(svgEl("circle",{cx:0,cy:0,r:r+11,class:"cultivation-reveal-pulse"}));const segmentAngle=360/CULTIVATION_LEVELS.length;for(let seg=0;seg<CULTIVATION_LEVELS.length;seg++){const start=-88+seg*segmentAngle,isOn=state.level>seg,wasOn=priorCultivationLevel>seg,isChanged=cultivationReveal&&isOn!==wasOn,isGain=isChanged&&isOn;group.appendChild(svgEl("path",{d:arcPath(0,0,r+(isChanged?21:15),start,start+segmentAngle*.76),class:`${isOn?"corona-on":"corona-off"}${isChanged?` cultivation-change-segment ${isGain?"cultivation-gain":"cultivation-loss"}`:""}`,...(isChanged?{pathLength:1,style:`--cultivation-delay:${Math.abs(seg-priorCultivationLevel)*55}ms`}:{})}));}if(cultivationReveal){const before=priorCultivationLevel?(priorCultivationState?.realm||priorCultivationState?.canonicalRealm||CULTIVATION_LEVELS[priorCultivationLevel-1]):"Unrevealed",after=state.realm||state.canonicalRealm,changeLabel=svgEl("text",{x:0,y:-r-35,class:"cultivation-change-label"});changeLabel.textContent=currentEvent.initial===true&&!priorCultivationLevel?`Cultivation revealed: ${after}`:before===after?after:`${before} → ${after}`;group.appendChild(changeLabel);}const gems=Math.min(7,state.aliases.length),gemR=r+27;for(let i=0;i<gems;i++){const angle=Math.PI+(i+1)*Math.PI/(gems+1);group.appendChild(svgEl("polygon",{points:diamondPoints(Math.cos(angle)*gemR,Math.sin(angle)*gemR,4),class:"alias-gem"}));}}}
-    const label=svgEl("text",{x:0,y:labelY,class:`node-label${item.kind==="location"?" location-region-label":""}`});label.textContent=shownName;group.appendChild(label);if(mentionedOnly){const stateLabel=svgEl("text",{x:0,y:39,class:"node-state-label"});stateLabel.textContent="MENTIONED";group.appendChild(stateLabel);}
+    const label=svgEl("text",{x:0,y:labelY,class:`node-label${item.kind==="location"?" location-region-label":""}`});label.textContent=shownName;(locationShell||group).appendChild(label);if(mentionedOnly){const stateLabel=svgEl("text",{x:0,y:39,class:"node-state-label"});stateLabel.textContent="MENTIONED";group.appendChild(stateLabel);}
     group.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;event.stopPropagation();physics.dragId=item.id;dragMoved=false;dragStartClient={x:event.clientX,y:event.clientY};const c=toContentPoint(event.clientX,event.clientY),p=positions.get(item.id);dragOffset={x:p.x-c.x,y:p.y-c.y};physics.vel.set(item.id,{x:0,y:0});group.classList.add("dragging");group.setPointerCapture(event.pointerId);});
     group.addEventListener("pointermove",event=>{if(physics.dragId!==item.id)return;const c=toContentPoint(event.clientX,event.clientY),p=positions.get(item.id);p.x=c.x+dragOffset.x;p.y=c.y+dragOffset.y;if(!dragMoved&&Math.hypot(event.clientX-dragStartClient.x,event.clientY-dragStartClient.y)>4)dragMoved=true;});
-    const selectNode=()=>{cancelChapterSequence();const next=selectedId===item.id?null:item.id;if(next!==selectedId||item.kind!=="location")locationPovId=null;selectedId=next;setMobilePanel("info");renderAll();};
+    const selectNode=()=>{cancelChapterSequence();if(item.kind==="location"){activateLocation(item.id);return;}locationPovId=null;selectedId=selectedId===item.id?null:item.id;setMobilePanel("info");renderAll();};
     const endDrag=event=>{if(physics.dragId!==item.id)return;physics.dragId=null;group.classList.remove("dragging");if(event.type==="pointerup"){if(dragMoved){const p=physics.pos.get(item.id);if(p)p.pinned=true;}else selectNode();}};
     group.addEventListener("pointerup",endDrag);group.addEventListener("pointercancel",endDrag);
     group.addEventListener("dblclick",event=>{event.stopPropagation();const p=physics.pos.get(item.id);if(p?.pinned){p.pinned=false;toast(`${item.name} released back into the layout`);}});
     group.addEventListener("keydown",event=>{if(event.key!=="Enter"&&event.key!==" ")return;event.preventDefault();selectNode();});
     group.addEventListener("dblclick",()=>openProfile(item.id));
-    (item.kind==="location"?locationAppendQueue.push({item,group}):nodeLayer.appendChild(group));nodeEls.set(item.id,group);
+    nodeLayer.appendChild(group);nodeEls.set(item.id,group);
   });
-  locationAppendQueue.sort((a,b)=>{const ma=locationMetrics(a.item.id),mb=locationMetrics(b.item.id);return (mb.rx*mb.ry)-(ma.rx*ma.ry);}).forEach(({group})=>regionLayer.appendChild(group));
+  renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius);
   applyGraphFocus(derived);
+}
+
+// A location that is folded away inside a collapsed parent still deserves a moment on
+// screen when an action names it: it swells out of its visible ancestor as a round pod,
+// then sinks back into that ancestor once the action moves on.
+function renderLocationPods(view,currentEvent,positions,layer,glyphRadius){
+  const eventLocationIds=currentEvent?[currentEvent.location,currentEvent.type==="location_parent"?currentEvent.source:null].filter(Boolean).filter(id=>entity(id)?.kind==="location"):[],podIds=[...new Set(eventLocationIds)].filter(id=>view.present.has(id)&&!view.rendered.has(id)&&view.anchorOf.get(id)),podKey=podIds.join("|");
+  if(podKey!==activePodKey){
+    const gone=activePodIds.filter(id=>!podIds.includes(id));
+    activePodIds=podIds;activePodKey=podKey;
+    if(gone.length){retiringPodIds=gone;clearTimeout(podRetireTimer);podRetireTimer=setTimeout(()=>{retiringPodIds=[];podRetireTimer=null;renderGraph();},520);}
+  }
+  const draw=(id,retiring)=>{
+    const anchor=view.anchorOf.get(id),anchorPos=anchor&&positions.get(anchor);if(!anchorPos)return;
+    const item=entity(id);if(!item)return;
+    // Park the pod in the emptiest direction around its ancestor, leaning upward, so it does
+    // not land on top of whichever characters happen to be clustered nearby.
+    const distance=glyphRadius(anchor)+112,angle=(()=>{let best=-Math.PI/2,bestScore=-Infinity;for(let step=0;step<16;step++){const candidate=-Math.PI+step*(Math.PI/8),x=anchorPos.x+Math.cos(candidate)*distance,y=anchorPos.y+Math.sin(candidate)*distance;let score=Math.sin(candidate)<0?90:0;positions.forEach((point,other)=>{if(other===anchor)return;score+=Math.min(170,Math.hypot(point.x-x,point.y-y));});if(score>bestScore){bestScore=score;best=candidate;}}return best;})(),
+      group=svgEl("g",{class:`location-pod${retiring?" pod-retracting":""}`,"data-id":id,role:"button",tabindex:0,"aria-label":`${item.name}, inside ${entity(anchor)?.name||anchor}`});
+    const tether=svgEl("line",{class:"location-pod-tether"}),ring=svgEl("circle",{cx:0,cy:0,r:25,class:"location-pod-ring"}),core=svgEl("circle",{cx:0,cy:0,r:8,class:"location-pod-core"}),
+      tier=svgEl("text",{x:0,y:-49,class:"location-pod-tier"}),label=svgEl("text",{x:0,y:-35,class:"location-pod-label"});
+    tier.textContent=String(item.locationType||"Place").toUpperCase();label.textContent=item.name;
+    const shell=svgEl("g",{class:"location-pod-shell"});shell.append(ring,core,tier,label);group.append(shell);
+    layer.append(tether,group);
+    const place=()=>{const base=positions.get(anchor);if(!base)return;const x=base.x+Math.cos(angle)*distance,y=base.y+Math.sin(angle)*distance;group.setAttribute("transform",`translate(${x.toFixed(2)},${y.toFixed(2)})`);group.style.setProperty("--pod-origin-x",`${(base.x-x).toFixed(2)}px`);group.style.setProperty("--pod-origin-y",`${(base.y-y).toFixed(2)}px`);tether.setAttribute("x1",base.x);tether.setAttribute("y1",base.y);tether.setAttribute("x2",x);tether.setAttribute("y2",y);};
+    place();edgeUpdaters.push(place);
+    group.addEventListener("pointerup",event=>{event.stopPropagation();cancelChapterSequence();revealLocationPath(id);});
+    group.addEventListener("keydown",event=>{if(event.key!=="Enter"&&event.key!==" ")return;event.preventDefault();cancelChapterSequence();revealLocationPath(id);});
+  };
+  podIds.forEach(id=>draw(id,false));
+  retiringPodIds.filter(id=>!podIds.includes(id)).forEach(id=>draw(id,true));
+}
+
+// Click cycle for a place: first click selects it (and, because everything folded inside
+// reports through it, shows the whole subtree's connections), second click opens it into a
+// dot ringed by its children, and clicking that dot folds the children back in.
+function activateLocation(id){
+  const view=lastLocationView;
+  if(!view||!view.rendered.has(id)){locationPovId=null;selectedId=selectedId===id?null:id;setMobilePanel("info");renderAll();return;}
+  if(view.expanded.has(id)){closeLocation(id);return;}
+  if(selectedId===id&&(view.children.get(id)||[]).length){openLocation(id);return;}
+  locationPovId=null;selectedId=selectedId===id?null:id;setMobilePanel("info");renderAll();
+}
+function openLocation(id){
+  const view=lastLocationView,kids=view?.children.get(id)||[];if(!kids.length)return;
+  const origin=physics.pos.get(id);
+  expandedLocations.add(id);selectedId=null;locationPovId=null;
+  kids.forEach((kid,index)=>{const angle=-Math.PI/2+index*(Math.PI*2/kids.length);physics.pos.set(kid,{x:(origin?.x??360)+Math.cos(angle)*4,y:(origin?.y??260)+Math.sin(angle)*4});physics.vel.set(kid,{x:Math.cos(angle)*3.2,y:Math.sin(angle)*3.2});});
+  emergingLocations=new Set(kids);clearTimeout(emergeTimer);emergeTimer=setTimeout(()=>{emergingLocations=new Set();emergeTimer=null;},760);
+  setMobilePanel("info");renderAll();
+  toast(`${entity(id)?.name||id} opened — ${kids.length} place${kids.length===1?"":"s"} inside`);
+}
+function closeLocation(id){
+  if(collapsingLocationId)return;
+  if(!lastLocationView?.expanded.has(id))return;
+  collapsingLocationId=id;renderAll();
+  clearTimeout(locationCollapseTimer);
+  locationCollapseTimer=setTimeout(()=>{
+    const subtree=lastLocationView?renderedLocationSubtree(id,lastLocationView):[];
+    expandedLocations.delete(id);
+    subtree.forEach(child=>{expandedLocations.delete(child);physics.pos.delete(child);physics.vel.delete(child);physics.bounds.delete(child);});
+    if(selectedId&&subtree.includes(selectedId))selectedId=null;
+    collapsingLocationId=null;locationCollapseTimer=null;renderAll();
+  },420);
+}
+// Used by the action pods: opens every collapsed ancestor so the named place stays on screen.
+function revealLocationPath(id){
+  const view=lastLocationView;if(!view)return;
+  const guard=new Set();let cursor=view.parentOf.get(id);
+  while(cursor&&!guard.has(cursor)){guard.add(cursor);expandedLocations.add(cursor);cursor=view.parentOf.get(cursor);}
+  emergingLocations=new Set([id]);clearTimeout(emergeTimer);emergeTimer=setTimeout(()=>{emergingLocations=new Set();emergeTimer=null;},760);
+  selectedId=id;locationPovId=null;setMobilePanel("info");renderAll();
 }
 
 function applyGraphFocus(derived){if(!selectedId)return;const chosen=entity(selectedId),connected=new Set([selectedId]);document.querySelectorAll("#graph .edge").forEach(edge=>{const match=edge.dataset.a===selectedId||edge.dataset.b===selectedId;if(match){connected.add(edge.dataset.a);connected.add(edge.dataset.b);edge.classList.add("selected-connection");}else edge.classList.add("dim");});document.querySelectorAll("#graph .node").forEach(node=>{if(node.dataset.id===selectedId)node.classList.add("selected");else if(connected.has(node.dataset.id))node.classList.add("selected-neighbor");else node.classList.add("dim");});if(chosen?.kind==="organization"||chosen?.kind==="location")document.querySelectorAll("#graph .relation-edge").forEach(edge=>edge.classList.add("hidden"));}
@@ -712,7 +842,7 @@ function renderSummary(){
     const members=d.memberships.filter(m=>m.organization===chosen.id).map(m=>({id:m.character,label:`${stateName(d,m.character)} · ${m.role}`})),places=d.organizationLocations.filter(link=>link.organization===chosen.id).map(link=>({id:link.location,label:`${stateName(d,link.location)} · ${link.role}`}));box.className=`side-card summary${panelActive?" mobile-active":""}`;box.innerHTML=`${header}<div class="summary-stats"><article><span>Active members</span><strong>${members.length}</strong></article><article><span>Locations</span><strong>${places.length}</strong></article><article><span>Introduced</span><strong>Ch. ${chosen.intro}</strong></article></div>${summaryGroup("Locations",places,5)}${summaryGroup("Members",members,5)}`;$("#full-details").onclick=()=>openProfile(chosen.id);return;
   }
   if(chosen.kind==="location"){
-    const chapterEvents=eventsAtLocation(chosen.id),visitors=[...new Set(chapterEvents.flatMap(locationCharacterIds))].map(id=>({id,label:entity(id)?.name||id})),occupants=[...d.locations.values()].filter(visit=>visit.location===chosen.id).map(visit=>({id:visit.character,label:entity(visit.character)?.name||visit.character})),residents=d.residences.filter(link=>link.location===chosen.id).map(link=>({id:link.character,label:`${entity(link.character)?.name} · ${link.role}`})),organizations=d.organizationLocations.filter(link=>link.location===chosen.id).map(link=>({id:link.organization,label:`${entity(link.organization)?.name} · ${link.role}`})),parent=d.locationParents.find(link=>link.child===chosen.id),children=d.locationParents.filter(link=>link.parent===chosen.id).map(link=>({id:link.child,label:entity(link.child)?.name||link.child})),hierarchy=parent?[{id:parent.parent,label:`Inside ${entity(parent.parent)?.name||parent.parent}`}]:[],pov=locationPovId?[{id:locationPovId,label:`${entity(locationPovId)?.name||locationPovId} event POV`}]:[];box.className=`side-card summary${panelActive?" mobile-active":""}`;box.innerHTML=`${header}<div class="summary-stats"><article><span>Place type</span><strong>${escapeHtml(chosen.locationType||"Other")}</strong></article><article><span>Residents</span><strong>${residents.length}</strong></article><article><span>Here now</span><strong>${occupants.length}</strong></article></div><div class="summary-groups">${summaryGroup("Viewing",pov,1)}${summaryGroup("Hierarchy",hierarchy,1)}${summaryGroup("Contains",children,5)}${summaryGroup("Residents",residents,5)}${summaryGroup("Based here",organizations,5)}${summaryGroup("Here now",occupants,5)}${summaryGroup("Active chapter",visitors,5)}</div>`;$("#full-details").onclick=()=>openProfile(chosen.id);return;
+    const chapterEvents=eventsAtLocation(chosen.id),visitors=[...new Set(chapterEvents.flatMap(locationCharacterIds))].map(id=>({id,label:entity(id)?.name||id})),occupants=[...d.locations.values()].filter(visit=>visit.location===chosen.id).map(visit=>({id:visit.character,label:entity(visit.character)?.name||visit.character})),residents=d.residences.filter(link=>link.location===chosen.id).map(link=>({id:link.character,label:`${entity(link.character)?.name} · ${link.role}`})),organizations=d.organizationLocations.filter(link=>link.location===chosen.id).map(link=>({id:link.organization,label:`${entity(link.organization)?.name} · ${link.role}`})),parentId=locationParentOf(chosen.id,d),children=d.locationParents.filter(link=>link.parent===chosen.id&&!isLocationRoot(link.child,d)).map(link=>({id:link.child,label:entity(link.child)?.name||link.child})),hierarchy=parentId?[{id:parentId,label:`Inside ${entity(parentId)?.name||parentId}`}]:[{label:String(chosen.locationType||"")===LOCATION_ROOT_TYPE?"Top-level realm":"Top level"}],pov=locationPovId?[{id:locationPovId,label:`${entity(locationPovId)?.name||locationPovId} event POV`}]:[];box.className=`side-card summary${panelActive?" mobile-active":""}`;box.innerHTML=`${header}<div class="summary-stats"><article><span>Place type</span><strong>${escapeHtml(chosen.locationType||"Other")}</strong></article><article><span>Residents</span><strong>${residents.length}</strong></article><article><span>Here now</span><strong>${occupants.length}</strong></article></div><div class="summary-groups">${summaryGroup("Viewing",pov,1)}${summaryGroup("Hierarchy",hierarchy,1)}${summaryGroup("Contains",children,5)}${summaryGroup("Residents",residents,5)}${summaryGroup("Based here",organizations,5)}${summaryGroup("Here now",occupants,5)}${summaryGroup("Active chapter",visitors,5)}</div>${children.length?`<p class="location-drill-hint">${lastLocationView?.expanded.has(chosen.id)?"Opened — click the dot to fold these places back in.":`Click again on the graph to open ${children.length} place${children.length===1?"":"s"} inside.`}</p>`:""}`;$("#full-details").onclick=()=>openProfile(chosen.id);return;
   }
   const applied=appliedEvents(),unrevealed=state.appeared===null||state.appeared>currentChapter,relationItems=[...new Set(applied.filter(e=>e.type==="relationship"&&(e.source===chosen.id||e.target===chosen.id)).map(e=>pairKey(e.source,e.target)))].map(key=>{const [a,b]=key.split("|"),other=a===chosen.id?b:a,history=applied.filter(e=>e.type==="relationship"&&pairKey(e.source,e.target)===key),type=String(history.at(-1)?.value||"neutral").toLowerCase();return {id:other,label:stateName(d,other),tone:`tone-${type}`};}),meetingIds=[...new Set(applied.filter(e=>e.type==="meeting"&&(e.source===chosen.id||e.target===chosen.id)).map(e=>e.source===chosen.id?e.target:e.source))],meetings=meetingIds.map(id=>({id,label:stateName(d,id)})),awareOutIds=[...new Set(applied.filter(e=>e.type==="awareness"&&e.source===chosen.id).map(e=>e.target))],awareOut=awareOutIds.map(id=>({id,label:stateName(d,id)})),awareInIds=[...new Set(applied.filter(e=>e.type==="awareness"&&e.target===chosen.id).map(e=>e.source))],awareIn=awareInIds.map(id=>({id,label:stateName(d,id)})),aliases=state.aliases.map(alias=>({label:alias.value})),organizations=state.memberships.map(m=>({id:m.organization,label:`${stateName(d,m.organization)} · ${m.role}`})),identityParent=d.identityParents.find(link=>link.child===chosen.id),identityChildren=d.identityParents.filter(link=>link.parent===chosen.id).map(link=>({id:link.child,label:`${stateName(d,link.child)} · ${link.relation}`})),identityFamily=[...(identityParent?[{id:identityParent.parent,label:`${stateName(d,identityParent.parent)} · ${identityParent.relation} parent`}]:[]),...identityChildren];
   const currentPlace=d.locations.get(chosen.id),currentPlaces=currentPlace?[{id:currentPlace.location,label:entity(currentPlace.location)?.name||currentPlace.location}]:[],chapterPlaces=[...new Set(d.locationVisits.filter(visit=>visit.character===chosen.id&&visit.chapter===currentChapter).map(visit=>visit.location))].map(id=>({id,label:entity(id)?.name||id})),residences=d.residences.filter(link=>link.character===chosen.id).map(link=>({id:link.location,label:`${entity(link.location)?.name} · ${link.role}`}));
@@ -908,7 +1038,7 @@ async function fillProfileEditor(){
   form.elements.roles.value=(profile.roles||[]).join(", ");form.elements.abilities.value=(profile.abilities||[]).join("\n");form.elements.achievements.value=(profile.achievements||[]).map(achievementLine).join("\n");form.elements.traits.value=(profile.traits||[]).join("\n");form.elements.trivia.value=(profile.trivia||[]).join("\n");form.elements.facts.value=(profile.facts||[]).map(item=>`${item.label}: ${item.value}`).join("\n");setProfileEditorMode(item.kind);toast(`${item.name}'s wiki profile loaded`);
 }
 function updateEventHelp(){
-  const form=$("#event-form"),type=form.elements.type.value,isOrgLocation=type==="organization_location",isResidence=type==="residency",isHierarchy=type==="location_parent",isIdentityHierarchy=type==="identity_parent",needsTarget=["awareness","meeting","relationship","membership","identity_parent"].includes(type),showsTarget=needsTarget||type==="note",needsValue=["alias","display_name","status","gender","age","relationship","organization_location","residency","identity_parent"].includes(type),showsValue=needsValue||type==="membership"||type==="cultivation",usesAction=["membership","organization_location","residency","location_parent","identity_parent"].includes(type),help={mention:"Use this when an identity is referred to without physically appearing. Status remains unknown.",appearance:"A normal physical appearance also proves that the character is alive at this action.",corpse_appearance:"Use when a dead body is the character's first physical appearance. This sets appearance and dead status together.",display_name:"Changes the public label from this exact action onward. Add another display-name event later to end a spy name or restore an earlier name.",identity_parent:"Keeps clones, avatars, incarnations, split souls, and their original identity close together in the graph.",movement:"Records travel and changes the character's current physical position.",residency:"Records a home, permanent residence, long-term stay, camp, or personal domain.",location_parent:"Places one location directly inside another. Nested location regions will cluster and overlap.",alias:"Adds another searchable name without changing the main displayed label.",cultivation:"Choose the canonical tier by name; an equivalent path title remains synchronized.",status:"Use this for later changes or uncertain states such as missing and presumed dead.",gender:"Use this for a later reveal or an actual change — not needed if it was already set when the character was created.",age:"Use this whenever an age is stated or changes in-story — an exact number, a range, or a description.",awareness:"The first character knows the second exists.",meeting:"Records that two characters meet.",relationship:"Choose a second character and enter friendly, neutral, or hostile.",membership:"Choose whether the membership begins now, was already true but is only revealed now, or ends here.",organization_location:"Connect an organization to a headquarters, branch, base, territory, or outpost.",note:"A general story event."};
+  const form=$("#event-form"),type=form.elements.type.value,isOrgLocation=type==="organization_location",isResidence=type==="residency",isHierarchy=type==="location_parent",isIdentityHierarchy=type==="identity_parent",needsTarget=["awareness","meeting","relationship","membership","identity_parent"].includes(type),showsTarget=needsTarget||type==="note",needsValue=["alias","display_name","status","gender","age","relationship","organization_location","residency","identity_parent"].includes(type),showsValue=needsValue||type==="membership"||type==="cultivation",usesAction=["membership","organization_location","residency","location_parent","identity_parent"].includes(type),help={mention:"Use this when an identity is referred to without physically appearing. Status remains unknown.",appearance:"A normal physical appearance also proves that the character is alive at this action.",corpse_appearance:"Use when a dead body is the character's first physical appearance. This sets appearance and dead status together.",display_name:"Changes the public label from this exact action onward. Add another display-name event later to end a spy name or restore an earlier name.",identity_parent:"Keeps clones, avatars, incarnations, split souls, and their original identity close together in the graph.",movement:"Records travel and changes the character's current physical position.",residency:"Records a home, permanent residence, long-term stay, camp, or personal domain.",location_parent:"Places one location directly inside another. The graph only draws the outermost place — a realm at most — until you open it.",alias:"Adds another searchable name without changing the main displayed label.",cultivation:"Choose the canonical tier by name; an equivalent path title remains synchronized.",status:"Use this for later changes or uncertain states such as missing and presumed dead.",gender:"Use this for a later reveal or an actual change — not needed if it was already set when the character was created.",age:"Use this whenever an age is stated or changes in-story — an exact number, a range, or a description.",awareness:"The first character knows the second exists.",meeting:"Records that two characters meet.",relationship:"Choose a second character and enter friendly, neutral, or hostile.",membership:"Choose whether the membership begins now, was already true but is only revealed now, or ends here.",organization_location:"Connect an organization to a headquarters, branch, base, territory, or outpost.",note:"A general story event."};
   $("#event-target-field").hidden=!showsTarget;$("#event-value-field").hidden=!showsValue;$("#event-level-field").hidden=type!=="cultivation";$("#event-action-field").hidden=!usesAction;
   form.elements.target.required=needsTarget;form.elements.value.required=needsValue;form.elements.location.required=["movement","organization_location","residency","location_parent"].includes(type);
   $("#event-location-label").textContent=type==="movement"?"Destination":isOrgLocation?"Headquarters / branch location":isResidence?"Home / long-term location":isHierarchy?"Direct parent location":"Where this happened (optional)";
@@ -945,6 +1075,7 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   if(type==="location_parent"&&!location){toast("Choose the direct parent location");return null;}
   if(type==="location_parent"&&(source.kind!=="location"||location.kind!=="location")){toast("Hierarchy requires a child location and a parent location");return null;}
   if(type==="location_parent"&&source.id===location.id){toast("A location cannot contain itself");return null;}
+  if(type==="location_parent"&&action!=="remove"&&String(source.locationType||"")===LOCATION_ROOT_TYPE){toast("A realm is the widest place the graph draws — it cannot sit inside another location");return null;}
   if(type==="location_parent"&&action!=="remove"&&locationLineage(location.id,derive(chapter)).includes(source.id)){toast("That would create a circular location hierarchy");return null;}
   if(type==="organization_location"&&!location){toast("Choose the headquarters or branch location");return null;}
   if(type==="organization_location"&&source.kind!=="organization"){toast("Choose the organization connected to this location");return null;}
@@ -1038,7 +1169,7 @@ $("#export-data").onclick=()=>{const blob=new Blob([JSON.stringify(data,null,2)]
 $("#publish-data").onclick=publishData;
 $("#import-data").addEventListener("change",async event=>{const file=event.target.files[0];if(!file)return;try{const parsed=JSON.parse(await file.text());if(!Array.isArray(parsed.entities)||!Array.isArray(parsed.events)||!Array.isArray(parsed.volumes)||validateVolumes(parsed.volumes))throw new Error();data=parsed;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;saveData();selectedId=null;locationPovId=null;configure();renderAll();toast("Data imported");}catch{toast("That JSON file is not valid graph data");}event.target.value="";});
 $("#reset-data").onclick=()=>{if(!confirm("Reset this browser's demo data to the original sample?"))return;cancelChapterSequence();expandedChapter=null;data=deepClone(sampleData);saveData();selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=activeVol().from;configure();renderAll();toast("Sample data restored");};
-$("#clear-all-data").onclick=()=>{const answer=prompt("This permanently deletes every character, organization, location, profile, and event from the published graph. Your volume structure will remain. Type DELETE to continue.");if(answer!=="DELETE"){if(answer!==null)toast("Nothing was deleted");return;}cancelChapterSequence();expandedChapter=null;data={schemaVersion:5,novel:data.novel||"Living Story Graph",volumes:deepClone(data.volumes?.length?data.volumes:sampleData.volumes),cultivationLevels:deepClone(CULTIVATION_LEVELS),chapterUrlTemplate:data.chapterUrlTemplate||"",chapterSources:deepClone(data.chapterSources||{}),entities:[],events:[]};eventDrafts=[];selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;physics.pos.clear();physics.vel.clear();lastAutoFitSignature="";saveData();resetEntityEditor();resetEventEditor();renderEventBatch();configure();renderAll();toast("All story data deleted");};
+$("#clear-all-data").onclick=()=>{const answer=prompt("This permanently deletes every character, organization, location, profile, and event from the published graph. Your volume structure will remain. Type DELETE to continue.");if(answer!=="DELETE"){if(answer!==null)toast("Nothing was deleted");return;}cancelChapterSequence();expandedChapter=null;data={schemaVersion:6,novel:data.novel||"Living Story Graph",volumes:deepClone(data.volumes?.length?data.volumes:sampleData.volumes),cultivationLevels:deepClone(CULTIVATION_LEVELS),chapterUrlTemplate:data.chapterUrlTemplate||"",chapterSources:deepClone(data.chapterSources||{}),entities:[],events:[]};eventDrafts=[];selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;physics.pos.clear();physics.vel.clear();lastAutoFitSignature="";saveData();resetEntityEditor();resetEventEditor();renderEventBatch();configure();renderAll();toast("All story data deleted");};
 
 function toast(message){const el=$("#toast");el.textContent=message;el.classList.add("show");clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove("show"),2200);}
 
