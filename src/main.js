@@ -112,6 +112,7 @@ const isUploadRoute = location.pathname.replace(/\/+$/, "") === "/upload";
 let adminAuthenticated = false;
 let data = deepClone(sampleData);
 let selectedId = null;
+let openProfileId = null;
 let locationPovId = null;
 let currentChapter = 1;
 let currentActionIndex = 0;
@@ -323,8 +324,8 @@ function saveData() {
   dataVersion++;
 }
 async function publishData(){if(!isUploadRoute||!adminAuthenticated){toast("Unlock the editor before publishing");return;}normalizeIdentityIntroductionOrder(data);localStorage.setItem(STORAGE_KEY,JSON.stringify(data));const state=$("#hosted-save-state"),button=$("#publish-data");if(state){state.textContent="Publishing…";state.classList.add("saving");}if(button)button.disabled=true;try{const response=await fetch("/api/data",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});if(!response.ok)throw new Error((await response.json().catch(()=>({}))).error||"Publish failed");localStorage.removeItem(PUBLISH_DIRTY_KEY);hostedDataStatus="connected";updatePublishingStatus();toast("Published once for all public visitors");}catch(error){hostedDataStatus="error";updatePublishingStatus(error.message);toast(`Not published: ${error.message}`);}finally{if(state)state.classList.remove("saving");if(button&&hostedDataStatus!=="connected")button.disabled=false;}}
-function cacheActiveVolume(){try{localStorage.setItem(VIEW_STATE_KEY,JSON.stringify({activeVolume,currentChapter,currentActionIndex}));}catch{}}
-function restoreActiveVolume(){let cached={};try{cached=JSON.parse(localStorage.getItem(VIEW_STATE_KEY)||"{}");}catch{}activeVolume=data.volumes.some(volume=>volume.id===cached.activeVolume)?cached.activeVolume:(data.volumes[0]?.id||"");const vol=activeVol(),inRange=vol&&Number.isFinite(cached.currentChapter)&&cached.currentChapter>=vol.from&&cached.currentChapter<=vol.to;currentChapter=inRange?cached.currentChapter:(vol?.from||1);currentActionIndex=inRange&&Number.isFinite(cached.currentActionIndex)?cached.currentActionIndex:0;}
+function cacheActiveVolume(){try{localStorage.setItem(VIEW_STATE_KEY,JSON.stringify({activeVolume,currentChapter,currentActionIndex,openProfileId}));}catch{}}
+function restoreActiveVolume(){let cached={};try{cached=JSON.parse(localStorage.getItem(VIEW_STATE_KEY)||"{}");}catch{}activeVolume=data.volumes.some(volume=>volume.id===cached.activeVolume)?cached.activeVolume:(data.volumes[0]?.id||"");const vol=activeVol(),inRange=vol&&Number.isFinite(cached.currentChapter)&&cached.currentChapter>=vol.from&&cached.currentChapter<=vol.to;currentChapter=inRange?cached.currentChapter:(vol?.from||1);currentActionIndex=inRange&&Number.isFinite(cached.currentActionIndex)?cached.currentActionIndex:0;openProfileId=typeof cached.openProfileId==="string"&&entity(cached.openProfileId)?cached.openProfileId:null;}
 function slugify(value) { return value.toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || "entity"; }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char])); }
 function safeExternalUrl(value){
@@ -827,6 +828,7 @@ async function openProfile(id,focusChapter=null){
   document.querySelectorAll("#profile-body [data-sub-location-branch]").forEach(details=>details.addEventListener("toggle",()=>{if(!details.open||details.dataset.loaded)return;const branch=branchArchives.find(candidate=>candidate.id===details.dataset.subLocationBranch);if(!branch)return;const body=details.querySelector(".sub-location-branch-body"),eventsByLocation=new Map();branch.events.forEach(event=>{if(!eventsByLocation.has(event.location))eventsByLocation.set(event.location,[]);eventsByLocation.get(event.location).push(event);});body.innerHTML=`<div class="sub-location-groups">${branch.locationIds.filter(locationId=>eventsByLocation.has(locationId)).map(locationId=>{const locationEvents=eventsByLocation.get(locationId);return `<article class="sub-location-group"><header><button type="button" data-open-location="${escapeHtml(locationId)}"><span>${escapeHtml(entity(locationId)?.locationType||"Place")}</span><strong>${escapeHtml(entity(locationId)?.name||locationId)}</strong></button><b>${locationEvents.length} event${locationEvents.length===1?"":"s"}</b></header><div>${locationEvents.map(event=>`<section><span>Chapter ${event.chapter}</span><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i><p>${richText(event.description||event.type)}${chapterCitation(event)}</p></section>`).join("")}</div></article>`;}).join("")}</div>`;details.dataset.loaded="true";}));
   const profileImage=$("#profile-body .portrait-card img");if(profileImage){const hideBrokenPortrait=()=>{profileImage.closest(".portrait-card")?.remove();$("#profile-body .profile-infobox")?.classList.add("no-portrait");};profileImage.addEventListener("error",hideBrokenPortrait,{once:true});if(profileImage.complete&&!profileImage.naturalWidth)hideBrokenPortrait();}
   if(!$("#profile-modal").open)$("#profile-modal").showModal();
+  openProfileId=item.id;cacheActiveVolume();
   if(profileStops.length){
     const range=$("#profile-event-range"),previous=$("#profile-event-previous"),next=$("#profile-event-next"),detail=$("#profile-event-detail"),marks=$("#profile-body .event-marks");let navigatorStops=initialNavigatorStops;
     const showEvent=(rawIndex,jump=false)=>{
@@ -892,7 +894,8 @@ function loadEventEditor(id){const record=data.events.find(event=>event.id===id)
 function syncPresenceFromEvents(id,type){if(!["mention","appearance","corpse_appearance"].includes(type))return;const item=entity(id);if(!item||item.kind!=="character")return;const field=type==="mention"?"mentioned":"appeared",types=field==="appeared"?["appearance","corpse_appearance"]:["mention"],chapters=data.events.filter(event=>event.source===id&&types.includes(event.type)).map(event=>event.chapter);item[field]=earliestChapter(chapters);}
 
 function listFromText(value,commas=false){return String(value||"").split(commas?/[,\n]/:/\n/).map(item=>item.trim()).filter(Boolean);}
-function factsFromText(value){return listFromText(value).map(line=>{const divider=line.indexOf(":");return divider<1?null:{label:line.slice(0,divider).trim(),value:line.slice(divider+1).trim()};}).filter(item=>item?.label&&item.value);}
+function labelDivider(line){let depth=0;for(let i=0;i<line.length;i++){if(line[i]==="["&&line[i+1]==="["){depth++;i++;continue;}if(line[i]==="]"&&line[i+1]==="]"){depth=Math.max(0,depth-1);i++;continue;}if(line[i]===":"&&depth===0)return i;}return -1;}
+function factsFromText(value){return listFromText(value).map(line=>{const divider=labelDivider(line);return divider<1?null:{label:line.slice(0,divider).trim(),value:line.slice(divider+1).trim()};}).filter(item=>item?.label&&item.value);}
 function setProfileEditorMode(kind){document.querySelectorAll(".character-profile-field").forEach(field=>field.hidden=kind!=="character");document.querySelectorAll(".organization-profile-field").forEach(field=>field.hidden=kind==="character");$("#profile-purpose-label").textContent=kind==="location"?"Location description":"Organization purpose";$("#profile-traits-label").textContent=kind==="location"?"Notable features — one per line":"Defining traits — one per line";}
 async function fillProfileEditor(){
   const form=$("#profile-form"),item=resolveEntity(form.elements.entity.value);if(!item){toast("Choose an existing character, organization, or location");return;}
@@ -977,7 +980,7 @@ timeline.addEventListener("input",applyTimeline);timeline.addEventListener("whee
 $("#collapse-chapter-events").onclick=collapseChapterEvents;
 $("#previous").onclick=()=>stepTimeline(-1);$("#next").onclick=()=>stepTimeline(1);
 searchInput.addEventListener("change",()=>{const match=resolvePublicEntity(searchInput.value);if(match){cancelChapterSequence();expandedChapter=null;selectedId=match.id;locationPovId=null;setMobilePanel("info");const index=revealedVolumeActions().findIndex(event=>eventInvolves(event,match.id));if(index>=0){currentActionIndex=index+1;renderAll();}}});
-$("#close-profile").onclick=()=>$("#profile-modal").close();
+$("#close-profile").onclick=()=>{$("#profile-modal").close();openProfileId=null;cacheActiveVolume();};
 
 $("#entity-form").addEventListener("submit",event=>{
   event.preventDefault();const form=new FormData(event.currentTarget),parsedName=parseIdentityName(form.get("name")),name=parsedName.name,existingName=resolveEntity(name);let editingId=String(form.get("editingId")||"");if(!name){toast("Enter a public name or descriptor");return;}if(existingName&&existingName.id!==editingId){const hasEvents=data.events.some(storyEvent=>eventInvolves(storyEvent,existingName.id));if(!editingId&&!hasEvents){editingId=existingName.id;toast(`${existingName.name} existed without a graph event; repairing it now`);}else{$("#manage-entity").value=existingName.name;loadEntityEditor();toast(`${existingName.name} already exists and has been loaded for editing`);return;}}
@@ -1053,7 +1056,7 @@ $("#zoom-in").onclick=()=>zoomBy(1.25);$("#zoom-out").onclick=()=>zoomBy(1/1.25)
 requestAnimationFrame(tickGraph);
 
 function setApplicationVisible(visible){document.querySelector(".app > header").hidden=!visible;document.querySelector(".app > main").hidden=!visible;const login=$("#admin-login");if(login)login.hidden=visible;}
-function startApplication(openAdmin=false){configure();updateEntityFormFields();setProfileEditorMode("character");updateEventHelp();installWikiLinkHelpers();if(openAdmin){activeView="admin";document.querySelectorAll(".tab").forEach(tab=>tab.classList.toggle("active",tab.dataset.view==="admin"));$("#graph-view").classList.remove("active");$("#admin-view").classList.add("active");}updatePublishingStatus();renderAll();}
+function startApplication(openAdmin=false){configure();updateEntityFormFields();setProfileEditorMode("character");updateEventHelp();installWikiLinkHelpers();if(openAdmin){activeView="admin";document.querySelectorAll(".tab").forEach(tab=>tab.classList.toggle("active",tab.dataset.view==="admin"));$("#graph-view").classList.remove("active");$("#admin-view").classList.add("active");}updatePublishingStatus();renderAll();if(openProfileId&&entity(openProfileId))openProfile(openProfileId);}
 async function bootstrap(){
   data=await loadData();
   restoreActiveVolume();

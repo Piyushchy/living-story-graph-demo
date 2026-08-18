@@ -22,6 +22,11 @@ function sandbox(dataValue) {
     functionBody("chapterUrl"),
     functionBody("chapterCitation"),
     functionBody("richInline"),
+    functionBody("richText"),
+    functionBody("listFromText"),
+    functionBody("labelDivider"),
+    functionBody("factsFromText"),
+    functionBody("fact"),
     functionBody("referencedChaptersWithoutLinks"),
   ].join("\n");
   const ctx = { data: dataValue, URL };
@@ -304,12 +309,19 @@ test("a small quick-add form saves or updates a single chapter link without touc
   assert.match(source, /data\.chapterSources=\{\.\.\.\(data\.chapterSources\|\|\{\}\),\[chapter\]:url\}/);
 });
 
-test("the timeline position (not just the selected volume) is persisted and restored across a refresh, with range validation against the current volume", () => {
-  assert.match(source, /function cacheActiveVolume\(\)\{try\{localStorage\.setItem\(VIEW_STATE_KEY,JSON\.stringify\(\{activeVolume,currentChapter,currentActionIndex\}\)\)/);
+test("the timeline position and open profile (not just the selected volume) are persisted and restored across a refresh, with range/existence validation", () => {
+  assert.match(source, /function cacheActiveVolume\(\)\{try\{localStorage\.setItem\(VIEW_STATE_KEY,JSON\.stringify\(\{activeVolume,currentChapter,currentActionIndex,openProfileId\}\)\)/);
   const restoreBody = functionBody("restoreActiveVolume");
   assert.match(restoreBody, /inRange=vol&&Number\.isFinite\(cached\.currentChapter\)&&cached\.currentChapter>=vol\.from&&cached\.currentChapter<=vol\.to/);
   assert.match(restoreBody, /currentChapter=inRange\?cached\.currentChapter:\(vol\?\.from\|\|1\)/);
+  assert.match(restoreBody, /openProfileId=typeof cached\.openProfileId==="string"&&entity\(cached\.openProfileId\)\?cached\.openProfileId:null/);
   assert.match(source, /function renderAll\(\)\{configureTimeline\(\);renderGraph\(\);renderSummary\(\);renderEvents\(\);renderAdmin\(\);updateSuggestions\(\);cacheActiveVolume\(\);\}/);
+});
+
+test("closing the profile modal clears the persisted open-profile state, and starting the app reopens whatever profile was persisted", () => {
+  assert.match(source, /\$\("#close-profile"\)\.onclick=\(\)=>\{\$\("#profile-modal"\)\.close\(\);openProfileId=null;cacheActiveVolume\(\);\}/);
+  assert.match(source, /if\(openProfileId&&entity\(openProfileId\)\)openProfile\(openProfileId\);/);
+  assert.match(source, /openProfileId=item\.id;cacheActiveVolume\(\);/);
 });
 
 test("a first-time explanation callout for chapter refs is shown once per browser and dismissed via its close button or by actually using the toggle", () => {
@@ -353,4 +365,31 @@ test("citedFact produces a richText-compatible citation string that actually ren
   assert.match(html2, /Female<\/span><a class="chapter-citation" href="https:\/\/webnovel\.example\/ch30"/);
   const noEvent = citedFact("male", null);
   assert.equal(noEvent, "male");
+});
+
+test("factsFromText finds the real Label: divider even when a [[cite:N]] marker's own colon appears earlier in the line — the exact reported bug", () => {
+  const ctx = sandbox({});
+  // Before the fix, indexOf(":") grabbed the colon inside [[cite:1]] itself,
+  // producing label="[[cite" and a garbled value. The real divider must be
+  // found after the bracket closes.
+  const facts = JSON.parse(vm.runInContext(`JSON.stringify(factsFromText(${JSON.stringify("[[cite:1]]Age: 12 Elysian Cycle[[/cite]]")}))`, ctx));
+  assert.equal(facts.length, 1);
+  assert.doesNotMatch(facts[0].label, /^\[\[cite$/, "must not split on the marker's own colon");
+});
+
+test("factsFromText leaves ordinary Label: Value facts (including ones with a URL later in the value) working exactly as before", () => {
+  const ctx = sandbox({});
+  const facts = JSON.parse(vm.runInContext(`JSON.stringify(factsFromText(${JSON.stringify("Weapon: Twin Daggers\nWebsite: https://example.com/profile")}))`, ctx));
+  assert.deepEqual(facts, [
+    { label: "Weapon", value: "Twin Daggers" },
+    { label: "Website", value: "https://example.com/profile" },
+  ]);
+});
+
+test("the recommended simple form for citing a custom infobox fact — no zone syntax needed — renders a clean chapter citation", () => {
+  const ctx = sandbox({ chapterUrlTemplate: "https://example.com/ch-{n}" });
+  const facts = JSON.parse(vm.runInContext(`JSON.stringify(factsFromText(${JSON.stringify("Age: 12 Elysian Cycle | 1")}))`, ctx));
+  assert.deepEqual(facts, [{ label: "Age", value: "12 Elysian Cycle | 1" }]);
+  const html = vm.runInContext(`fact(${JSON.stringify(facts[0].label)}, ${JSON.stringify(facts[0].value)})`, ctx);
+  assert.match(html, /<dt>Age<\/dt><dd><span class="cited-prose-line"><span>12 Elysian Cycle<\/span><a class="chapter-citation" href="https:\/\/example\.com\/ch-1"/);
 });
