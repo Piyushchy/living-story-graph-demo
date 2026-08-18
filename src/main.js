@@ -1011,8 +1011,10 @@ function positionSliderOnboarding(){const onboarding=$("#slider-onboarding"),car
 window.addEventListener("resize",positionSliderOnboarding);
 
 function syncChapterRefToggles(on){document.body.classList.toggle("show-chapter-refs",on);document.querySelectorAll("[data-chapter-ref-toggle]").forEach(button=>{button.classList.toggle("active",on);button.setAttribute("aria-pressed",String(on));});}
+function toggleChapterRefs(){const next=!document.body.classList.contains("show-chapter-refs");syncChapterRefToggles(next);localStorage.setItem(CHAPTER_REF_TOGGLE_KEY,next?"1":"0");}
 syncChapterRefToggles(localStorage.getItem(CHAPTER_REF_TOGGLE_KEY)==="1");
-document.addEventListener("click",event=>{const button=event.target.closest("[data-chapter-ref-toggle]");if(!button)return;const next=!document.body.classList.contains("show-chapter-refs");syncChapterRefToggles(next);localStorage.setItem(CHAPTER_REF_TOGGLE_KEY,next?"1":"0");});
+document.addEventListener("click",event=>{if(event.target.closest("[data-chapter-ref-toggle]"))toggleChapterRefs();});
+document.addEventListener("keydown",event=>{if(event.key==="Alt"&&!event.repeat){event.preventDefault();toggleChapterRefs();}});
 graph.addEventListener("wheel",event=>{event.preventDefault();const {x:ux,y:uy}=toSvgPoint(event.clientX,event.clientY);zoomBy(event.deltaY>0?0.9:1.11,ux,uy);},{passive:false});
 graph.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;const p=toSvgPoint(event.clientX,event.clientY);panStart={ux:p.x,uy:p.y,viewX:view.x,viewY:view.y};graph.setPointerCapture(event.pointerId);});
 graph.addEventListener("pointermove",event=>{if(!panStart)return;const p=toSvgPoint(event.clientX,event.clientY);view.x=panStart.viewX+(p.x-panStart.ux);view.y=panStart.viewY+(p.y-panStart.uy);applyViewTransform();});

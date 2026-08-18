@@ -144,6 +144,12 @@ test("the header exposes an on/off toggle for hover-revealed chapter markers, pe
   assert.match(source, /document\.body\.classList\.toggle\("show-chapter-refs"/);
 });
 
+test("pressing Alt also toggles chapter refs, sharing the same toggle logic as clicking the button", () => {
+  assert.match(source, /function toggleChapterRefs\(\)\{/);
+  assert.match(source, /document\.addEventListener\("keydown",event=>\{if\(event\.key==="Alt"&&!event\.repeat\)\{event\.preventDefault\(\);toggleChapterRefs\(\);\}\}\)/);
+  assert.match(source, /document\.addEventListener\("click",event=>\{if\(event\.target\.closest\("\[data-chapter-ref-toggle\]"\)\)toggleChapterRefs\(\);\}\)/);
+});
+
 test("selecting text and marking a chapter wraps exactly that text with [[selection|chapter]], not a bare marker appended after it", () => {
   const body = functionBody("installWikiLinkHelpers");
   assert.match(body, /chapter-mark-helper/);
