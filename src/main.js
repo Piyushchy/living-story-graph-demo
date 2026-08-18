@@ -8,6 +8,7 @@ const STORAGE_KEY = "living-story-graph-demo-v1";
 const VIEW_STATE_KEY = "living-story-graph-view-state-v1";
 const PUBLISH_DIRTY_KEY = "living-story-graph-publish-dirty-v1";
 const CHAPTER_REF_TOGGLE_KEY = "living-story-graph-chapter-refs-v1";
+const CHAPTER_REF_HINT_SEEN_KEY = "living-story-graph-chapter-ref-hint-seen-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CULTIVATION_LEVELS = ["Mortal","Body Tempering","Qi Training","Foundation Establishment","Golden Core","Nascent Soul","Earth Immortal","Heaven Immortal","Celestial Immortal","Demi Dao Lord","Dao Lord","Above Dao Lord"];
 
@@ -128,7 +129,13 @@ app.innerHTML = `
   <div class="app">
     <header class="topbar">
       <div class="brand"><span class="brand-mark"></span><div><strong><span class="brand-long">Living </span>Story Graph</strong><small id="novel-name"></small></div></div>
-      <button type="button" id="toggle-chapter-refs" class="chapter-ref-toggle" data-chapter-ref-toggle aria-pressed="false" title="Hover marked text to reveal its chapter"><span aria-hidden="true">🔖</span> Chapter refs</button>
+      <div class="chapter-ref-toggle-wrap">
+        <button type="button" id="toggle-chapter-refs" class="chapter-ref-toggle" data-chapter-ref-toggle aria-pressed="false" title="Hover marked text to reveal its chapter"><span aria-hidden="true">🔖</span> Chapter refs</button>
+        <div id="chapter-ref-hint" class="chapter-ref-hint" hidden role="status">
+          <p><strong>Chapter references</strong> — some text here links out to another page, and some cites the chapter it's from. Turn this on, then hover marked text to see which. Press <kbd>Alt</kbd> to toggle it quickly.</p>
+          <button type="button" id="dismiss-chapter-ref-hint" aria-label="Dismiss">×</button>
+        </div>
+      </div>
       ${isUploadRoute?"":'<nav class="tabs" aria-label="Main navigation"><button class="tab active" data-view="graph">Public graph</button></nav>'}
     </header>
     <main>
@@ -316,8 +323,8 @@ function saveData() {
   dataVersion++;
 }
 async function publishData(){if(!isUploadRoute||!adminAuthenticated){toast("Unlock the editor before publishing");return;}normalizeIdentityIntroductionOrder(data);localStorage.setItem(STORAGE_KEY,JSON.stringify(data));const state=$("#hosted-save-state"),button=$("#publish-data");if(state){state.textContent="Publishing…";state.classList.add("saving");}if(button)button.disabled=true;try{const response=await fetch("/api/data",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});if(!response.ok)throw new Error((await response.json().catch(()=>({}))).error||"Publish failed");localStorage.removeItem(PUBLISH_DIRTY_KEY);hostedDataStatus="connected";updatePublishingStatus();toast("Published once for all public visitors");}catch(error){hostedDataStatus="error";updatePublishingStatus(error.message);toast(`Not published: ${error.message}`);}finally{if(state)state.classList.remove("saving");if(button&&hostedDataStatus!=="connected")button.disabled=false;}}
-function cacheActiveVolume(){try{localStorage.setItem(VIEW_STATE_KEY,JSON.stringify({activeVolume}));}catch{}}
-function restoreActiveVolume(){let cached="";try{cached=JSON.parse(localStorage.getItem(VIEW_STATE_KEY)||"{}")?.activeVolume||"";}catch{}activeVolume=data.volumes.some(volume=>volume.id===cached)?cached:(data.volumes[0]?.id||"");currentChapter=activeVol()?.from||1;currentActionIndex=0;}
+function cacheActiveVolume(){try{localStorage.setItem(VIEW_STATE_KEY,JSON.stringify({activeVolume,currentChapter,currentActionIndex}));}catch{}}
+function restoreActiveVolume(){let cached={};try{cached=JSON.parse(localStorage.getItem(VIEW_STATE_KEY)||"{}");}catch{}activeVolume=data.volumes.some(volume=>volume.id===cached.activeVolume)?cached.activeVolume:(data.volumes[0]?.id||"");const vol=activeVol(),inRange=vol&&Number.isFinite(cached.currentChapter)&&cached.currentChapter>=vol.from&&cached.currentChapter<=vol.to;currentChapter=inRange?cached.currentChapter:(vol?.from||1);currentActionIndex=inRange&&Number.isFinite(cached.currentActionIndex)?cached.currentActionIndex:0;}
 function slugify(value) { return value.toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || "entity"; }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char])); }
 function safeExternalUrl(value){
@@ -709,7 +716,7 @@ function eventPanelRow(event,index,{current=false,related=false}={}){return `<li
 function bindEventPanelRows(){document.querySelectorAll("[data-focus-action]").forEach(row=>row.onclick=event=>{if(event.target.closest("button,a"))return;cancelChapterSequence();currentActionIndex=Number(row.dataset.focusAction);currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();});}
 function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),card=list.closest(".events-card");list.className="events-list";card.classList.toggle("selection-event-mode",Boolean(selectedId));card.classList.toggle("current-event-mode",Boolean(event&&!selectedId));if(!event){$("#events-title").textContent=`${activeVol().name} · Start`;$("#events-count").textContent="Action 0";list.innerHTML='<li class="slider-start-message"><strong>Use the slider to begin</strong><span>Each step reveals one story action in entry order.</span></li>';return;}if(selectedId){const chosen=entity(selectedId),actions=volumeActions().slice(0,currentActionIndex).map((item,index)=>({event:item,index:index+1})).filter(entry=>eventInvolves(entry.event,selectedId));$("#events-title").textContent=`${stateName(currentDerived(),selectedId)} · connected events`;$("#events-count").textContent=`${actions.length} shown`;list.innerHTML=`<li class="selection-event-note"><strong>Connection focus</strong><span>Click ${escapeHtml(chosen?.name||"this node")} again to return to the current event.</span></li>${actions.length?actions.slice().reverse().map(entry=>eventPanelRow(entry.event,entry.index,{current:entry.index===currentActionIndex,related:true})).join(""):'<li class="selection-event-empty">No connected event has been revealed yet.</li>'}`;bindEventPanelRows();return;}$("#events-title").textContent=`Chapter ${event.chapter} · Action ${currentActionIndex}`;$("#events-count").textContent=event.type;list.innerHTML=eventPanelRow(event,currentActionIndex,{current:true});bindEventPanelRows();}
 
-function renderAll(){configureTimeline();renderGraph();renderSummary();renderEvents();renderAdmin();updateSuggestions();}
+function renderAll(){configureTimeline();renderGraph();renderSummary();renderEvents();renderAdmin();updateSuggestions();cacheActiveVolume();}
 
 function setMobilePanel(name){
   document.querySelectorAll(".mobile-panel-tab").forEach(tab=>tab.classList.toggle("active",tab.dataset.panel===name));
@@ -1025,8 +1032,11 @@ function positionSliderOnboarding(){const onboarding=$("#slider-onboarding"),car
 window.addEventListener("resize",positionSliderOnboarding);
 
 function syncChapterRefToggles(on){document.body.classList.toggle("show-chapter-refs",on);document.querySelectorAll("[data-chapter-ref-toggle]").forEach(button=>{button.classList.toggle("active",on);button.setAttribute("aria-pressed",String(on));});}
-function toggleChapterRefs(){const next=!document.body.classList.contains("show-chapter-refs");syncChapterRefToggles(next);localStorage.setItem(CHAPTER_REF_TOGGLE_KEY,next?"1":"0");}
+function dismissChapterRefHint(){const hint=$("#chapter-ref-hint");if(hint)hint.hidden=true;localStorage.setItem(CHAPTER_REF_HINT_SEEN_KEY,"1");}
+function toggleChapterRefs(){const next=!document.body.classList.contains("show-chapter-refs");syncChapterRefToggles(next);localStorage.setItem(CHAPTER_REF_TOGGLE_KEY,next?"1":"0");dismissChapterRefHint();}
 syncChapterRefToggles(localStorage.getItem(CHAPTER_REF_TOGGLE_KEY)==="1");
+if(localStorage.getItem(CHAPTER_REF_HINT_SEEN_KEY)!=="1"){const hint=$("#chapter-ref-hint");if(hint)hint.hidden=false;}
+$("#dismiss-chapter-ref-hint")?.addEventListener("click",event=>{event.stopPropagation();dismissChapterRefHint();});
 document.addEventListener("click",event=>{if(event.target.closest("[data-chapter-ref-toggle]"))toggleChapterRefs();});
 document.addEventListener("keydown",event=>{if(event.key==="Alt"&&!event.repeat){event.preventDefault();toggleChapterRefs();}});
 graph.addEventListener("wheel",event=>{event.preventDefault();const {x:ux,y:uy}=toSvgPoint(event.clientX,event.clientY);zoomBy(event.deltaY>0?0.9:1.11,ux,uy);},{passive:false});

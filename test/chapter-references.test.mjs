@@ -303,3 +303,20 @@ test("a small quick-add form saves or updates a single chapter link without touc
   assert.match(source, /\$\("#quick-add-chapter"\)\.addEventListener\("blur",\(\)=>\{const chapter=validChapter/);
   assert.match(source, /data\.chapterSources=\{\.\.\.\(data\.chapterSources\|\|\{\}\),\[chapter\]:url\}/);
 });
+
+test("the timeline position (not just the selected volume) is persisted and restored across a refresh, with range validation against the current volume", () => {
+  assert.match(source, /function cacheActiveVolume\(\)\{try\{localStorage\.setItem\(VIEW_STATE_KEY,JSON\.stringify\(\{activeVolume,currentChapter,currentActionIndex\}\)\)/);
+  const restoreBody = functionBody("restoreActiveVolume");
+  assert.match(restoreBody, /inRange=vol&&Number\.isFinite\(cached\.currentChapter\)&&cached\.currentChapter>=vol\.from&&cached\.currentChapter<=vol\.to/);
+  assert.match(restoreBody, /currentChapter=inRange\?cached\.currentChapter:\(vol\?\.from\|\|1\)/);
+  assert.match(source, /function renderAll\(\)\{configureTimeline\(\);renderGraph\(\);renderSummary\(\);renderEvents\(\);renderAdmin\(\);updateSuggestions\(\);cacheActiveVolume\(\);\}/);
+});
+
+test("a first-time explanation callout for chapter refs is shown once per browser and dismissed via its close button or by actually using the toggle", () => {
+  assert.match(source, /id="chapter-ref-hint"/);
+  assert.match(source, /CHAPTER_REF_HINT_SEEN_KEY/);
+  assert.match(source, /function dismissChapterRefHint\(\)\{const hint=\$\("#chapter-ref-hint"\);if\(hint\)hint\.hidden=true;localStorage\.setItem\(CHAPTER_REF_HINT_SEEN_KEY,"1"\);\}/);
+  assert.match(source, /if\(localStorage\.getItem\(CHAPTER_REF_HINT_SEEN_KEY\)!=="1"\)\{const hint=\$\("#chapter-ref-hint"\);if\(hint\)hint\.hidden=false;\}/);
+  assert.match(source, /function toggleChapterRefs\(\)\{[^}]*dismissChapterRefHint\(\);\}/);
+  assert.match(source, /\$\("#dismiss-chapter-ref-hint"\)\?\.addEventListener\("click"/);
+});
