@@ -290,7 +290,17 @@ th { color: var(--muted); font-weight: 600; }
 .event-type.event-corpse_appearance{background:#3a1820;color:#ff9ba3}
 .event-detail-list { display: grid; gap: 8px; margin-top: 10px; }.event-detail-list article{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding-top:8px;border-top:1px solid #202c40}.event-detail-list p{margin:0;color:#c2ccdb;font-size:12px;line-height:1.5}.event-detail-list small{display:block;margin-top:4px;color:#718096}
 .node { cursor: grab; transition: opacity .18s ease,filter .18s ease; touch-action: none; }.node-hit-target{fill:transparent;stroke:none;pointer-events:all}.node.dim { opacity: .055; filter: saturate(.1); }.node.selected { filter: drop-shadow(0 0 11px rgba(255,255,255,.48)); }.node.dragging { cursor: grabbing; filter: drop-shadow(0 0 9px rgba(255,255,255,.35)); }.edge { transition: opacity .18s ease; }.edge.dim { opacity: .035; }.edge.hidden { display: none; }
-.node-label { fill: var(--text); text-anchor: middle; font-size: 14px; font-weight: 600; pointer-events: painted; cursor: pointer; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+#graph { --label-size: 14px; }
+.node-label { fill: var(--text); text-anchor: middle; font-size: calc(var(--label-size) * var(--label-scale,1)); font-weight: 600; pointer-events: painted; cursor: pointer; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+/* Names sit in a layer above every shape, so nothing is ever drawn over a label, and the
+   declutter pass can drop individual names without touching the nodes they belong to. */
+.node-label-layer { pointer-events: none; }
+.node-labels { pointer-events: none; cursor: pointer; }
+.node-labels > * { pointer-events: painted; }
+.node-labels.label-culled { pointer-events: none; transition: opacity .16s ease; }
+/* Outranks the action/selection focus rules, which force opacity on every .node. */
+#graph .node-label-layer .node-labels.label-culled { opacity: 0 !important; }
+.node-labels.label-culled > * { pointer-events: none; }
 .org-shape { fill: var(--panel-2); stroke: var(--muted); stroke-width: 2; }
 .location-edge{fill:none;stroke:#22c7b8;stroke-width:3;opacity:.68}.location-edge.visited{stroke-dasharray:4 5}.residence-edge{fill:none;stroke:#55d6a7;stroke-width:2.5;stroke-dasharray:2 6;opacity:.8}.hierarchy-edge{fill:none;stroke:#f2c95e;stroke-width:2.5;stroke-dasharray:9 5;opacity:.75}.organization-location-edge{fill:none;stroke:#c084fc;stroke-width:3;stroke-dasharray:10 4 2 4;opacity:.7}
 /* Places are drawn as compact rounded tiles — clearly not a character circle, but the same
@@ -319,6 +329,15 @@ th { color: var(--muted); font-weight: 600; }
 .node.location-retracting.location-opened .location-shell{animation:location-dot-settle .42s ease both}
 @keyframes location-dot-settle{0%{transform:scale(1)}55%{transform:scale(.78)}100%{transform:scale(1)}}
 .location-region-label{fill:#9fe8df;font-size:11px;font-weight:750;letter-spacing:.02em;paint-order:stroke;stroke:#081018;stroke-width:5px;stroke-linejoin:round}
+/* Hover focus — the main way to read a dense graph. Sweeping the pointer over a node lifts it
+   and its links out of the web. A pinned selection outranks it, but the action spotlight does
+   not: hovering is a deliberate gesture, so it wins over the ambient dimming (hence the
+   #graph prefix, which outweighs the !important focus rules below). */
+#graph .graph-viewport.has-hover-focus:not(.has-selection-focus) .node:not(.hover-focus):not(.hover-neighbor):not(.label-culled){opacity:.12!important;filter:saturate(.12) brightness(.5)!important}
+#graph .graph-viewport.has-hover-focus:not(.has-selection-focus) .edge:not(.hover-connection){opacity:.04!important}
+#graph .graph-viewport.has-hover-focus:not(.has-selection-focus) .node.hover-neighbor{opacity:1!important;filter:brightness(.95) drop-shadow(0 0 6px rgba(148,205,255,.35))!important}
+#graph .graph-viewport.has-hover-focus:not(.has-selection-focus) .edge.hover-connection{opacity:.95!important}
+#graph .graph-viewport.has-hover-focus:not(.has-selection-focus) .node.hover-focus{opacity:1!important;filter:drop-shadow(0 0 13px rgba(255,255,255,.62))!important}
 .identity-edge{fill:none;stroke:#c084fc;stroke-width:2.75;stroke-dasharray:4 4;opacity:.82}
 .line-key.clone{border-top-color:#c084fc!important;border-top-style:dashed!important}
 .graph-viewport.has-action-focus .node:not(.event-active-node){opacity:1!important;filter:brightness(.34) saturate(.38)}
@@ -467,7 +486,7 @@ th { color: var(--muted); font-weight: 600; }
   #event-form .form-actions .button { width: 100%; }
   .event-batch li { grid-template-columns: auto minmax(0,1fr); }
   .event-batch .remove-draft { grid-column: 2; justify-self: start; }
-  .node-label { font-size: 21px; }
+  #graph { --label-size: 21px; }
   .profile-hero { min-height: 245px; padding: 25px 18px; align-items: end; }
   .hero-kicker { font-size: 9px; letter-spacing: .11em; }
   .hero-copy h1 { margin-top: 9px; font-size: 46px; }

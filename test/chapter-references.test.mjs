@@ -534,3 +534,72 @@ test("an action that names a place hidden inside a closed parent pops it out as 
   assert.match(styleSource, /@keyframes pod-emerge\{0%\{transform:translate\(var\(--pod-origin-x,0px\),var\(--pod-origin-y,0px\)\) scale\(\.02\);opacity:0\}/);
   assert.match(styleSource, /@keyframes pod-retract\{0%\{transform:translate\(0,0\) scale\(1\);opacity:1\}100%\{transform:translate\(var\(--pod-origin-x,0px\),var\(--pod-origin-y,0px\)\) scale\(\.02\);opacity:0\}\}/);
 });
+
+function pureSandbox(names) {
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext(names.map(name => functionBody(name)).join("\n"), ctx);
+  return expression => JSON.parse(vm.runInContext(`JSON.stringify(${expression})`, ctx));
+}
+
+test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const edgeLayer=svgEl\("g"\),nodeLayer=svgEl\("g"\),labelLayer=svgEl\("g",\{class:"node-label-layer"\}\),podLayer=svgEl\("g",\{class:"location-pod-layer"\}\);viewportGroup\.append\(edgeLayer,nodeLayer,labelLayer,podLayer\);/);
+  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,offset:labelY,kind:item\.kind,halfWidth:/);
+  assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
+  assert.match(styleSource, /\.node-label-layer \{ pointer-events: none; \}/);
+});
+
+test("shapes are pushed apart by their real radii, not just by inverse-square repulsion which let them settle on top of each other", () => {
+  const body = functionBody("stepPhysics");
+  assert.match(body, /const clearance=\(physics\.radii\.get\(ids\[i\]\)\|\|24\)\+\(physics\.radii\.get\(ids\[j\]\)\|\|24\)\+16;/);
+  assert.match(body, /if\(d<clearance\)\{const push=Math\.min\(6,\(clearance-d\)\*\.24\);/);
+  assert.match(functionBody("renderGraph"), /physics\.radii\.set\(item\.id,nodeRadius\);/);
+});
+
+test("label text keeps a readable size across the zoom range instead of ballooning when zoomed out", () => {
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext("var view={scale:1};\n" + functionBody("labelScale"), ctx);
+  const measure = scale => { ctx.view.scale = scale; return vm.runInContext("labelScale()", ctx); };
+  assert.equal(measure(1), 1);
+  assert.ok(measure(0.35) <= 1.25, "zoomed far out, text must not balloon over the graph");
+  assert.ok(measure(3) >= 0.8, "zoomed far in, text must not collapse");
+  assert.ok(measure(0.8) > measure(1.4), "text still grows as the view shrinks, within those bounds");
+});
+
+test("a crowded graph hands out only a few names; a small one keeps every name", () => {
+  const run = pureSandbox(["labelBudget"]);
+  assert.ok(run("labelBudget(7)") >= 7, "a seven-node graph labels everything");
+  assert.ok(run("labelBudget(20)") >= 20, "a twenty-node graph still labels everything");
+  assert.ok(run("labelBudget(67)") < 20, "a sixty-seven node graph labels only the highest-ranked few");
+  assert.equal(run("labelBudget(400)"), 9, "the budget bottoms out rather than reaching zero");
+  const body = functionBody("updateLabelVisibility");
+  assert.match(body, /pinned=classes\.contains\("selected"\)\|\|classes\.contains\("event-active-node"\)\|\|classes\.contains\("hover-focus"\)\|\|classes\.contains\("hover-neighbor"\)\|\|classes\.contains\("selected-neighbor"\)/);
+  assert.match(body, /let visible=item\.pinned\|\|\(!zoomedOut\|\|item\.rank>=3\)&&spent<budget;/, "selection, the current action and hover always keep their name");
+  assert.match(body, /visible=!placed\.some\(other=>Math\.abs\(other\.x-item\.x\)<other\.hw\+item\.hw&&Math\.abs\(other\.y-item\.y\)<other\.hh\+item\.hh\)/, "and a name that would land on one already placed is dropped");
+});
+
+test("a culled name is actually invisible — its rule outranks the action, selection and hover focus rules that force opacity onto every .node", () => {
+  assert.match(styleSource, /#graph \.node-label-layer \.node-labels\.label-culled \{ opacity: 0 !important; \}/);
+  assert.match(styleSource, /#graph \.graph-viewport\.has-hover-focus:not\(\.has-selection-focus\) \.node:not\(\.hover-focus\):not\(\.hover-neighbor\):not\(\.label-culled\)\{opacity:\.12!important/);
+});
+
+test("hovering a node lifts it and its links out of the web, and outranks the action spotlight but not a pinned selection", () => {
+  const body = functionBody("setHoverNode");
+  assert.match(body, /node\.classList\.toggle\("hover-focus",Boolean\(id\)&&node\.dataset\.id===id\)/);
+  assert.match(body, /edge\.classList\.toggle\("hover-connection",Boolean\(id\)&&\(edge\.dataset\.a===id\|\|edge\.dataset\.b===id\)\)/);
+  assert.match(body, /viewportGroup\?\.classList\.toggle\("has-hover-focus",Boolean\(id\)\);/);
+  assert.match(styleSource, /#graph \.graph-viewport\.has-hover-focus:not\(\.has-selection-focus\)/, "a pinned selection still wins");
+  assert.doesNotMatch(styleSource, /has-hover-focus:not\(\.has-selection-focus\):not\(\.has-action-focus\)/, "but the action spotlight must not suppress hover — it is on for almost every action");
+  assert.match(functionBody("renderGraph"), /group\.addEventListener\("pointerenter",\(\)=>setHoverNode\(item\.id\)\);/);
+});
+
+test("once the simulation settles the view fits the real layout, and any zoom or pan by the reader stops it moving under them", () => {
+  const body = functionBody("fitGraphToContent");
+  assert.match(body, /scale=Math\.max\(\.3,Math\.min\(1\.3,Math\.min\(\(720-padding\*2\)\/width,\(520-padding\*2\)\/height\)\)\)/);
+  assert.match(body, /view\.x=360-\(minX\+maxX\)\/2\*scale;view\.y=260-\(minY\+maxY\)\/2\*scale;/);
+  assert.match(functionBody("scheduleAutoFit"), /if\(!viewPinnedByUser&&!physics\.dragId\)fitGraphToContent\(\)/);
+  assert.match(source, /function zoomBy\(factor, atX = 360, atY = 260\) \{\n  viewPinnedByUser = true;/);
+  assert.match(source, /if\(!panStart\)return;viewPinnedByUser=true;/);
+});

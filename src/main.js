@@ -614,12 +614,13 @@ function createGradient(defs,id,history,chapter){
 // --- Flowy force-directed layout engine (Obsidian-style): positions persist across
 // renders and drift continuously under simple physics, so the graph never "snaps" —
 // it drags, settles, and re-flows smoothly whenever the underlying data changes.
-const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), edges: [], dragId: null };
+const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), edges: [], dragId: null };
 const view = { x: 0, y: 0, scale: 1 };
 let lastAutoFitSignature="";
 let viewportGroup = null;
 let dragMoved = false, dragOffset = { x: 0, y: 0 }, dragStartClient = { x: 0, y: 0 };
 let panStart = null;
+let autoFitTimers = [], viewPinnedByUser = false;
 
 function ensurePos(id, seedFn) {
   if (!physics.pos.has(id)) { const [x, y] = seedFn(); physics.pos.set(id, { x, y }); physics.vel.set(id, { x: 0, y: 0 }); }
@@ -637,6 +638,10 @@ function stepPhysics() {
       if (d2 < 9) { dx = (Math.random() - 0.5) * 3; dy = (Math.random() - 0.5) * 3; d2 = dx * dx + dy * dy || 1; }
       const d = Math.sqrt(d2), f = REPEL / d2, fx = dx / d * f, fy = dy / d * f;
       fa.x += fx; fa.y += fy; fb.x -= fx; fb.y -= fy;
+      // Hard separation: inverse-square repulsion alone still lets two shapes sit on top of
+      // each other once springs pull them together, which is what made the graph look tangled.
+      const clearance=(physics.radii.get(ids[i])||24)+(physics.radii.get(ids[j])||24)+16;
+      if(d<clearance){const push=Math.min(6,(clearance-d)*.24);fa.x+=dx/d*push;fa.y+=dy/d*push;fb.x-=dx/d*push;fb.y-=dy/d*push;}
       const ab=physics.bounds.get(ids[i]),bb=physics.bounds.get(ids[j]);
       if(ab&&bb){const labelDx=(a.x+ab.ox)-(b.x+bb.ox),labelDy=(a.y+ab.oy)-(b.y+bb.oy),overlapX=ab.hw+bb.hw+12-Math.abs(labelDx),overlapY=ab.hh+bb.hh+6-Math.abs(labelDy);if(overlapX>0&&overlapY>0){if(overlapX<overlapY){const direction=labelDx>=0?1:-1,push=Math.min(4,.08*overlapX);fa.x+=direction*push;fb.x-=direction*push;}else{const direction=labelDy>=0?1:-1,push=Math.min(4,.11*overlapY);fa.y+=direction*push;fb.y-=direction*push;}}}
     }
@@ -658,8 +663,13 @@ function stepPhysics() {
     p.x += v.x; p.y += v.y;
   });
 }
-let nodeEls = new Map(), edgeUpdaters = [];
-function applyViewTransform() { if (viewportGroup) viewportGroup.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.scale})`); }
+let nodeEls = new Map(), labelEls = new Map(), edgeUpdaters = [];
+let hoverId = null, labelCullFrame = 0;
+function applyViewTransform() { if (viewportGroup) viewportGroup.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.scale})`); graph.style.setProperty("--label-scale", labelScale().toFixed(3)); }
+function labelScale() { return Math.min(1.25, Math.max(.8, 1 / view.scale)); }
+// How many quiet nodes may keep a name. A handful of nodes keep all of them; a crowded graph
+// hands names to the few that rank highest and lets hover reveal the rest.
+function labelBudget(count) { return Math.max(9, Math.round(900 / Math.max(1, count))); }
 function toSvgPoint(clientX, clientY) {
   const pt = graph.createSVGPoint(); pt.x = clientX; pt.y = clientY;
   const ctm = graph.getScreenCTM(); if (!ctm) return { x: 0, y: 0 };
@@ -667,17 +677,35 @@ function toSvgPoint(clientX, clientY) {
 }
 function toContentPoint(clientX, clientY) { const u = toSvgPoint(clientX, clientY); return { x: (u.x - view.x) / view.scale, y: (u.y - view.y) / view.scale }; }
 function zoomBy(factor, atX = 360, atY = 260) {
+  viewPinnedByUser = true;
   const contentX = (atX - view.x) / view.scale, contentY = (atY - view.y) / view.scale;
   view.scale = Math.max(0.35, Math.min(3, view.scale * factor));
   view.x = atX - contentX * view.scale; view.y = atY - contentY * view.scale;
   applyViewTransform();
 }
-function fitGraphToCount(count,force=false){const signature=`${activeVolume}:${count}`;if(!force&&signature===lastAutoFitSignature)return;lastAutoFitSignature=signature;const scale=Math.max(.38,Math.min(1,Math.sqrt(18/Math.max(18,count))));view.scale=scale;view.x=360*(1-scale);view.y=260*(1-scale);applyViewTransform();}
+function fitGraphToCount(count,force=false){const signature=`${activeVolume}:${count}`;if(!force&&signature===lastAutoFitSignature)return;lastAutoFitSignature=signature;const scale=Math.max(.38,Math.min(1,Math.sqrt(18/Math.max(18,count))));view.scale=scale;view.x=360*(1-scale);view.y=260*(1-scale);applyViewTransform();viewPinnedByUser=false;scheduleAutoFit();}
+// The seeded scale above is a guess made before the simulation has run. Once the layout
+// settles, fit the real bounding box to the canvas so the graph fills the space instead of
+// huddling in the middle — and so a big graph zooms out far enough for the declutter to work.
+function scheduleAutoFit(){autoFitTimers.forEach(clearTimeout);autoFitTimers=[550,1500].map(delay=>setTimeout(()=>{if(!viewPinnedByUser&&!physics.dragId)fitGraphToContent();},delay));}
+function fitGraphToContent(){
+  const entries=[...physics.pos.entries()].filter(([id])=>nodeEls.has(id));
+  if(entries.length<2)return;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  entries.forEach(([id,point])=>{const reach=(physics.radii.get(id)||24)+10,label=labelEls.get(id),top=label?Math.min(0,label.offset)-15:0,bottom=label?Math.max(0,label.offset)+15:0;
+    minX=Math.min(minX,point.x-reach);maxX=Math.max(maxX,point.x+reach);minY=Math.min(minY,point.y-reach+top);maxY=Math.max(maxY,point.y+reach+bottom);});
+  const width=Math.max(1,maxX-minX),height=Math.max(1,maxY-minY),padding=54,
+    scale=Math.max(.3,Math.min(1.3,Math.min((720-padding*2)/width,(520-padding*2)/height)));
+  view.scale=scale;view.x=360-(minX+maxX)/2*scale;view.y=260-(minY+maxY)/2*scale;
+  applyViewTransform();updateLabelVisibility();
+}
 function tickGraph() {
   if (activeView === "graph" && physics.pos.size) {
     stepPhysics();
     nodeEls.forEach((el, id) => { const p = physics.pos.get(id); if (p) el.setAttribute("transform", `translate(${p.x.toFixed(2)},${p.y.toFixed(2)})`); });
+    labelEls.forEach((entry, id) => { const p = physics.pos.get(id); if (p) entry.group.setAttribute("transform", `translate(${p.x.toFixed(2)},${p.y.toFixed(2)})`); });
     edgeUpdaters.forEach(update => update());
+    if ((labelCullFrame = (labelCullFrame + 1) % 6) === 0) updateLabelVisibility();
   }
   requestAnimationFrame(tickGraph);
 }
@@ -707,10 +735,11 @@ function renderGraph() {
   locView.rendered.forEach(id=>{if(!locView.expanded.has(id))return;(locView.children.get(id)||[]).forEach(kid=>addSpring(kid,id,86+glyphRadius(kid),.14));});
   [...derived.relations.keys(),...derived.awareness.keys()].forEach(key=>{const [a,b]=key.split("|");addSpring(a,b,150,.02);});
   physics.edges=[...springs.values()];
-  nodeEls=new Map(); edgeUpdaters=[];
+  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null; physics.radii.clear();
+  physics.degree.clear();physics.edges.forEach(edge=>{physics.degree.set(edge.a,(physics.degree.get(edge.a)||0)+1);physics.degree.set(edge.b,(physics.degree.get(edge.b)||0)+1);});
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
-  const edgeLayer=svgEl("g"),nodeLayer=svgEl("g"),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,nodeLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
+  const edgeLayer=svgEl("g"),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,nodeLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
   const straightEdge=(a,b,className,dataA,dataB)=>{if(!a||!b||a===b)return null;const aPos=positions.get(a),bPos=positions.get(b);if(!aPos||!bPos)return null;const muted=locView.expanded.has(a)||locView.expanded.has(b),element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:`${className}${muted?" opened-location-edge":""}`,"data-a":dataA,"data-b":dataB});edgeLayer.appendChild(element);edgeUpdaters.push(()=>{const p1=positions.get(a),p2=positions.get(b);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);});return element;};
   const pairKeys=new Set([...derived.relations.keys(),...derived.awareness.keys()]);
   pairKeys.forEach((key,index)=>{const [aId,bId]=key.split("|"),aPos=positions.get(aId),bPos=positions.get(bId);if(!aPos||!bPos)return;const history=derived.relations.get(key)||[],met=derived.meetings.get(key),aware=derived.awareness.get(key),type=history.length?String(history.at(-1).value).toLowerCase():"neutral";let element;
@@ -734,17 +763,23 @@ function renderGraph() {
   derived.identityParents.forEach(link=>straightEdge(link.child,link.parent,`edge identity-edge${currentEvent?.type==="identity_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent));
   const activeIds=new Set(currentEvent?[currentEvent.source,currentEvent.target,currentEvent.location,...(currentEvent.characters||[])].filter(Boolean).map(resolveLocationId):[]);
   const retractingIds=collapsingLocationId?new Set([...renderedLocationSubtree(collapsingLocationId,locView)]):new Set();
-  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=item.kind==="location"&&locView.expanded.has(item.id),emerging=item.kind==="location"&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null;
+  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=item.kind==="location"&&locView.expanded.has(item.id),emerging=item.kind==="location"&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,nodeRadius=42;
     if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));
-    }else if(item.kind==="location"){const r=locationGlyphRadius(item.id,locView),childCount=(locView.children.get(item.id)||[]).length;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(38,r+16),class:"node-hit-target"}));
+    }else if(item.kind==="location"){const r=locationGlyphRadius(item.id,locView),childCount=(locView.children.get(item.id)||[]).length;nodeRadius=openedLocation?20:r+8;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(38,r+16),class:"node-hit-target"}));
       locationShell=svgEl("g",{class:"location-shell"});
       if(openedLocation){labelY=-26;locationShell.append(svgEl("circle",{cx:0,cy:0,r:17,class:"location-open-halo"}),svgEl("circle",{cx:0,cy:0,r:6.5,class:"location-open-dot"}));group.setAttribute("aria-label",`${shownName}, opened — ${childCount} place${childCount===1?"":"s"} shown, activate to close`);
       }else{labelY=-r-13;locationShell.append(svgEl("path",{d:roundedSquarePath(r,r*.42),class:"location-glyph"}),svgEl("path",{d:roundedSquarePath(r*.44,r*.22),class:"location-glyph-core"}));
         if(childCount){locationShell.append(svgEl("circle",{cx:r-1,cy:-r+1,r:9.5,class:"location-child-badge"}));const badge=svgEl("text",{x:r-1,y:-r+4.4,class:"location-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);group.setAttribute("aria-label",`${shownName}, contains ${childCount} place${childCount===1?"":"s"}`);}
       }
-      const tier=svgEl("text",{x:0,y:labelY-12,class:"location-tier-label"});tier.textContent=String(item.locationType||"Place").toUpperCase();locationShell.appendChild(tier);group.appendChild(locationShell);
-    }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));if(!appeared){group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:"ghost-ring"}),svgEl("circle",{cx:0,cy:0,r,class:`ghost-core ${state.gender==="female"?"core-female":"core-male"}`}));}else{const lifeClass=state.status==="dead"?"life-dead":state.status==="alive"?"life-alive":"life-unknown";group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:lifeClass}),svgEl("circle",{cx:0,cy:0,r,class:state.gender==="female"?"core-female":"core-male"}));if(cultivationReveal)group.appendChild(svgEl("circle",{cx:0,cy:0,r:r+11,class:"cultivation-reveal-pulse"}));const segmentAngle=360/CULTIVATION_LEVELS.length;for(let seg=0;seg<CULTIVATION_LEVELS.length;seg++){const start=-88+seg*segmentAngle,isOn=state.level>seg,wasOn=priorCultivationLevel>seg,isChanged=cultivationReveal&&isOn!==wasOn,isGain=isChanged&&isOn;group.appendChild(svgEl("path",{d:arcPath(0,0,r+(isChanged?21:15),start,start+segmentAngle*.76),class:`${isOn?"corona-on":"corona-off"}${isChanged?` cultivation-change-segment ${isGain?"cultivation-gain":"cultivation-loss"}`:""}`,...(isChanged?{pathLength:1,style:`--cultivation-delay:${Math.abs(seg-priorCultivationLevel)*55}ms`}:{})}));}if(cultivationReveal){const before=priorCultivationLevel?(priorCultivationState?.realm||priorCultivationState?.canonicalRealm||CULTIVATION_LEVELS[priorCultivationLevel-1]):"Unrevealed",after=state.realm||state.canonicalRealm,changeLabel=svgEl("text",{x:0,y:-r-35,class:"cultivation-change-label"});changeLabel.textContent=currentEvent.initial===true&&!priorCultivationLevel?`Cultivation revealed: ${after}`:before===after?after:`${before} → ${after}`;group.appendChild(changeLabel);}const gems=Math.min(7,state.aliases.length),gemR=r+27;for(let i=0;i<gems;i++){const angle=Math.PI+(i+1)*Math.PI/(gems+1);group.appendChild(svgEl("polygon",{points:diamondPoints(Math.cos(angle)*gemR,Math.sin(angle)*gemR,4),class:"alias-gem"}));}}}
-    const label=svgEl("text",{x:0,y:labelY,class:`node-label${item.kind==="location"?" location-region-label":""}`});label.textContent=shownName;(locationShell||group).appendChild(label);if(mentionedOnly){const stateLabel=svgEl("text",{x:0,y:39,class:"node-state-label"});stateLabel.textContent="MENTIONED";group.appendChild(stateLabel);}
+      group.appendChild(locationShell);
+    }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;nodeRadius=r+(appeared?17:9);group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));if(!appeared){group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:"ghost-ring"}),svgEl("circle",{cx:0,cy:0,r,class:`ghost-core ${state.gender==="female"?"core-female":"core-male"}`}));}else{const lifeClass=state.status==="dead"?"life-dead":state.status==="alive"?"life-alive":"life-unknown";group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:lifeClass}),svgEl("circle",{cx:0,cy:0,r,class:state.gender==="female"?"core-female":"core-male"}));if(cultivationReveal)group.appendChild(svgEl("circle",{cx:0,cy:0,r:r+11,class:"cultivation-reveal-pulse"}));const segmentAngle=360/CULTIVATION_LEVELS.length;for(let seg=0;seg<CULTIVATION_LEVELS.length;seg++){const start=-88+seg*segmentAngle,isOn=state.level>seg,wasOn=priorCultivationLevel>seg,isChanged=cultivationReveal&&isOn!==wasOn,isGain=isChanged&&isOn;group.appendChild(svgEl("path",{d:arcPath(0,0,r+(isChanged?21:15),start,start+segmentAngle*.76),class:`${isOn?"corona-on":"corona-off"}${isChanged?` cultivation-change-segment ${isGain?"cultivation-gain":"cultivation-loss"}`:""}`,...(isChanged?{pathLength:1,style:`--cultivation-delay:${Math.abs(seg-priorCultivationLevel)*55}ms`}:{})}));}if(cultivationReveal){const before=priorCultivationLevel?(priorCultivationState?.realm||priorCultivationState?.canonicalRealm||CULTIVATION_LEVELS[priorCultivationLevel-1]):"Unrevealed",after=state.realm||state.canonicalRealm,changeLabel=svgEl("text",{x:0,y:-r-35,class:"cultivation-change-label"});changeLabel.textContent=currentEvent.initial===true&&!priorCultivationLevel?`Cultivation revealed: ${after}`:before===after?after:`${before} → ${after}`;group.appendChild(changeLabel);}const gems=Math.min(7,state.aliases.length),gemR=r+27;for(let i=0;i<gems;i++){const angle=Math.PI+(i+1)*Math.PI/(gems+1);group.appendChild(svgEl("polygon",{points:diamondPoints(Math.cos(angle)*gemR,Math.sin(angle)*gemR,4),class:"alias-gem"}));}}}
+    physics.radii.set(item.id,nodeRadius);
+    // Labels live in their own layer above every shape, so a node can never be drawn over
+    // another node's name, and so they can be culled independently when the graph gets dense.
+    const labelGroup=svgEl("g",{class:`${group.getAttribute("class")} node-labels`,"data-id":item.id}),label=svgEl("text",{x:0,y:labelY,class:`node-label${item.kind==="location"?" location-region-label":""}`});label.textContent=shownName;labelGroup.appendChild(label);
+    if(item.kind==="location"){const tier=svgEl("text",{x:0,y:labelY-13,class:"location-tier-label"});tier.textContent=String(item.locationType||"Place").toUpperCase();labelGroup.appendChild(tier);}
+    if(mentionedOnly){const stateLabel=svgEl("text",{x:0,y:39,class:"node-state-label"});stateLabel.textContent="MENTIONED";labelGroup.appendChild(stateLabel);}
+    labelLayer.appendChild(labelGroup);labelEls.set(item.id,{group:labelGroup,offset:labelY,kind:item.kind,halfWidth:Math.min(150,Math.max(28,String(shownName).length*4.2))});
     group.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;event.stopPropagation();physics.dragId=item.id;dragMoved=false;dragStartClient={x:event.clientX,y:event.clientY};const c=toContentPoint(event.clientX,event.clientY),p=positions.get(item.id);dragOffset={x:p.x-c.x,y:p.y-c.y};physics.vel.set(item.id,{x:0,y:0});group.classList.add("dragging");group.setPointerCapture(event.pointerId);});
     group.addEventListener("pointermove",event=>{if(physics.dragId!==item.id)return;const c=toContentPoint(event.clientX,event.clientY),p=positions.get(item.id);p.x=c.x+dragOffset.x;p.y=c.y+dragOffset.y;if(!dragMoved&&Math.hypot(event.clientX-dragStartClient.x,event.clientY-dragStartClient.y)>4)dragMoved=true;});
     const selectNode=()=>{cancelChapterSequence();if(item.kind==="location"){activateLocation(item.id);return;}locationPovId=null;selectedId=selectedId===item.id?null:item.id;setMobilePanel("info");renderAll();};
@@ -753,10 +788,17 @@ function renderGraph() {
     group.addEventListener("dblclick",event=>{event.stopPropagation();const p=physics.pos.get(item.id);if(p?.pinned){p.pinned=false;toast(`${item.name} released back into the layout`);}});
     group.addEventListener("keydown",event=>{if(event.key!=="Enter"&&event.key!==" ")return;event.preventDefault();selectNode();});
     group.addEventListener("dblclick",()=>openProfile(item.id));
+    group.addEventListener("pointerenter",()=>setHoverNode(item.id));
+    group.addEventListener("pointerleave",()=>setHoverNode(null));
+    labelGroup.addEventListener("pointerup",event=>{if(physics.dragId)return;event.stopPropagation();selectNode();});
+    labelGroup.addEventListener("dblclick",event=>{event.stopPropagation();openProfile(item.id);});
+    labelGroup.addEventListener("pointerenter",()=>setHoverNode(item.id));
+    labelGroup.addEventListener("pointerleave",()=>setHoverNode(null));
     nodeLayer.appendChild(group);nodeEls.set(item.id,group);
   });
   renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius);
   applyGraphFocus(derived);
+  updateLabelVisibility();
 }
 
 // A location that is folded away inside a collapsed parent still deserves a moment on
@@ -831,6 +873,44 @@ function revealLocationPath(id){
   selectedId=id;locationPovId=null;setMobilePanel("info");renderAll();
 }
 
+// Obsidian-style hover focus: sweeping the pointer over a node lifts it and its links out of
+// the web without changing what is selected. A real selection or an action focus outranks it.
+function setHoverNode(id){
+  if(hoverId===id)return;hoverId=id;
+  const neighbors=new Set(id?[id]:[]);
+  if(id)document.querySelectorAll("#graph .edge").forEach(edge=>{if(edge.dataset.a===id||edge.dataset.b===id){neighbors.add(edge.dataset.a);neighbors.add(edge.dataset.b);}});
+  document.querySelectorAll("#graph .node").forEach(node=>{node.classList.toggle("hover-focus",Boolean(id)&&node.dataset.id===id);node.classList.toggle("hover-neighbor",Boolean(id)&&node.dataset.id!==id&&neighbors.has(node.dataset.id));});
+  document.querySelectorAll("#graph .edge").forEach(edge=>edge.classList.toggle("hover-connection",Boolean(id)&&(edge.dataset.a===id||edge.dataset.b===id)));
+  viewportGroup?.classList.toggle("has-hover-focus",Boolean(id));
+  updateLabelVisibility();
+}
+// Declutter pass. Labels are ranked (selection and the current action first, then structural
+// nodes, then how many links a node carries) and laid out greedily in screen space; a label
+// that would land on one already placed is dropped rather than overprinted. Zooming out also
+// drops the quiet ones outright, which is what keeps a dense graph readable.
+function updateLabelVisibility(){
+  if(!labelEls.size)return;
+  const scale=view.scale,textScale=labelScale(),zoomedOut=scale<.55,entries=[];
+  labelEls.forEach((entry,id)=>{
+    const point=physics.pos.get(id);if(!point)return;
+    const classes=entry.group.classList,
+      pinned=classes.contains("selected")||classes.contains("event-active-node")||classes.contains("hover-focus")||classes.contains("hover-neighbor")||classes.contains("selected-neighbor");
+    let rank=pinned?6:entry.kind==="character"?1:3;
+    rank+=Math.min(2,(physics.degree.get(id)||0)*.4);
+    entries.push({entry,id,rank,pinned,x:point.x*scale+view.x,y:(point.y+entry.offset)*scale+view.y,hw:entry.halfWidth*textScale*scale+3,hh:9*textScale*scale+3});
+  });
+  entries.sort((a,b)=>b.rank-a.rank||a.id.localeCompare(b.id));
+  // On a big graph, naming every node is what makes it unreadable, so quiet nodes give up
+  // their label and earn it back on hover or selection. Small graphs keep every name.
+  const budget=labelBudget(entries.length),placed=[];
+  let spent=0;
+  entries.forEach(item=>{
+    let visible=item.pinned||(!zoomedOut||item.rank>=3)&&spent<budget;
+    if(visible&&!item.pinned)visible=!placed.some(other=>Math.abs(other.x-item.x)<other.hw+item.hw&&Math.abs(other.y-item.y)<other.hh+item.hh);
+    item.entry.group.classList.toggle("label-culled",!visible);
+    if(visible){placed.push(item);if(!item.pinned)spent++;}
+  });
+}
 function applyGraphFocus(derived){if(!selectedId)return;const chosen=entity(selectedId),connected=new Set([selectedId]);document.querySelectorAll("#graph .edge").forEach(edge=>{const match=edge.dataset.a===selectedId||edge.dataset.b===selectedId;if(match){connected.add(edge.dataset.a);connected.add(edge.dataset.b);edge.classList.add("selected-connection");}else edge.classList.add("dim");});document.querySelectorAll("#graph .node").forEach(node=>{if(node.dataset.id===selectedId)node.classList.add("selected");else if(connected.has(node.dataset.id))node.classList.add("selected-neighbor");else node.classList.add("dim");});if(chosen?.kind==="organization"||chosen?.kind==="location")document.querySelectorAll("#graph .relation-edge").forEach(edge=>edge.classList.add("hidden"));}
 
 function summaryPills(items,limit=3){if(!items.length)return "";return `<div class="summary-pills">${items.slice(0,limit).map(item=>{const record=typeof item==="string"?{label:item}:item,label=record.label||item,url=record.id?entityWikiUrl(record.id):"";return url?`<a class="${escapeHtml(record.tone||"")}" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}<i aria-hidden="true">↗</i></a>`:`<span class="${escapeHtml(record.tone||"")}">${escapeHtml(label)}</span>`;}).join("")}${items.length>limit?`<span class="more">+${items.length-limit}</span>`:""}</div>`;}
@@ -1187,9 +1267,9 @@ document.addEventListener("click",event=>{if(!document.body.classList.contains("
 document.addEventListener("keydown",event=>{if(event.key==="Alt"&&!event.repeat){event.preventDefault();toggleChapterRefs();}});
 graph.addEventListener("wheel",event=>{event.preventDefault();const {x:ux,y:uy}=toSvgPoint(event.clientX,event.clientY);zoomBy(event.deltaY>0?0.9:1.11,ux,uy);},{passive:false});
 graph.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;const p=toSvgPoint(event.clientX,event.clientY);panStart={ux:p.x,uy:p.y,viewX:view.x,viewY:view.y};graph.setPointerCapture(event.pointerId);});
-graph.addEventListener("pointermove",event=>{if(!panStart)return;const p=toSvgPoint(event.clientX,event.clientY);view.x=panStart.viewX+(p.x-panStart.ux);view.y=panStart.viewY+(p.y-panStart.uy);applyViewTransform();});
+graph.addEventListener("pointermove",event=>{if(!panStart)return;viewPinnedByUser=true;const p=toSvgPoint(event.clientX,event.clientY);view.x=panStart.viewX+(p.x-panStart.ux);view.y=panStart.viewY+(p.y-panStart.uy);applyViewTransform();});
 const endPan=()=>{panStart=null;};graph.addEventListener("pointerup",endPan);graph.addEventListener("pointercancel",endPan);
-$("#zoom-in").onclick=()=>zoomBy(1.25);$("#zoom-out").onclick=()=>zoomBy(1/1.25);$("#zoom-reset").onclick=()=>fitGraphToCount(nodeEls.size,true);
+$("#zoom-in").onclick=()=>zoomBy(1.25);$("#zoom-out").onclick=()=>zoomBy(1/1.25);$("#zoom-reset").onclick=()=>{viewPinnedByUser=false;fitGraphToContent();};
 requestAnimationFrame(tickGraph);
 
 function setApplicationVisible(visible){document.querySelector(".app > header").hidden=!visible;document.querySelector(".app > main").hidden=!visible;const login=$("#admin-login");if(login)login.hidden=visible;}
