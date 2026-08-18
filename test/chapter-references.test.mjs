@@ -410,3 +410,15 @@ test("dragging a node pins it so the physics simulation stops pulling it back, a
   assert.match(body, /group\.addEventListener\("dblclick",event=>\{event\.stopPropagation\(\);const p=physics\.pos\.get\(item\.id\);if\(p\?\.pinned\)\{p\.pinned=false;/);
   assert.match(source, /if \(id === physics\.dragId \|\| physics\.pos\.get\(id\)\?\.pinned\) return;/);
 });
+
+test("the exclusion force is gentle and proportional (like the existing containment force), not a large fixed-magnitude shove — the earlier version threw unrelated nodes off-screen", () => {
+  assert.match(source, /const overflow=1-norm,f=force\.get\(id\);if\(!f\)return;if\(dx\|\|dy\)\{f\.x\+=dx\*overflow\*\.14;f\.y\+=dy\*overflow\*\.14;\}/);
+  assert.doesNotMatch(source, /const push=\(1-norm\)\*9\+2/, "the old large fixed-magnitude push must be gone");
+});
+
+test("nested location ellipses are appended in size order (largest first, smallest last/on top) so a small nested location's hit-target is never swallowed by a larger ancestor's fill rendered after it", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const locationAppendQueue=\[\];/);
+  assert.match(body, /\(item\.kind==="location"\?locationAppendQueue\.push\(\{item,group\}\):nodeLayer\.appendChild\(group\)\);/);
+  assert.match(body, /locationAppendQueue\.sort\(\(a,b\)=>\{const ma=locationMetrics\(a\.item\.id\),mb=locationMetrics\(b\.item\.id\);return \(mb\.rx\*mb\.ry\)-\(ma\.rx\*ma\.ry\);\}\)\.forEach\(\(\{group\}\)=>regionLayer\.appendChild\(group\)\);/);
+});

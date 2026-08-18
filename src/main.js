@@ -604,7 +604,7 @@ function stepPhysics() {
     if (fa) { fa.x += fx; fa.y += fy; } if (fb) { fb.x -= fx; fb.y -= fy; }
   });
   physics.containments.forEach(rule=>{const member=physics.pos.get(rule.member),location=physics.pos.get(rule.location);if(!member||!location)return;const dx=member.x-location.x,dy=member.y-location.y,norm=Math.hypot(dx/Math.max(1,rule.rx*.72),dy/Math.max(1,rule.ry*.72));if(norm<=1)return;const overflow=norm-1,fx=-dx*overflow*.075,fy=-dy*overflow*.075,fm=force.get(rule.member),fl=force.get(rule.location);if(fm){fm.x+=fx;fm.y+=fy;}if(fl){fl.x-=fx*.08;fl.y-=fy*.08;}});
-  physics.exclusions.forEach(rule=>{const location=physics.pos.get(rule.location);if(!location)return;ids.forEach(id=>{if(id===rule.location||rule.members.has(id))return;const node=physics.pos.get(id);if(!node)return;const dx=node.x-location.x,dy=node.y-location.y,norm=Math.hypot(dx/Math.max(1,rule.rx*.88),dy/Math.max(1,rule.ry*.88));if(norm>=1)return;const push=(1-norm)*9+2,angle=(dx||dy)?Math.atan2(dy,dx):Math.random()*Math.PI*2,f=force.get(id);if(f){f.x+=Math.cos(angle)*push;f.y+=Math.sin(angle)*push;}});});
+  physics.exclusions.forEach(rule=>{const location=physics.pos.get(rule.location);if(!location)return;ids.forEach(id=>{if(id===rule.location||rule.members.has(id))return;const node=physics.pos.get(id);if(!node)return;const dx=node.x-location.x,dy=node.y-location.y,norm=Math.hypot(dx/Math.max(1,rule.rx*.88),dy/Math.max(1,rule.ry*.88));if(norm>=1)return;const overflow=1-norm,f=force.get(id);if(!f)return;if(dx||dy){f.x+=dx*overflow*.14;f.y+=dy*overflow*.14;}else{f.x+=(Math.random()-.5)*3;f.y+=(Math.random()-.5)*3;}});});
   const DAMP = 0.82, MAXV = 13;
   ids.forEach(id => {
     if (id === physics.dragId || physics.pos.get(id)?.pinned) return;
@@ -681,6 +681,7 @@ function renderGraph() {
   derived.locations.forEach((visit,character)=>straightEdge(character,visit.location,`edge location-edge${currentEvent?.type==="movement"&&currentEvent.source===character&&currentEvent.location===visit.location?" newly-revealed-edge":""}`,character,visit.location));
   derived.identityParents.forEach(link=>straightEdge(link.child,link.parent,`edge identity-edge${currentEvent?.type==="identity_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent));
   const activeIds=new Set(currentEvent?[currentEvent.source,currentEvent.target,currentEvent.location,...(currentEvent.characters||[])].filter(Boolean):[]);
+  const locationAppendQueue=[];
   visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),group=svgEl("g",{class:`node ${item.kind}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58;
     if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));
     }else if(item.kind==="location"){const {rx,ry}=locationMetrics(item.id);labelY=-ry-10;group.append(svgEl("ellipse",{cx:0,cy:0,rx,ry,class:"location-region"}),svgEl("circle",{cx:0,cy:0,r:24,class:"node-hit-target location-hit-target"}),svgEl("circle",{cx:0,cy:0,r:4,class:"location-region-core"}));
@@ -694,8 +695,9 @@ function renderGraph() {
     group.addEventListener("dblclick",event=>{event.stopPropagation();const p=physics.pos.get(item.id);if(p?.pinned){p.pinned=false;toast(`${item.name} released back into the layout`);}});
     group.addEventListener("keydown",event=>{if(event.key!=="Enter"&&event.key!==" ")return;event.preventDefault();selectNode();});
     group.addEventListener("dblclick",()=>openProfile(item.id));
-    (item.kind==="location"?regionLayer:nodeLayer).appendChild(group);nodeEls.set(item.id,group);
+    (item.kind==="location"?locationAppendQueue.push({item,group}):nodeLayer.appendChild(group));nodeEls.set(item.id,group);
   });
+  locationAppendQueue.sort((a,b)=>{const ma=locationMetrics(a.item.id),mb=locationMetrics(b.item.id);return (mb.rx*mb.ry)-(ma.rx*ma.ry);}).forEach(({group})=>regionLayer.appendChild(group));
   applyGraphFocus(derived);
 }
 
