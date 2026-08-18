@@ -162,7 +162,7 @@ app.innerHTML = `
             <div class="field timeline-field"><span class="chapter-label"><span>Chapter <strong id="chapter-value">80</strong></span><span id="event-position"></span><button type="button" id="collapse-chapter-events" class="collapse-chapter-events" hidden>Collapse events ×</button></span><div class="range-row"><button class="step" id="previous" aria-label="Previous stop">−</button><div class="main-range-wrap"><input id="timeline" type="range"><div id="timeline-marks" class="main-timeline-marks"></div></div><button class="step" id="next" aria-label="Next stop">+</button></div></div>
           </div>
           <div class="graph-layout" id="graph-layout">
-            <div class="graph-card"><svg id="graph" viewBox="0 0 720 520" role="img" aria-label="Chapter-aware novel relationship graph"></svg><div id="slider-onboarding" class="slider-onboarding" hidden><span class="slider-pointer" aria-hidden="true">↑</span><strong>Use the slider</strong></div><div class="graph-zoom-controls"><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-reset" aria-label="Reset view">⟲</button><button type="button" id="zoom-out" aria-label="Zoom out">−</button></div></div>
+            <div class="graph-card"><svg id="graph" viewBox="0 0 720 520" role="img" aria-label="Chapter-aware novel relationship graph"></svg><div id="edge-tip" class="edge-tip" role="status" hidden></div><div id="slider-onboarding" class="slider-onboarding" hidden><span class="slider-pointer" aria-hidden="true">↑</span><strong>Use the slider</strong></div><div class="graph-zoom-controls"><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-reset" aria-label="Reset view">⟲</button><button type="button" id="zoom-out" aria-label="Zoom out">−</button></div></div>
             <aside class="side">
               <div class="mobile-panel-tabs" role="tablist" aria-label="Graph information">
                 <button class="mobile-panel-tab active" data-panel="info" role="tab">Info</button>
@@ -263,6 +263,12 @@ app.innerHTML = `
             </div>
           </form>
           <section class="admin-card data-card"><div class="summary-title"><div><h2>All identities</h2><small>Characters, organizations, and locations exist independently from their events.</small></div><span class="chip" id="entity-count"></span></div><div class="table-wrap entity-data-table"><table><thead><tr><th>Name</th><th>Type</th><th>Introduced</th><th>Events</th><th></th></tr></thead><tbody id="entity-table"></tbody></table></div></section>
+          <section class="admin-card data-card" id="order-card"><div class="summary-title"><div><h2>Chapter running order</h2><small>Order only matters inside a chapter, so this edits one chapter at a time — a thousand more chapters do not make this list longer.</small></div><span class="chip" id="order-count"></span></div>
+            <div class="order-controls"><button type="button" class="button ghost" id="order-prev">◀ Earlier chapter</button><label class="field"><span>Chapter</span><input id="order-chapter" type="number" min="1" inputmode="numeric" /></label><button type="button" class="button ghost" id="order-next">Later chapter ▶</button></div>
+            <p class="order-position" id="order-position"></p>
+            <ol class="order-list" id="order-list"></ol>
+            <p class="order-hint">Drag a row by its handle, or use the arrows. The slider plays a chapter's actions in exactly this order.</p>
+          </section>
           <section class="admin-card data-card"><div class="summary-title"><h2>All chapter events</h2><span class="chip" id="data-count"></span></div><div class="table-wrap event-data-table"><table><thead><tr><th>Chapter</th><th>Type</th><th>Entities</th><th>Description</th><th></th></tr></thead><tbody id="event-table"></tbody></table></div></section>
         </div>
       </section>
@@ -493,6 +499,14 @@ function buildLocationView(derived,visibleIds){
 }
 function renderedLocationSubtree(id,view){const result=[],stack=[...(view.children.get(id)||[])];while(stack.length){const current=stack.pop();if(!view.rendered.has(current))continue;result.push(current);(view.children.get(current)||[]).forEach(kid=>stack.push(kid));}return result;}
 function locationGlyphRadius(id,view){const base=LOCATION_TIER_RADIUS[entity(id)?.locationType]||LOCATION_TIER_RADIUS.Other;return Math.max(17,base-(view.depth.get(id)||0)*2);}
+// One definition of how much room a node takes, so the layout can reserve space for a node
+// before it is drawn. Mirrors the shapes built in renderGraph.
+function nodeRadiusFor(item,state,view,chapter){
+  if(item.kind==="organization")return 42;
+  if(item.kind==="location")return view.expanded.has(item.id)?20:locationGlyphRadius(item.id,view)+8;
+  const appeared=state?.appeared!==null&&state?.appeared<=chapter;
+  return appeared?radius(state)+17:29;
+}
 
 function derive(chapter,eventSubset=null) {
   const states = new Map();
@@ -540,8 +554,8 @@ function derive(chapter,eventSubset=null) {
     }
     if (event.type === "awareness" && source && states.has(event.target)) {
       const key = pairKey(event.source,event.target);
-      if (!awareness.has(key)) awareness.set(key,{a:key.split("|")[0],b:key.split("|")[1],aToB:false,bToA:false});
-      const pair = awareness.get(key); if (event.source === pair.a) pair.aToB = true; else pair.bToA = true;
+      if (!awareness.has(key)) awareness.set(key,{a:key.split("|")[0],b:key.split("|")[1],aToB:false,bToA:false,from:event.chapter});
+      const pair = awareness.get(key); pair.from = event.chapter; if (event.source === pair.a) pair.aToB = true; else pair.bToA = true;
     }
     if (event.type === "meeting" && source && states.has(event.target)) meetings.set(pairKey(event.source,event.target),event);
     if (event.type === "relationship" && source && states.has(event.target)) {
@@ -614,14 +628,17 @@ function createGradient(defs,id,history,chapter){
 // --- Flowy force-directed layout engine (Obsidian-style): positions persist across
 // renders and drift continuously under simple physics, so the graph never "snaps" —
 // it drags, settles, and re-flows smoothly whenever the underlying data changes.
-const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), edges: [], dragId: null };
+const SEPARATION_GAP = 22;
+const POD_TRAVEL_MS = 520;
+const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), podPos: new Map(), edges: [], dragId: null };
 const view = { x: 0, y: 0, scale: 1 };
 let lastAutoFitSignature="";
 let viewportGroup = null;
 let dragMoved = false, dragOffset = { x: 0, y: 0 }, dragStartClient = { x: 0, y: 0 };
 let panStart = null;
-let autoFitTimers = [], viewPinnedByUser = false;
+let autoFitTimers = [], viewPinnedByUser = false, viewTween = null;
 
+function pointFor(id){return physics.pos.get(id)||physics.podPos.get(id)||null;}
 function ensurePos(id, seedFn) {
   if (!physics.pos.has(id)) { const [x, y] = seedFn(); physics.pos.set(id, { x, y }); physics.vel.set(id, { x: 0, y: 0 }); }
   return physics.pos.get(id);
@@ -637,8 +654,8 @@ function stepPhysics() {
     const dx=(labelPos.x+labelBox.ox)-shapePos.x,dy=(labelPos.y+labelBox.oy)-shapePos.y,
       overlapX=labelBox.hw+shapeRadius+14-Math.abs(dx),overlapY=labelBox.hh+shapeRadius+12-Math.abs(dy);
     if(overlapX<=0||overlapY<=0)return;
-    if(overlapX<overlapY){const direction=dx>=0?1:-1,push=Math.min(3.5,Math.max(.7,.055*overlapX));labelForce.x+=direction*push;shapeForce.x-=direction*push;}
-    else{const direction=dy>=0?1:-1,push=Math.min(3.5,Math.max(.7,.075*overlapY));labelForce.y+=direction*push;shapeForce.y-=direction*push;}
+    if(overlapX<overlapY){const direction=dx>=0?1:-1,push=Math.min(3.5,.085*overlapX);labelForce.x+=direction*push;shapeForce.x-=direction*push;}
+    else{const direction=dy>=0?1:-1,push=Math.min(3.5,.11*overlapY);labelForce.y+=direction*push;shapeForce.y-=direction*push;}
   };
   for (let i = 0; i < ids.length; i++) {
     const a = physics.pos.get(ids[i]), fa = force.get(ids[i]);
@@ -650,10 +667,10 @@ function stepPhysics() {
       fa.x += fx; fa.y += fy; fb.x -= fx; fb.y -= fy;
       // Hard separation: inverse-square repulsion alone still lets two shapes sit on top of
       // each other once springs pull them together, which is what made the graph look tangled.
-      const ra=physics.radii.get(ids[i])||24,rb=physics.radii.get(ids[j])||24,clearance=ra+rb+22;
+      const ra=physics.radii.get(ids[i])||24,rb=physics.radii.get(ids[j])||24,clearance=ra+rb+SEPARATION_GAP;
       if(d<clearance){const push=Math.min(6,(clearance-d)*.24);fa.x+=dx/d*push;fa.y+=dy/d*push;fb.x-=dx/d*push;fb.y-=dy/d*push;}
       const ab=physics.bounds.get(ids[i]),bb=physics.bounds.get(ids[j]);
-      if(ab&&bb){const labelDx=(a.x+ab.ox)-(b.x+bb.ox),labelDy=(a.y+ab.oy)-(b.y+bb.oy),overlapX=ab.hw+bb.hw+16-Math.abs(labelDx),overlapY=ab.hh+bb.hh+10-Math.abs(labelDy);if(overlapX>0&&overlapY>0){const opposed=(a.y-b.y)*labelDy<0;if(opposed||overlapX<overlapY){const direction=labelDx>=0?1:-1,push=Math.min(5,Math.max(.9,.11*overlapX));fa.x+=direction*push;fb.x-=direction*push;}else{const direction=labelDy>=0?1:-1,push=Math.min(5,Math.max(.9,.15*overlapY));fa.y+=direction*push;fb.y-=direction*push;}}}
+      if(ab&&bb){const labelDx=(a.x+ab.ox)-(b.x+bb.ox),labelDy=(a.y+ab.oy)-(b.y+bb.oy),overlapX=ab.hw+bb.hw+16-Math.abs(labelDx),overlapY=ab.hh+bb.hh+10-Math.abs(labelDy);if(overlapX>0&&overlapY>0){const opposed=(a.y-b.y)*labelDy<0;if(opposed||overlapX<overlapY){const direction=labelDx>=0?1:-1,push=Math.min(5,.14*overlapX);fa.x+=direction*push;fb.x-=direction*push;}else{const direction=labelDy>=0?1:-1,push=Math.min(5,.18*overlapY);fa.y+=direction*push;fb.y-=direction*push;}}}
       clearLabelOfShape(a,ab,b,rb,fa,fb);clearLabelOfShape(b,bb,a,ra,fb,fa);
     }
     fa.x += (cx - a.x) * CENTER; fa.y += (cy - a.y) * CENTER;
@@ -665,18 +682,33 @@ function stepPhysics() {
     const fa = force.get(edge.a), fb = force.get(edge.b);
     if (fa) { fa.x += fx; fa.y += fy; } if (fb) { fb.x -= fx; fb.y -= fy; }
   });
-  const DAMP = 0.82, MAXV = 13;
+  const DAMP = 0.82, MAXV = 13, REST_SPEED = 0.12;
   ids.forEach(id => {
     if (id === physics.dragId || physics.pos.get(id)?.pinned) return;
     const v = physics.vel.get(id), f = force.get(id), p = physics.pos.get(id);
     v.x = Math.max(-MAXV, Math.min(MAXV, (v.x + f.x) * DAMP));
     v.y = Math.max(-MAXV, Math.min(MAXV, (v.y + f.y) * DAMP));
+    if (Math.abs(v.x) < REST_SPEED && Math.abs(v.y) < REST_SPEED) { v.x = 0; v.y = 0; return; }
     p.x += v.x; p.y += v.y;
   });
 }
 let nodeEls = new Map(), labelEls = new Map(), edgeUpdaters = [];
 let hoverId = null, labelCullFrame = 0;
 function applyViewTransform() { if (viewportGroup) viewportGroup.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.scale})`); graph.style.setProperty("--label-scale", labelScale().toFixed(3)); }
+// The fit used to jump straight to its new framing, which read as the graph lurching. Ease
+// into it instead, and drop the tween the moment the reader takes hold of the view.
+function glideViewTo(target,duration=700){
+  if(!viewportGroup||!nodeEls.size){Object.assign(view,target);applyViewTransform();return;}
+  viewTween={from:{x:view.x,y:view.y,scale:view.scale},to:target,start:performance.now(),duration};
+}
+function stepViewTween(){
+  if(!viewTween)return;
+  const progress=Math.min(1,(performance.now()-viewTween.start)/viewTween.duration),
+    eased=progress<.5?4*progress**3:1-(-2*progress+2)**3/2,{from,to}=viewTween;
+  view.x=from.x+(to.x-from.x)*eased;view.y=from.y+(to.y-from.y)*eased;view.scale=from.scale+(to.scale-from.scale)*eased;
+  applyViewTransform();
+  if(progress>=1)viewTween=null;
+}
 function labelScale() { return Math.min(1.25, Math.max(.8, 1 / view.scale)); }
 // How many quiet nodes may keep a name. A handful of nodes keep all of them; a crowded graph
 // hands names to the few that rank highest and lets hover reveal the rest.
@@ -688,13 +720,13 @@ function toSvgPoint(clientX, clientY) {
 }
 function toContentPoint(clientX, clientY) { const u = toSvgPoint(clientX, clientY); return { x: (u.x - view.x) / view.scale, y: (u.y - view.y) / view.scale }; }
 function zoomBy(factor, atX = 360, atY = 260) {
-  viewPinnedByUser = true;
+  viewPinnedByUser = true; viewTween = null;
   const contentX = (atX - view.x) / view.scale, contentY = (atY - view.y) / view.scale;
   view.scale = Math.max(0.35, Math.min(3, view.scale * factor));
   view.x = atX - contentX * view.scale; view.y = atY - contentY * view.scale;
   applyViewTransform();
 }
-function fitGraphToCount(count,force=false){const signature=`${activeVolume}:${count}`;if(!force&&signature===lastAutoFitSignature)return;lastAutoFitSignature=signature;const scale=Math.max(.38,Math.min(1,Math.sqrt(18/Math.max(18,count))));view.scale=scale;view.x=360*(1-scale);view.y=260*(1-scale);applyViewTransform();viewPinnedByUser=false;scheduleAutoFit();}
+function fitGraphToCount(count,force=false){const signature=`${activeVolume}:${count}`;if(!force&&signature===lastAutoFitSignature)return;lastAutoFitSignature=signature;const scale=Math.max(.38,Math.min(1,Math.sqrt(18/Math.max(18,count))));glideViewTo({scale,x:360*(1-scale),y:260*(1-scale)});viewPinnedByUser=false;scheduleAutoFit();}
 // The seeded scale above is a guess made before the simulation has run. Once the layout
 // settles, fit the real bounding box to the canvas so the graph fills the space instead of
 // huddling in the middle — and so a big graph zooms out far enough for the declutter to work.
@@ -706,11 +738,14 @@ function fitGraphToContent(){
   entries.forEach(([id,point])=>{const reach=(physics.radii.get(id)||24)+10,label=labelEls.get(id),top=label?Math.min(0,label.offset)-15:0,bottom=label?Math.max(0,label.offset)+15:0;
     minX=Math.min(minX,point.x-reach);maxX=Math.max(maxX,point.x+reach);minY=Math.min(minY,point.y-reach+top);maxY=Math.max(maxY,point.y+reach+bottom);});
   const width=Math.max(1,maxX-minX),height=Math.max(1,maxY-minY),padding=54,
-    scale=Math.max(.3,Math.min(1.3,Math.min((720-padding*2)/width,(520-padding*2)/height)));
-  view.scale=scale;view.x=360-(minX+maxX)/2*scale;view.y=260-(minY+maxY)/2*scale;
-  applyViewTransform();updateLabelVisibility();
+    scale=Math.max(.3,Math.min(1.3,Math.min((720-padding*2)/width,(520-padding*2)/height))),
+    target={scale,x:360-(minX+maxX)/2*scale,y:260-(minY+maxY)/2*scale};
+  // Nothing worth animating for a nudge; only glide when the framing really moves.
+  if(Math.abs(target.scale-view.scale)<.015&&Math.hypot(target.x-view.x,target.y-view.y)<12)return;
+  glideViewTo(target);updateLabelVisibility();
 }
 function tickGraph() {
+  stepViewTween();
   if (activeView === "graph" && physics.pos.size) {
     stepPhysics();
     nodeEls.forEach((el, id) => { const p = physics.pos.get(id); if (p) el.setAttribute("transform", `translate(${p.x.toFixed(2)},${p.y.toFixed(2)})`); });
@@ -735,8 +770,12 @@ function renderGraph() {
   fitGraphToCount(visible.length);
   const positions=physics.pos;
   const glyphRadius=id=>locView.expanded.has(id)?9:locationGlyphRadius(id,locView),locationDistance=id=>locView.expanded.has(id)?74:glyphRadius(id)+58;
-  physics.bounds.clear();
-  const springs=new Map(),addSpring=(a,b,length,strength)=>{if(!a||!b||a===b||!renderIds.has(a)||!renderIds.has(b))return;const key=a<b?`${a}|${b}`:`${b}|${a}`,existing=springs.get(key);if(existing){existing.length=Math.min(existing.length,length);existing.strength=Math.max(existing.strength,strength);return;}springs.set(key,{a,b,length,strength});};
+  physics.bounds.clear();physics.radii.clear();
+  visible.forEach(item=>physics.radii.set(item.id,nodeRadiusFor(item,derived.states.get(item.id),locView,currentChapter)));
+  // A spring shorter than the two nodes need to sit apart fights the separation force forever,
+  // which is what made the whole graph shiver. Every rest length clears both shapes.
+  const restLength=(a,b,desired)=>Math.max(desired,(physics.radii.get(a)||24)+(physics.radii.get(b)||24)+SEPARATION_GAP+8);
+  const springs=new Map(),addSpring=(a,b,desired,strength)=>{if(!a||!b||a===b||!renderIds.has(a)||!renderIds.has(b))return;const length=restLength(a,b,desired),key=a<b?`${a}|${b}`:`${b}|${a}`,existing=springs.get(key);if(existing){existing.length=Math.min(existing.length,length);existing.strength=Math.max(existing.strength,strength);return;}springs.set(key,{a,b,length,strength});};
   derived.memberships.forEach(m=>addSpring(m.character,m.organization,105,.022));
   derived.identityParents.forEach(link=>addSpring(link.child,link.parent,68,.09));
   derived.organizationLocations.forEach(link=>{const place=resolveLocationId(link.location);addSpring(link.organization,place,locationDistance(place),.032);});
@@ -751,7 +790,15 @@ function renderGraph() {
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
   const edgeLayer=svgEl("g"),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,nodeLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
-  const straightEdge=(a,b,className,dataA,dataB)=>{if(!a||!b||a===b)return null;const aPos=positions.get(a),bPos=positions.get(b);if(!aPos||!bPos)return null;const muted=locView.expanded.has(a)||locView.expanded.has(b),element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:`${className}${muted?" opened-location-edge":""}`,"data-a":dataA,"data-b":dataB});edgeLayer.appendChild(element);edgeUpdaters.push(()=>{const p1=positions.get(a),p2=positions.get(b);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);});return element;};
+  // While an action pops a hidden place out of its parent, links point at the pod itself, so the
+  // line sits on the place the reader is actually being shown and rides back in as it retracts.
+  const podIds=syncPodTransitions(locView,currentEvent),podSet=new Set([...podIds,...retiringPodIds]);
+  physics.podPos.clear();
+  podSet.forEach(id=>{const base=positions.get(locView.anchorOf.get(id));if(base)physics.podPos.set(id,{x:base.x,y:base.y});});
+  const edgeLocationId=id=>entity(id)?.kind!=="location"?id:(podSet.has(id)?id:(locView.anchorOf.get(id)||id));
+  edgeIndex=[];
+  const noteEdge=(a,b,chapter,note)=>{if(a&&b&&a!==b&&chapter)edgeIndex.push({a,b,chapter:Number(chapter),note});};
+  const straightEdge=(a,b,className,dataA,dataB)=>{if(!a||!b||a===b)return null;const aPos=pointFor(a),bPos=pointFor(b);if(!aPos||!bPos)return null;const muted=locView.expanded.has(a)||locView.expanded.has(b),element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:`${className}${muted?" opened-location-edge":""}`,"data-a":dataA,"data-b":dataB});edgeLayer.appendChild(element);edgeUpdaters.push(()=>{const p1=pointFor(a),p2=pointFor(b);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);});return element;};
   const pairKeys=new Set([...derived.relations.keys(),...derived.awareness.keys()]);
   pairKeys.forEach((key,index)=>{const [aId,bId]=key.split("|"),aPos=positions.get(aId),bPos=positions.get(bId);if(!aPos||!bPos)return;const history=derived.relations.get(key)||[],met=derived.meetings.get(key),aware=derived.awareness.get(key),type=history.length?String(history.at(-1).value).toLowerCase():"neutral";let element;
     const newPair=Boolean(currentEvent&&["awareness","relationship"].includes(currentEvent.type)&&pairKey(currentEvent.source,currentEvent.target)===key),edgeClass=`edge relation-edge${newPair?" newly-revealed-edge":""}`;
@@ -761,30 +808,37 @@ function renderGraph() {
     } else if(history.length){const grad=createGradient(defs,`grad-r-${index}`,history,currentChapter);element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:edgeClass,stroke:grad.url,"data-a":aId,"data-b":bId});
       edgeUpdaters.push(()=>{const p1=positions.get(aId),p2=positions.get(bId);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);if(grad.el){grad.el.setAttribute("x1",p1.x);grad.el.setAttribute("y1",p1.y);grad.el.setAttribute("x2",p2.x);grad.el.setAttribute("y2",p2.y);}});
     }
+    const lastRelation=history.at(-1);
+    noteEdge(aId,bId,lastRelation?.chapter??met?.chapter??aware?.from,lastRelation?`Relationship became ${String(lastRelation.value).toLowerCase()}`:met?"Met":"Became aware of each other");
     if(element)edgeLayer.appendChild(element);
   });
-  derived.memberships.forEach(m=>straightEdge(m.character,m.organization,`edge membership-edge${currentEvent?.type==="membership"&&currentEvent.source===m.character&&currentEvent.target===m.organization?" newly-revealed-edge":""}`,m.character,m.organization));
+  derived.memberships.forEach(m=>{noteEdge(m.character,m.organization,m.from,`${m.role}`);return straightEdge(m.character,m.organization,`edge membership-edge${currentEvent?.type==="membership"&&currentEvent.source===m.character&&currentEvent.target===m.organization?" newly-revealed-edge":""}`,m.character,m.organization);});
   // Location links are re-pointed at the deepest place the reader can currently see, so a
   // collapsed realm inherits every connection of the places folded inside it.
-  const locationEdgeSeen=new Set(),locationEdge=(from,to,baseClass,active)=>{const target=resolveLocationId(to);if(!target||from===target)return;const key=`${baseClass}|${from}|${target}`;if(locationEdgeSeen.has(key)&&!active)return;locationEdgeSeen.add(key);straightEdge(from,target,`edge ${baseClass}${active?" newly-revealed-edge":""}`,from,target);};
-  derived.organizationLocations.forEach(link=>locationEdge(link.organization,link.location,"organization-location-edge",currentEvent?.type==="organization_location"&&currentEvent.source===link.organization&&currentEvent.location===link.location));
-  derived.residences.forEach(link=>locationEdge(link.character,link.location,"residence-edge",currentEvent?.type==="residency"&&currentEvent.source===link.character&&currentEvent.location===link.location));
-  derived.locations.forEach((visit,character)=>locationEdge(character,visit.location,"location-edge",currentEvent?.type==="movement"&&currentEvent.source===character&&currentEvent.location===visit.location));
-  derived.locationParents.forEach(link=>{const child=resolveLocationId(link.child),parent=resolveLocationId(link.parent);if(!child||!parent||child===parent)return;straightEdge(child,parent,`edge hierarchy-edge${currentEvent?.type==="location_parent"&&currentEvent.source===link.child&&currentEvent.location===link.parent?" newly-revealed-edge":""}`,child,parent);});
-  derived.identityParents.forEach(link=>straightEdge(link.child,link.parent,`edge identity-edge${currentEvent?.type==="identity_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent));
-  const activeIds=new Set(currentEvent?[currentEvent.source,currentEvent.target,currentEvent.location,...(currentEvent.characters||[])].filter(Boolean).map(resolveLocationId):[]);
+  const locationEdgeSeen=new Set(),locationEdge=(from,to,baseClass,active,chapter,note)=>{const target=edgeLocationId(to);if(!target||from===target)return;noteEdge(from,target,chapter,note);const key=`${baseClass}|${from}|${target}`;if(locationEdgeSeen.has(key)&&!active)return;locationEdgeSeen.add(key);straightEdge(from,target,`edge ${baseClass}${active?" newly-revealed-edge":""}`,from,target);};
+  derived.organizationLocations.forEach(link=>locationEdge(link.organization,link.location,"organization-location-edge",currentEvent?.type==="organization_location"&&currentEvent.source===link.organization&&currentEvent.location===link.location,link.from,`${link.role} based here`));
+  derived.residences.forEach(link=>locationEdge(link.character,link.location,"residence-edge",currentEvent?.type==="residency"&&currentEvent.source===link.character&&currentEvent.location===link.location,link.from,`${link.role} here`));
+  derived.locations.forEach((visit,character)=>locationEdge(character,visit.location,"location-edge",currentEvent?.type==="movement"&&currentEvent.source===character&&currentEvent.location===visit.location,visit.chapter,"Travelled here"));
+  derived.locationParents.forEach(link=>{const child=edgeLocationId(link.child),parent=edgeLocationId(link.parent);if(!child||!parent||child===parent)return;noteEdge(child,parent,link.from,"Sits inside");straightEdge(child,parent,`edge hierarchy-edge${currentEvent?.type==="location_parent"&&currentEvent.source===link.child&&currentEvent.location===link.parent?" newly-revealed-edge":""}`,child,parent);});
+  // Plenty of actions name a place without being a movement — a meeting, a fight, a note. While
+  // such an action is showing, tie everyone it involves to the place it names.
+  if(currentEvent?.location&&entity(currentEvent.location)?.kind==="location"&&!["movement","residency","organization_location","location_parent"].includes(currentEvent.type)){
+    const place=edgeLocationId(currentEvent.location);
+    locationCharacterIds(currentEvent).forEach(who=>{noteEdge(who,place,currentEvent.chapter,"Here for this action");straightEdge(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place);});
+  }
+  derived.identityParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,link.relation);return straightEdge(link.child,link.parent,`edge identity-edge${currentEvent?.type==="identity_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent);});
+  const activeIds=new Set(currentEvent?[currentEvent.source,currentEvent.target,currentEvent.location,...(currentEvent.characters||[])].filter(Boolean).map(edgeLocationId):[]);
   const retractingIds=collapsingLocationId?new Set([...renderedLocationSubtree(collapsingLocationId,locView)]):new Set();
-  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=item.kind==="location"&&locView.expanded.has(item.id),emerging=item.kind==="location"&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,nodeRadius=42;
+  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=item.kind==="location"&&locView.expanded.has(item.id),emerging=item.kind==="location"&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null;
     if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));
-    }else if(item.kind==="location"){const r=locationGlyphRadius(item.id,locView),childCount=(locView.children.get(item.id)||[]).length;nodeRadius=openedLocation?20:r+8;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(38,r+16),class:"node-hit-target"}));
+    }else if(item.kind==="location"){const r=locationGlyphRadius(item.id,locView),childCount=(locView.children.get(item.id)||[]).length;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(38,r+16),class:"node-hit-target"}));
       locationShell=svgEl("g",{class:"location-shell"});
       if(openedLocation){labelY=-26;locationShell.append(svgEl("circle",{cx:0,cy:0,r:17,class:"location-open-halo"}),svgEl("circle",{cx:0,cy:0,r:6.5,class:"location-open-dot"}));group.setAttribute("aria-label",`${shownName}, opened — ${childCount} place${childCount===1?"":"s"} shown, activate to close`);
       }else{labelY=-r-13;locationShell.append(svgEl("path",{d:roundedSquarePath(r,r*.42),class:"location-glyph"}),svgEl("path",{d:roundedSquarePath(r*.44,r*.22),class:"location-glyph-core"}));
         if(childCount){locationShell.append(svgEl("circle",{cx:r-1,cy:-r+1,r:9.5,class:"location-child-badge"}));const badge=svgEl("text",{x:r-1,y:-r+4.4,class:"location-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);group.setAttribute("aria-label",`${shownName}, contains ${childCount} place${childCount===1?"":"s"}`);}
       }
       group.appendChild(locationShell);
-    }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;nodeRadius=r+(appeared?17:9);group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));if(!appeared){group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:"ghost-ring"}),svgEl("circle",{cx:0,cy:0,r,class:`ghost-core ${state.gender==="female"?"core-female":"core-male"}`}));}else{const lifeClass=state.status==="dead"?"life-dead":state.status==="alive"?"life-alive":"life-unknown";group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:lifeClass}),svgEl("circle",{cx:0,cy:0,r,class:state.gender==="female"?"core-female":"core-male"}));if(cultivationReveal)group.appendChild(svgEl("circle",{cx:0,cy:0,r:r+11,class:"cultivation-reveal-pulse"}));const segmentAngle=360/CULTIVATION_LEVELS.length;for(let seg=0;seg<CULTIVATION_LEVELS.length;seg++){const start=-88+seg*segmentAngle,isOn=state.level>seg,wasOn=priorCultivationLevel>seg,isChanged=cultivationReveal&&isOn!==wasOn,isGain=isChanged&&isOn;group.appendChild(svgEl("path",{d:arcPath(0,0,r+(isChanged?21:15),start,start+segmentAngle*.76),class:`${isOn?"corona-on":"corona-off"}${isChanged?` cultivation-change-segment ${isGain?"cultivation-gain":"cultivation-loss"}`:""}`,...(isChanged?{pathLength:1,style:`--cultivation-delay:${Math.abs(seg-priorCultivationLevel)*55}ms`}:{})}));}if(cultivationReveal){const before=priorCultivationLevel?(priorCultivationState?.realm||priorCultivationState?.canonicalRealm||CULTIVATION_LEVELS[priorCultivationLevel-1]):"Unrevealed",after=state.realm||state.canonicalRealm,changeLabel=svgEl("text",{x:0,y:-r-35,class:"cultivation-change-label"});changeLabel.textContent=currentEvent.initial===true&&!priorCultivationLevel?`Cultivation revealed: ${after}`:before===after?after:`${before} → ${after}`;group.appendChild(changeLabel);}const gems=Math.min(7,state.aliases.length),gemR=r+27;for(let i=0;i<gems;i++){const angle=Math.PI+(i+1)*Math.PI/(gems+1);group.appendChild(svgEl("polygon",{points:diamondPoints(Math.cos(angle)*gemR,Math.sin(angle)*gemR,4),class:"alias-gem"}));}}}
-    physics.radii.set(item.id,nodeRadius);
+    }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));if(!appeared){group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:"ghost-ring"}),svgEl("circle",{cx:0,cy:0,r,class:`ghost-core ${state.gender==="female"?"core-female":"core-male"}`}));}else{const lifeClass=state.status==="dead"?"life-dead":state.status==="alive"?"life-alive":"life-unknown";group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:lifeClass}),svgEl("circle",{cx:0,cy:0,r,class:state.gender==="female"?"core-female":"core-male"}));if(cultivationReveal)group.appendChild(svgEl("circle",{cx:0,cy:0,r:r+11,class:"cultivation-reveal-pulse"}));const segmentAngle=360/CULTIVATION_LEVELS.length;for(let seg=0;seg<CULTIVATION_LEVELS.length;seg++){const start=-88+seg*segmentAngle,isOn=state.level>seg,wasOn=priorCultivationLevel>seg,isChanged=cultivationReveal&&isOn!==wasOn,isGain=isChanged&&isOn;group.appendChild(svgEl("path",{d:arcPath(0,0,r+(isChanged?21:15),start,start+segmentAngle*.76),class:`${isOn?"corona-on":"corona-off"}${isChanged?` cultivation-change-segment ${isGain?"cultivation-gain":"cultivation-loss"}`:""}`,...(isChanged?{pathLength:1,style:`--cultivation-delay:${Math.abs(seg-priorCultivationLevel)*55}ms`}:{})}));}if(cultivationReveal){const before=priorCultivationLevel?(priorCultivationState?.realm||priorCultivationState?.canonicalRealm||CULTIVATION_LEVELS[priorCultivationLevel-1]):"Unrevealed",after=state.realm||state.canonicalRealm,changeLabel=svgEl("text",{x:0,y:-r-35,class:"cultivation-change-label"});changeLabel.textContent=currentEvent.initial===true&&!priorCultivationLevel?`Cultivation revealed: ${after}`:before===after?after:`${before} → ${after}`;group.appendChild(changeLabel);}const gems=Math.min(7,state.aliases.length),gemR=r+27;for(let i=0;i<gems;i++){const angle=Math.PI+(i+1)*Math.PI/(gems+1);group.appendChild(svgEl("polygon",{points:diamondPoints(Math.cos(angle)*gemR,Math.sin(angle)*gemR,4),class:"alias-gem"}));}}}
     // Labels live in their own layer above every shape, so a node can never be drawn over
     // another node's name, and so they can be culled independently when the graph gets dense.
     const labelGroup=svgEl("g",{class:`${group.getAttribute("class")} node-labels`,"data-id":item.id}),label=svgEl("text",{x:0,y:labelY,class:`node-label${item.kind==="location"?" location-region-label":""}`});label.textContent=shownName;labelGroup.appendChild(label);
@@ -820,13 +874,23 @@ function renderGraph() {
 // A location that is folded away inside a collapsed parent still deserves a moment on
 // screen when an action names it: it swells out of its visible ancestor as a round pod,
 // then sinks back into that ancestor once the action moves on.
-function renderLocationPods(view,currentEvent,positions,layer,glyphRadius){
-  const eventLocationIds=currentEvent?[currentEvent.location,currentEvent.type==="location_parent"?currentEvent.source:null].filter(Boolean).filter(id=>entity(id)?.kind==="location"):[],podIds=[...new Set(eventLocationIds)].filter(id=>view.present.has(id)&&!view.rendered.has(id)&&view.anchorOf.get(id)),podKey=podIds.join("|");
+function eventPodIds(view,currentEvent){
+  const named=currentEvent?[currentEvent.location,currentEvent.type==="location_parent"?currentEvent.source:null].filter(Boolean).filter(id=>entity(id)?.kind==="location"):[];
+  return [...new Set(named)].filter(id=>view.present.has(id)&&!view.rendered.has(id)&&view.anchorOf.get(id));
+}
+// Decide which pods are coming out and which are sinking back BEFORE the links are drawn, so a
+// link to a retracting pod stays attached and rides it home instead of snapping to the parent.
+function syncPodTransitions(view,currentEvent){
+  const podIds=eventPodIds(view,currentEvent),podKey=podIds.join("|");
   if(podKey!==activePodKey){
     const gone=activePodIds.filter(id=>!podIds.includes(id));
     activePodIds=podIds;activePodKey=podKey;
-    if(gone.length){retiringPodIds=gone;clearTimeout(podRetireTimer);podRetireTimer=setTimeout(()=>{retiringPodIds=[];podRetireTimer=null;renderGraph();},520);}
+    if(gone.length){retiringPodIds=gone;clearTimeout(podRetireTimer);podRetireTimer=setTimeout(()=>{retiringPodIds=[];podRetireTimer=null;renderGraph();},POD_TRAVEL_MS);}
   }
+  return podIds;
+}
+function renderLocationPods(view,currentEvent,positions,layer,glyphRadius){
+  const podIds=activePodIds;
   const draw=(id,retiring)=>{
     const anchor=view.anchorOf.get(id),anchorPos=anchor&&positions.get(anchor);if(!anchorPos)return;
     const item=entity(id);if(!item)return;
@@ -839,7 +903,15 @@ function renderLocationPods(view,currentEvent,positions,layer,glyphRadius){
     tier.textContent=String(item.locationType||"Place").toUpperCase();label.textContent=item.name;
     const shell=svgEl("g",{class:"location-pod-shell"});shell.append(ring,core,tier,label);group.append(shell);
     layer.append(tether,group);
-    const place=()=>{const base=positions.get(anchor);if(!base)return;const x=base.x+Math.cos(angle)*distance,y=base.y+Math.sin(angle)*distance;group.setAttribute("transform",`translate(${x.toFixed(2)},${y.toFixed(2)})`);group.style.setProperty("--pod-origin-x",`${(base.x-x).toFixed(2)}px`);group.style.setProperty("--pod-origin-y",`${(base.y-y).toFixed(2)}px`);tether.setAttribute("x1",base.x);tether.setAttribute("y1",base.y);tether.setAttribute("x2",x);tether.setAttribute("y2",y);};
+    const bornAt=performance.now(),place=()=>{
+      const base=positions.get(anchor);if(!base)return;
+      const progress=Math.max(0,Math.min(1,(performance.now()-bornAt)/POD_TRAVEL_MS)),
+        reach=distance*(retiring?1-progress**3:1-(1-progress)**3),
+        x=base.x+Math.cos(angle)*reach,y=base.y+Math.sin(angle)*reach;
+      physics.podPos.set(id,{x,y});
+      group.setAttribute("transform",`translate(${x.toFixed(2)},${y.toFixed(2)})`);
+      tether.setAttribute("x1",base.x);tether.setAttribute("y1",base.y);tether.setAttribute("x2",x);tether.setAttribute("y2",y);
+    };
     place();edgeUpdaters.push(place);
     group.addEventListener("pointerup",event=>{event.stopPropagation();cancelChapterSequence();revealLocationPath(id);});
     group.addEventListener("keydown",event=>{if(event.key!=="Enter"&&event.key!==" ")return;event.preventDefault();cancelChapterSequence();revealLocationPath(id);});
@@ -891,6 +963,33 @@ function revealLocationPath(id){
 
 // Obsidian-style hover focus: sweeping the pointer over a node lifts it and its links out of
 // the web without changing what is selected. A real selection or an action focus outranks it.
+// Every drawn link records when it last changed, so hovering one can answer the question the
+// graph otherwise leaves open: which chapter is this connection actually from?
+let edgeIndex = [];
+function distanceToSegment(point,a,b){
+  const dx=b.x-a.x,dy=b.y-a.y,lengthSq=dx*dx+dy*dy;
+  if(!lengthSq)return Math.hypot(point.x-a.x,point.y-a.y);
+  const t=Math.max(0,Math.min(1,((point.x-a.x)*dx+(point.y-a.y)*dy)/lengthSq));
+  return Math.hypot(point.x-(a.x+t*dx),point.y-(a.y+t*dy));
+}
+function edgeUnderPoint(point){
+  let best=null,bestDistance=15/Math.max(.2,view.scale);
+  edgeIndex.forEach(entry=>{
+    const a=pointFor(entry.a),b=pointFor(entry.b);if(!a||!b)return;
+    const distance=distanceToSegment(point,a,b);
+    if(distance<bestDistance){bestDistance=distance;best=entry;}
+  });
+  return best;
+}
+function showEdgeTip(entry,clientX,clientY){
+  const tip=$("#edge-tip"),card=tip.parentElement.getBoundingClientRect();
+  tip.innerHTML=`<strong>${escapeHtml(stateName(currentDerived(),entry.a))} — ${escapeHtml(stateName(currentDerived(),entry.b))}</strong><span>${escapeHtml(entry.note)}</span><b>Last changed · Chapter ${entry.chapter}</b>`;
+  tip.hidden=false;
+  const width=tip.offsetWidth,height=tip.offsetHeight;
+  tip.style.left=`${Math.max(6,Math.min(card.width-width-6,clientX-card.left-width/2))}px`;
+  tip.style.top=`${Math.max(6,clientY-card.top-height-14)}px`;
+}
+function hideEdgeTip(){const tip=$("#edge-tip");if(tip&&!tip.hidden)tip.hidden=true;}
 function setHoverNode(id){
   if(hoverId===id)return;hoverId=id;
   const neighbors=new Set(id?[id]:[]);
@@ -1104,12 +1203,63 @@ function isAutomaticCreationDescription(record){
 }
 
 let renderedChapterSources=undefined;
+let orderChapter = null, orderDragRow = null;
+function chaptersWithEvents(){return [...new Set(data.events.map(event=>Number(event.chapter)))].filter(Number.isFinite).sort((a,b)=>a-b);}
+function commitEventOrder(ids){
+  ids.forEach((id,index)=>{const record=data.events.find(event=>event.id===id);if(record)record.order=index+1;});
+  saveData();renderAll();
+}
+function stepOrderChapter(direction){
+  const chapters=chaptersWithEvents();if(!chapters.length)return;
+  const at=chapters.indexOf(orderChapter),next=at<0?0:Math.max(0,Math.min(chapters.length-1,at+direction));
+  orderChapter=chapters[next];renderOrderEditor();
+}
+// Reordering is scoped to one chapter because that is the only place order has any meaning:
+// events sort by chapter first. So the list never grows with the size of the novel.
+function renderOrderEditor(){
+  const list=$("#order-list");if(!list)return;
+  const chapters=chaptersWithEvents();
+  $("#order-count").textContent=`${chapters.length} chapter${chapters.length===1?"":"s"} with events`;
+  if(!chapters.length){list.innerHTML='<li class="order-empty">No events yet.</li>';$("#order-position").textContent="";return;}
+  if(orderChapter===null||!chapters.includes(orderChapter))orderChapter=chapters.includes(currentChapter)?currentChapter:chapters[0];
+  const field=$("#order-chapter");if(field&&document.activeElement!==field)field.value=orderChapter;
+  const rows=orderedEvents().filter(event=>Number(event.chapter)===orderChapter),at=chapters.indexOf(orderChapter);
+  $("#order-prev").disabled=at<=0;$("#order-next").disabled=at>=chapters.length-1;
+  $("#order-position").textContent=`Chapter ${orderChapter} — ${rows.length} action${rows.length===1?"":"s"} · ${at+1} of ${chapters.length} chapters that have events`;
+  list.innerHTML=rows.map((event,index)=>`<li class="order-row" data-id="${escapeHtml(event.id)}"><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i><p>${escapeHtml(event.description||event.type)}</p></div><div class="order-actions"><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===rows.length-1?" disabled":""}>↓</button></div></li>`).join("");
+  const idsInOrder=()=>[...list.querySelectorAll(".order-row")].map(row=>row.dataset.id);
+  const swap=(id,direction)=>{const ids=idsInOrder(),from=ids.indexOf(id),to=from+direction;if(from<0||to<0||to>=ids.length)return;ids.splice(to,0,ids.splice(from,1)[0]);commitEventOrder(ids);};
+  list.querySelectorAll(".order-up").forEach(button=>button.onclick=()=>swap(button.dataset.id,-1));
+  list.querySelectorAll(".order-down").forEach(button=>button.onclick=()=>swap(button.dataset.id,1));
+  // The drag listens on the window rather than capturing the handle: reordering moves the row —
+  // and the handle inside it — through the DOM, which drops a pointer capture mid-drag.
+  list.querySelectorAll(".order-grip").forEach(grip=>{
+    grip.addEventListener("pointerdown",event=>{
+      if(event.button!==undefined&&event.button!==0)return;
+      event.preventDefault();
+      orderDragRow=grip.closest(".order-row");orderDragRow.classList.add("order-dragging");
+      const move=moveEvent=>{
+        if(!orderDragRow)return;
+        const others=[...list.querySelectorAll(".order-row:not(.order-dragging)")],
+          before=others.find(row=>{const box=row.getBoundingClientRect();return moveEvent.clientY<box.top+box.height/2;});
+        if(before)list.insertBefore(orderDragRow,before);else list.appendChild(orderDragRow);
+      };
+      const finish=()=>{
+        window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",finish);window.removeEventListener("pointercancel",finish);
+        if(!orderDragRow)return;
+        orderDragRow.classList.remove("order-dragging");orderDragRow=null;commitEventOrder(idsInOrder());
+      };
+      window.addEventListener("pointermove",move);window.addEventListener("pointerup",finish);window.addEventListener("pointercancel",finish);
+    });
+  });
+}
 function renderAdmin(){
   renderVolumeEditor();
   const templateField=$("#chapter-url-template");if(templateField&&document.activeElement!==templateField)templateField.value=data.chapterUrlTemplate||"";
   const sourcesField=$("#chapter-sources-text");if(sourcesField&&document.activeElement!==sourcesField&&renderedChapterSources!==data.chapterSources){sourcesField.value=chapterSourcesToText(data.chapterSources);renderedChapterSources=data.chapterSources;}
   const missingBox=$("#missing-chapter-links");if(missingBox){const missing=referencedChaptersWithoutLinks();missingBox.hidden=!missing.length;if(missing.length)missingBox.querySelector("span").textContent=`Chapter${missing.length===1?"":"s"} ${missing.join(", ")} ${missing.length===1?"is":"are"} referenced somewhere but ${missing.length===1?"has":"have"} no saved link yet.`;}
   const sorted=[...data.events].sort((a,b)=>a.chapter-b.chapter||(a.order||0)-(b.order||0)||String(a.type).localeCompare(String(b.type)));$("#data-count").textContent=`${data.events.length} events`;$("#entity-count").textContent=`${data.entities.length} identities`;$("#entity-table").innerHTML=[...data.entities].sort((a,b)=>a.name.localeCompare(b.name)).map(item=>{const connected=data.events.filter(event=>eventInvolves(event,item.id)).length,intro=item.kind==="character"?(firstMention(item)||firstAppearance(item)||item.intro):item.intro;return `<tr class="${connected?"":"orphan-identity"}"><td><strong>${escapeHtml(item.name)}</strong>${connected?"":'<small class="orphan-warning">Not yet visible on graph</small>'}</td><td><span class="chip">${escapeHtml(item.kind)}</span></td><td>${intro?`Chapter ${intro}`:"—"}</td><td>${connected||'<span class="orphan-warning">0 — repair needed</span>'}</td><td><div class="table-actions"><button class="button ghost edit-identity" data-id="${escapeHtml(item.id)}">Edit identity</button><button class="button ghost delete-identity-row" data-id="${escapeHtml(item.id)}">Delete</button></div></td></tr>`;}).join("");$("#event-table").innerHTML=sorted.map(e=>{const creationManaged=isCreationManagedEvent(e);return `<tr data-event-id="${escapeHtml(e.id)}" data-event-owner="${creationManaged?"identity":"chapter"}"><td>${e.chapter}</td><td><span class="chip">${escapeHtml(e.type)}</span>${creationManaged?'<small class="table-location">creation record</small>':""}</td><td>${escapeHtml([entity(e.source)?.name,e.target?entity(e.target)?.name:null].filter(Boolean).join(" → "))}${e.location?`<small class="table-location">at ${escapeHtml(entity(e.location)?.name||e.location)}</small>`:""}</td><td>${escapeHtml(e.description||"")}</td><td><div class="table-actions"><button class="button ghost edit-event" data-id="${escapeHtml(e.id)}">${creationManaged?"Edit creation":"Edit event"}</button><button class="button ghost delete-event" data-id="${escapeHtml(e.id)}">Delete</button></div></td></tr>`;}).join("");
+  renderOrderEditor();
   document.querySelectorAll(".edit-identity").forEach(button=>button.onclick=()=>loadEntityEditor(button.dataset.id));
   document.querySelectorAll(".delete-identity-row").forEach(button=>button.onclick=()=>deleteIdentity(button.dataset.id));
   document.querySelectorAll(".edit-event").forEach(button=>button.onclick=()=>loadEventEditor(button.dataset.id));
@@ -1288,8 +1438,22 @@ document.addEventListener("click",event=>{if(!document.body.classList.contains("
 document.addEventListener("keydown",event=>{if(event.key==="Alt"&&!event.repeat){event.preventDefault();toggleChapterRefs();}});
 graph.addEventListener("wheel",event=>{event.preventDefault();const {x:ux,y:uy}=toSvgPoint(event.clientX,event.clientY);zoomBy(event.deltaY>0?0.9:1.11,ux,uy);},{passive:false});
 graph.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;const p=toSvgPoint(event.clientX,event.clientY);panStart={ux:p.x,uy:p.y,viewX:view.x,viewY:view.y};graph.setPointerCapture(event.pointerId);});
-graph.addEventListener("pointermove",event=>{if(!panStart)return;viewPinnedByUser=true;const p=toSvgPoint(event.clientX,event.clientY);view.x=panStart.viewX+(p.x-panStart.ux);view.y=panStart.viewY+(p.y-panStart.uy);applyViewTransform();});
+graph.addEventListener("pointermove",event=>{if(!panStart)return;viewPinnedByUser=true;viewTween=null;const p=toSvgPoint(event.clientX,event.clientY);view.x=panStart.viewX+(p.x-panStart.ux);view.y=panStart.viewY+(p.y-panStart.uy);applyViewTransform();});
 const endPan=()=>{panStart=null;};graph.addEventListener("pointerup",endPan);graph.addEventListener("pointercancel",endPan);
+// Hit-testing the links in script rather than widening their strokes: a thin line stays thin,
+// and the reachable band around it does not add an element per edge.
+graph.addEventListener("pointermove",event=>{
+  if(physics.dragId||panStart||event.target.closest(".node,.location-pod")){hideEdgeTip();return;}
+  const found=edgeUnderPoint(toContentPoint(event.clientX,event.clientY));
+  if(found)showEdgeTip(found,event.clientX,event.clientY);else hideEdgeTip();
+});
+graph.addEventListener("pointerleave",hideEdgeTip);
+$("#order-prev").onclick=()=>stepOrderChapter(-1);
+$("#order-next").onclick=()=>stepOrderChapter(1);
+$("#order-chapter").addEventListener("change",event=>{const wanted=Number(event.target.value);if(!Number.isFinite(wanted))return;const chapters=chaptersWithEvents();if(!chapters.length)return;
+  // Land on the nearest chapter that actually has events rather than showing an empty list.
+  orderChapter=chapters.includes(wanted)?wanted:chapters.reduce((best,chapter)=>Math.abs(chapter-wanted)<Math.abs(best-wanted)?chapter:best,chapters[0]);
+  renderOrderEditor();});
 $("#zoom-in").onclick=()=>zoomBy(1.25);$("#zoom-out").onclick=()=>zoomBy(1/1.25);$("#zoom-reset").onclick=()=>{viewPinnedByUser=false;fitGraphToContent();};
 requestAnimationFrame(tickGraph);
 

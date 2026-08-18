@@ -480,7 +480,7 @@ test("every place folded inside a closed parent reports through that parent, so 
   assert.equal(view.anchorOf.inn, "realm", "a place four levels down still connects through the realm on screen");
   const body = functionBody("renderGraph");
   assert.match(body, /const resolveLocationId=id=>entity\(id\)\?\.kind==="location"\?\(locView\.anchorOf\.get\(id\)\|\|id\):id;/);
-  assert.match(body, /const target=resolveLocationId\(to\);if\(!target\|\|from===target\)return;/);
+  assert.match(body, /const target=edgeLocationId\(to\);if\(!target\|\|from===target\)return;/);
 });
 
 test("opening a place moves the drill-down one level down: its children are drawn and now carry the connections that used to roll up to it", () => {
@@ -539,11 +539,11 @@ test("children scale out of the dot when a place opens and shrink back into it w
 
 test("an action that names a place hidden inside a closed parent pops it out as a round pod, which sinks back into that parent once the action moves on", () => {
   const body = functionBody("renderLocationPods");
-  assert.match(body, /podIds=\[\.\.\.new Set\(eventLocationIds\)\]\.filter\(id=>view\.present\.has\(id\)&&!view\.rendered\.has\(id\)&&view\.anchorOf\.get\(id\)\)/);
-  assert.match(body, /if\(gone\.length\)\{retiringPodIds=gone;clearTimeout\(podRetireTimer\);podRetireTimer=setTimeout\(\(\)=>\{retiringPodIds=\[\];podRetireTimer=null;renderGraph\(\);\},520\);\}/);
+  assert.match(functionBody("eventPodIds"), /return \[\.\.\.new Set\(named\)\]\.filter\(id=>view\.present\.has\(id\)&&!view\.rendered\.has\(id\)&&view\.anchorOf\.get\(id\)\);/);
+  assert.match(functionBody("syncPodTransitions"), /if\(gone\.length\)\{retiringPodIds=gone;clearTimeout\(podRetireTimer\);podRetireTimer=setTimeout\(\(\)=>\{retiringPodIds=\[\];podRetireTimer=null;renderGraph\(\);\},POD_TRAVEL_MS\);\}/);
   assert.match(body, /retiringPodIds\.filter\(id=>!podIds\.includes\(id\)\)\.forEach\(id=>draw\(id,true\)\);/);
-  assert.match(styleSource, /@keyframes pod-emerge\{0%\{transform:translate\(var\(--pod-origin-x,0px\),var\(--pod-origin-y,0px\)\) scale\(\.02\);opacity:0\}/);
-  assert.match(styleSource, /@keyframes pod-retract\{0%\{transform:translate\(0,0\) scale\(1\);opacity:1\}100%\{transform:translate\(var\(--pod-origin-x,0px\),var\(--pod-origin-y,0px\)\) scale\(\.02\);opacity:0\}\}/);
+  assert.match(styleSource, /@keyframes pod-emerge\{0%\{transform:scale\(\.02\);opacity:0\}100%\{transform:scale\(1\);opacity:1\}\}/, "the swell is CSS; the travel is JS so an attached line rides with it");
+  assert.match(styleSource, /@keyframes pod-retract\{0%\{transform:scale\(1\);opacity:1\}100%\{transform:scale\(\.05\);opacity:0\}\}/);
 });
 
 function pureSandbox(names) {
@@ -564,9 +564,9 @@ test("names are drawn in their own layer above every shape, so a node can never 
 
 test("shapes are pushed apart by their real radii, not just by inverse-square repulsion which let them settle on top of each other", () => {
   const body = functionBody("stepPhysics");
-  assert.match(body, /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+22;/);
+  assert.match(body, /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+SEPARATION_GAP;/);
   assert.match(body, /if\(d<clearance\)\{const push=Math\.min\(6,\(clearance-d\)\*\.24\);/);
-  assert.match(functionBody("renderGraph"), /physics\.radii\.set\(item\.id,nodeRadius\);/);
+  assert.match(functionBody("renderGraph"), /visible\.forEach\(item=>physics\.radii\.set\(item\.id,nodeRadiusFor\(item,derived\.states\.get\(item\.id\),locView,currentChapter\)\)\);/);
 });
 
 test("label text keeps a readable size across the zoom range instead of ballooning when zoomed out", () => {
@@ -612,7 +612,7 @@ test("hovering a node lifts it and its links out of the web, and outranks the ac
 test("once the simulation settles the view fits the real layout, and any zoom or pan by the reader stops it moving under them", () => {
   const body = functionBody("fitGraphToContent");
   assert.match(body, /scale=Math\.max\(\.3,Math\.min\(1\.3,Math\.min\(\(720-padding\*2\)\/width,\(520-padding\*2\)\/height\)\)\)/);
-  assert.match(body, /view\.x=360-\(minX\+maxX\)\/2\*scale;view\.y=260-\(minY\+maxY\)\/2\*scale;/);
+  assert.match(body, /target=\{scale,x:360-\(minX\+maxX\)\/2\*scale,y:260-\(minY\+maxY\)\/2\*scale\}/);
   assert.match(functionBody("scheduleAutoFit"), /if\(!viewPinnedByUser&&!physics\.dragId\)fitGraphToContent\(\)/);
   assert.match(source, /function zoomBy\(factor, atX = 360, atY = 260\) \{\n  viewPinnedByUser = true;/);
   assert.match(source, /if\(!panStart\)return;viewPinnedByUser=true;/);
@@ -623,10 +623,65 @@ test("a name never settles on top of another node's shape, which is what still r
   assert.match(body, /const clearLabelOfShape=\(labelPos,labelBox,shapePos,shapeRadius,labelForce,shapeForce\)=>\{/);
   assert.match(body, /overlapX=labelBox\.hw\+shapeRadius\+14-Math\.abs\(dx\),overlapY=labelBox\.hh\+shapeRadius\+12-Math\.abs\(dy\)/);
   assert.match(body, /clearLabelOfShape\(a,ab,b,rb,fa,fb\);clearLabelOfShape\(b,bb,a,ra,fb,fa\);/, "both directions, so neither node's name camps on the other");
-  assert.match(body, /push=Math\.min\(3\.5,Math\.max\(\.7,\.055\*overlapX\)\)/, "with a floor, so a shallow overlap still clears instead of stalling against the springs");
+  assert.match(body, /push=Math\.min\(3\.5,\.085\*overlapX\)/, "proportional, with no constant floor — a floor never reaches zero and the layout trembles instead of settling");
 });
 
 test("two names that meet in the gap between their nodes slide apart sideways, because separating them vertically would drag the shapes together and the clearance force would just undo it", () => {
   const body = functionBody("stepPhysics");
   assert.match(body, /const opposed=\(a\.y-b\.y\)\*labelDy<0;if\(opposed\|\|overlapX<overlapY\)\{const direction=labelDx>=0\?1:-1/);
+});
+
+test("spring rest lengths clear both nodes, so a link can never pull two shapes inside the distance the separation force insists on — the tug of war between them was the source of the shivering", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const restLength=\(a,b,desired\)=>Math\.max\(desired,\(physics\.radii\.get\(a\)\|\|24\)\+\(physics\.radii\.get\(b\)\|\|24\)\+SEPARATION_GAP\+8\)/);
+  assert.match(body, /addSpring=\(a,b,desired,strength\)=>\{[^}]*const length=restLength\(a,b,desired\)/);
+  assert.match(functionBody("stepPhysics"), /if \(Math\.abs\(v\.x\) < REST_SPEED && Math\.abs\(v\.y\) < REST_SPEED\) \{ v\.x = 0; v\.y = 0; return; \}/, "and near-zero motion is snapped to rest so the graph stops moving entirely");
+});
+
+test("a place a character is standing in keeps the line while it is popped out, and the line rides back into the parent as the pod retracts rather than snapping across", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const podIds=syncPodTransitions\(locView,currentEvent\),podSet=new Set\(\[\.\.\.podIds,\.\.\.retiringPodIds\]\)/, "retracting pods stay valid endpoints so the line can follow them home");
+  assert.ok(body.indexOf("syncPodTransitions(locView") < body.indexOf("const straightEdge="), "and the transition is decided before any link is drawn, or the line snaps home a render early");
+  assert.match(body, /const edgeLocationId=id=>entity\(id\)\?\.kind!=="location"\?id:\(podSet\.has\(id\)\?id:\(locView\.anchorOf\.get\(id\)\|\|id\)\)/);
+  assert.match(body, /const aPos=pointFor\(a\),bPos=pointFor\(b\)/, "edges resolve pod positions as well as physics positions");
+  assert.match(functionBody("renderLocationPods"), /reach=distance\*\(retiring\?1-progress\*\*3:1-\(1-progress\)\*\*3\)/, "the travel is driven in JS so an attached line moves with it");
+  assert.match(functionBody("pointFor"), /return physics\.pos\.get\(id\)\|\|physics\.podPos\.get\(id\)\|\|null;/);
+});
+
+test("an action that merely names a place — a meeting, a note — still draws everyone it involves to that place while it is showing", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /if\(currentEvent\?\.location&&entity\(currentEvent\.location\)\?\.kind==="location"&&!\["movement","residency","organization_location","location_parent"\]\.includes\(currentEvent\.type\)\)/, "the link types that already draw their own line are left alone");
+  assert.match(body, /locationCharacterIds\(currentEvent\)\.forEach\(who=>\{noteEdge\(who,place,currentEvent\.chapter,"Here for this action"\);straightEdge\(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place\);\}\)/);
+});
+
+test("the view eases into a new framing instead of jumping, and a reader's own zoom or pan drops the tween immediately", () => {
+  assert.match(functionBody("glideViewTo"), /viewTween=\{from:\{x:view\.x,y:view\.y,scale:view\.scale\},to:target,start:performance\.now\(\),duration\}/);
+  assert.match(functionBody("stepViewTween"), /eased=progress<\.5\?4\*progress\*\*3:1-\(-2\*progress\+2\)\*\*3\/2/);
+  assert.match(functionBody("fitGraphToContent"), /if\(Math\.abs\(target\.scale-view\.scale\)<\.015&&Math\.hypot\(target\.x-view\.x,target\.y-view\.y\)<12\)return;/, "and a framing that barely moved is left alone rather than animated");
+  assert.match(source, /viewPinnedByUser = true; viewTween = null;/);
+  assert.match(source, /if\(!panStart\)return;viewPinnedByUser=true;viewTween=null;/);
+  assert.match(functionBody("tickGraph"), /stepViewTween\(\);/);
+});
+
+test("hovering a link answers which chapter that connection last changed in, hit-tested in script so a thin line stays thin", () => {
+  assert.match(functionBody("edgeUnderPoint"), /let best=null,bestDistance=15\/Math\.max\(\.2,view\.scale\)/, "the reachable band is in screen terms, so it does not shrink as you zoom out");
+  assert.match(functionBody("showEdgeTip"), /Last changed · Chapter \$\{entry\.chapter\}/);
+  assert.match(source, /if\(physics\.dragId\|\|panStart\|\|event\.target\.closest\("\.node,\.location-pod"\)\)\{hideEdgeTip\(\);return;\}/, "dragging, panning and hovering a node all suppress it");
+  const body = functionBody("renderGraph");
+  assert.match(body, /const noteEdge=\(a,b,chapter,note\)=>\{if\(a&&b&&a!==b&&chapter\)edgeIndex\.push\(\{a,b,chapter:Number\(chapter\),note\}\);\}/);
+  assert.match(body, /locationEdge\(character,visit\.location,"location-edge",[^,]*,visit\.chapter,"Travelled here"\)/, "travel");
+  assert.match(body, /noteEdge\(m\.character,m\.organization,m\.from/, "membership");
+  assert.match(body, /noteEdge\(child,parent,link\.from,"Sits inside"\)/, "location nesting");
+  assert.match(source, /pair\.from = event\.chapter;/, "awareness had no chapter of its own to report until now");
+});
+
+test("event order is edited one chapter at a time, which is what keeps it usable at a couple of thousand chapters", () => {
+  const body = functionBody("renderOrderEditor");
+  assert.match(body, /const rows=orderedEvents\(\)\.filter\(event=>Number\(event\.chapter\)===orderChapter\)/, "never lists more than one chapter");
+  assert.match(functionBody("chaptersWithEvents"), /\[\.\.\.new Set\(data\.events\.map\(event=>Number\(event\.chapter\)\)\)\]/, "and steps through only the chapters that have events");
+  assert.match(body, /grip\.addEventListener\("pointerdown"/, "drag by handle");
+  assert.match(body, /before=others\.find\(row=>\{const box=row\.getBoundingClientRect\(\);return moveEvent\.clientY<box\.top\+box\.height\/2;\}\)/, "dropping is decided by row midpoints");
+  assert.match(body, /window\.addEventListener\("pointermove",move\);window\.addEventListener\("pointerup",finish\)/, "tracked on the window — reordering moves the handle through the DOM, which drops a pointer capture");
+  assert.match(body, /list\.querySelectorAll\("\.order-up"\)\.forEach\(button=>button\.onclick=\(\)=>swap\(button\.dataset\.id,-1\)\)/, "with arrow buttons as the keyboard-reachable path");
+  assert.match(functionBody("commitEventOrder"), /ids\.forEach\(\(id,index\)=>\{const record=data\.events\.find\(event=>event\.id===id\);if\(record\)record\.order=index\+1;\}\)/);
 });
