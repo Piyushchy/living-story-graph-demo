@@ -398,3 +398,15 @@ test("with the toggle on, clicking anywhere in a cited sentence zone navigates t
   assert.match(source, /document\.addEventListener\("click",event=>\{if\(!document\.body\.classList\.contains\("show-chapter-refs"\)\)return;if\(event\.target\.closest\("a"\)\)return;const zone=event\.target\.closest\("\.sentence-cite"\);if\(!zone\)return;const url=zone\.querySelector\("\.chapter-citation"\)\?\.getAttribute\("href"\);if\(url\)window\.open\(url,"_blank","noopener,noreferrer"\);\}\);/);
   assert.match(styleSource, /body\.show-chapter-refs \.prose-chapter-ref\.sentence-cite:hover:has\(\.chapter-citation:not\(\.uncited\)\)\{cursor:pointer\}/);
 });
+
+test("locations now push unrelated (non-member) nodes back out of their visual footprint, not just pull actual members inward — this is what was making unrelated characters look attached to a location cluster", () => {
+  assert.match(source, /physics\.exclusions=\[\.\.\.locationPopulation\.entries\(\)\]\.map\(\(\[location,members\]\)=>\(\{location,members,\.\.\.locationMetrics\(location\)\}\)\);/);
+  assert.match(source, /physics\.exclusions\.forEach\(rule=>\{const location=physics\.pos\.get\(rule\.location\);if\(!location\)return;ids\.forEach\(id=>\{if\(id===rule\.location\|\|rule\.members\.has\(id\)\)return;/);
+});
+
+test("dragging a node pins it so the physics simulation stops pulling it back, and double-clicking a pinned node releases it", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /if\(dragMoved\)\{const p=physics\.pos\.get\(item\.id\);if\(p\)p\.pinned=true;\}else selectNode\(\);/);
+  assert.match(body, /group\.addEventListener\("dblclick",event=>\{event\.stopPropagation\(\);const p=physics\.pos\.get\(item\.id\);if\(p\?\.pinned\)\{p\.pinned=false;/);
+  assert.match(source, /if \(id === physics\.dragId \|\| physics\.pos\.get\(id\)\?\.pinned\) return;/);
+});

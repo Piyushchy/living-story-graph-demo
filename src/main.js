@@ -604,9 +604,10 @@ function stepPhysics() {
     if (fa) { fa.x += fx; fa.y += fy; } if (fb) { fb.x -= fx; fb.y -= fy; }
   });
   physics.containments.forEach(rule=>{const member=physics.pos.get(rule.member),location=physics.pos.get(rule.location);if(!member||!location)return;const dx=member.x-location.x,dy=member.y-location.y,norm=Math.hypot(dx/Math.max(1,rule.rx*.72),dy/Math.max(1,rule.ry*.72));if(norm<=1)return;const overflow=norm-1,fx=-dx*overflow*.075,fy=-dy*overflow*.075,fm=force.get(rule.member),fl=force.get(rule.location);if(fm){fm.x+=fx;fm.y+=fy;}if(fl){fl.x-=fx*.08;fl.y-=fy*.08;}});
+  physics.exclusions.forEach(rule=>{const location=physics.pos.get(rule.location);if(!location)return;ids.forEach(id=>{if(id===rule.location||rule.members.has(id))return;const node=physics.pos.get(id);if(!node)return;const dx=node.x-location.x,dy=node.y-location.y,norm=Math.hypot(dx/Math.max(1,rule.rx*.88),dy/Math.max(1,rule.ry*.88));if(norm>=1)return;const push=(1-norm)*9+2,angle=(dx||dy)?Math.atan2(dy,dx):Math.random()*Math.PI*2,f=force.get(id);if(f){f.x+=Math.cos(angle)*push;f.y+=Math.sin(angle)*push;}});});
   const DAMP = 0.82, MAXV = 13;
   ids.forEach(id => {
-    if (id === physics.dragId) return;
+    if (id === physics.dragId || physics.pos.get(id)?.pinned) return;
     const v = physics.vel.get(id), f = force.get(id), p = physics.pos.get(id);
     v.x = Math.max(-MAXV, Math.min(MAXV, (v.x + f.x) * DAMP));
     v.y = Math.max(-MAXV, Math.min(MAXV, (v.y + f.y) * DAMP));
@@ -657,6 +658,7 @@ function renderGraph() {
     ...[...derived.relations.keys(),...derived.awareness.keys()].map(key=>{const [a,b]=key.split("|");return {a,b,length:150,strength:0.02};}),
   ];
   physics.containments=[...derived.organizationLocations.map(link=>({member:link.organization,location:link.location,...locationMetrics(link.location)})),...derived.residences.map(link=>({member:link.character,location:link.location,...locationMetrics(link.location)})),...[...derived.locations.values()].map(visit=>({member:visit.character,location:visit.location,...locationMetrics(visit.location)})),...derived.locationParents.map(link=>({member:link.child,location:link.parent,...locationMetrics(link.parent)}))];
+  physics.exclusions=[...locationPopulation.entries()].map(([location,members])=>({location,members,...locationMetrics(location)}));
   nodeEls=new Map(); edgeUpdaters=[];
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
@@ -687,8 +689,9 @@ function renderGraph() {
     group.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;event.stopPropagation();physics.dragId=item.id;dragMoved=false;dragStartClient={x:event.clientX,y:event.clientY};const c=toContentPoint(event.clientX,event.clientY),p=positions.get(item.id);dragOffset={x:p.x-c.x,y:p.y-c.y};physics.vel.set(item.id,{x:0,y:0});group.classList.add("dragging");group.setPointerCapture(event.pointerId);});
     group.addEventListener("pointermove",event=>{if(physics.dragId!==item.id)return;const c=toContentPoint(event.clientX,event.clientY),p=positions.get(item.id);p.x=c.x+dragOffset.x;p.y=c.y+dragOffset.y;if(!dragMoved&&Math.hypot(event.clientX-dragStartClient.x,event.clientY-dragStartClient.y)>4)dragMoved=true;});
     const selectNode=()=>{cancelChapterSequence();const next=selectedId===item.id?null:item.id;if(next!==selectedId||item.kind!=="location")locationPovId=null;selectedId=next;setMobilePanel("info");renderAll();};
-    const endDrag=event=>{if(physics.dragId!==item.id)return;physics.dragId=null;group.classList.remove("dragging");if(event.type==="pointerup"&&!dragMoved)selectNode();};
+    const endDrag=event=>{if(physics.dragId!==item.id)return;physics.dragId=null;group.classList.remove("dragging");if(event.type==="pointerup"){if(dragMoved){const p=physics.pos.get(item.id);if(p)p.pinned=true;}else selectNode();}};
     group.addEventListener("pointerup",endDrag);group.addEventListener("pointercancel",endDrag);
+    group.addEventListener("dblclick",event=>{event.stopPropagation();const p=physics.pos.get(item.id);if(p?.pinned){p.pinned=false;toast(`${item.name} released back into the layout`);}});
     group.addEventListener("keydown",event=>{if(event.key!=="Enter"&&event.key!==" ")return;event.preventDefault();selectNode();});
     group.addEventListener("dblclick",()=>openProfile(item.id));
     (item.kind==="location"?regionLayer:nodeLayer).appendChild(group);nodeEls.set(item.id,group);
