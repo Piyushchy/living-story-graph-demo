@@ -117,6 +117,14 @@ test("richInline [[Label|url|N]] with an invalid chapter number still renders th
   assert.match(html, /^<a class="wiki-external-link" href="https:\/\/wiki\.example\.com\/protos"[^>]*>Protos Energy<span aria-hidden="true">↗<\/span><\/a>$/);
 });
 
+test("richInline doesn't support nesting a marker inside another marker's label — it degrades gracefully, recovering the cleanly-formed inner marker instead of baking a stray bracket into the link", () => {
+  const ctx = sandbox({});
+  const html = vm.runInContext(`richInline(${JSON.stringify("[[[[System|https://the-innkeeper.fandom.com/wiki/Systems]]Creator|1]]")})`, ctx);
+  assert.match(html, /<a class="wiki-external-link" href="https:\/\/the-innkeeper\.fandom\.com\/wiki\/Systems"[^>]*>System<span/);
+  assert.doesNotMatch(html, />\[\[System</, "the label must not contain a leftover stray bracket");
+  assert.doesNotMatch(html, />\[System</, "the label must not contain a leftover stray bracket");
+});
+
 test("the wiki-link button can optionally attach a chapter citation too, producing the three-part syntax", () => {
   const body = functionBody("installWikiLinkHelpers");
   assert.match(body, /Also cite a chapter for this\?/);

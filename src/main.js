@@ -325,7 +325,7 @@ function safeExternalUrl(value){
   catch { return ""; }
 }
 function richInline(value){
-  const text=String(value??""),pattern=/\[\[([^\]|]+?)\|([^\]|]+?)(?:\|([^\]|]+?))?\]\]|\[\[(\d+)\]\]/g;
+  const text=String(value??""),pattern=/\[\[([^\]|[]+?)\|([^\]|[]+?)(?:\|([^\]|[]+?))?\]\]|\[\[(\d+)\]\]/g;
   let html="",lastIndex=0,match;
   while((match=pattern.exec(text))){
     html+=escapeHtml(text.slice(lastIndex,match.index));
