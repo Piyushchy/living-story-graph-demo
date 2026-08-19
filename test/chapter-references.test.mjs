@@ -712,3 +712,45 @@ test("the chapter's actions are all listed and scrollable, and hovering the list
   assert.match(styleSource, /\.events-list \{[^}]*overflow-y: auto/);
   assert.match(styleSource, /\.events-list > \.upcoming-action \{ opacity: \.5; \}/);
 });
+
+test("progression ladders are data the author types in, not a hardcoded tier list — a story can run cultivation, an authority grade from G to S, or both at once", () => {
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext([
+    "var data={progressionTracks:[{id:'cultivation',name:'Cultivation',levels:['Mortal','Qi Training']},{id:'authority',name:'Authority',levels:['G','F','S-','S','S+','Divine']}]};",
+    "function deepClone(v){return JSON.parse(JSON.stringify(v));}",
+    "var CULTIVATION_LEVELS=['Mortal'];",
+    functionBody("progressionTracks"),
+    functionBody("trackFor"),
+    functionBody("trackLevels"),
+    functionBody("trackName"),
+    functionBody("trackIdOf"),
+    functionBody("cultivationCanonical"),
+    functionBody("radius"),
+  ].join("\n"), ctx);
+  const run = expression => JSON.parse(vm.runInContext(`JSON.stringify(${expression})`, ctx));
+  assert.deepEqual(run("trackLevels('authority')"), ["G","F","S-","S","S+","Divine"]);
+  assert.equal(run("cultivationCanonical({track:'authority',level:6})"), "Divine");
+  assert.equal(run("cultivationCanonical({track:'cultivation',level:2})"), "Qi Training");
+  assert.equal(run("trackIdOf({track:'nope'})"), "cultivation", "an unknown track falls back rather than breaking");
+  const top = run("radius({track:'authority',level:6})"), topShort = run("radius({track:'cultivation',level:2})");
+  assert.equal(top, topShort, "the top of any ladder draws the same size, however many rungs it has");
+  assert.ok(run("radius({track:'authority',level:1})") < top);
+  assert.match(source, /record\.track=String\(form\.get\("track"\)\|\|progressionTracks\(\)\[0\]\.id\)/, "and the chosen track is stored on the event");
+});
+
+test("renaming or reordering a ladder keeps existing events pointing at the same rung by name", () => {
+  assert.match(source, /const oldLadder=before\.get\(trackIdOf\(record\)\)\|\|\[\],name=oldLadder\[\(Number\(record\.level\)\|\|1\)-1\],ladder=trackLevels\(trackIdOf\(record\)\)/);
+  assert.match(source, /record\.level=moved>=0\?moved\+1:Math\.min\(Math\.max\(1,Number\(record\.level\)\|\|1\),ladder\.length\)/, "a rung that disappears clamps instead of dangling");
+});
+
+test("every action's message can be edited where the actions are listed, including the ones the identity form generates", () => {
+  const body = functionBody("renderOrderEditor");
+  assert.match(body, /<input class="order-message" data-id="\$\{escapeHtml\(event\.id\)\}"/);
+  assert.match(body, /field\.onchange=\(\)=>\{const record=data\.events\.find\(event=>event\.id===field\.dataset\.id\);if\(!record\)return;record\.description=field\.value\.trim\(\);saveData\(\)/);
+  assert.match(body, /list\.querySelectorAll\("\.order-edit"\)\.forEach\(button=>button\.onclick=\(\)=>loadEventEditor\(button\.dataset\.id\)\)/);
+});
+
+test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
+  assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
+});
