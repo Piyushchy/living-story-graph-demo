@@ -698,5 +698,11 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .system-location-edge { fill: none; stroke: #8f74c4; stroke-width: 2.4; stroke-dasharray: 7 4 2 4; opacity: .8; }
 .system-parent-edge { fill: none; stroke: #b98cff; stroke-width: 2.4; stroke-dasharray: 6 4; opacity: .75; }
 .line-key.system { background: repeating-linear-gradient(90deg,#b98cff 0 2px,transparent 2px 7px); }
-.conversation-edge { fill: none; stroke: #ffd479; stroke-width: 2.6; stroke-dasharray: 1 6; stroke-linecap: round; opacity: .95; }
+.conversation-edge { fill: none; stroke: #ffd479; stroke-width: 2.4; stroke-dasharray: 1 6; stroke-linecap: round; opacity: .9; }
+.conversation-layer { pointer-events: none; }
+.conversation-hub-ring { fill: rgba(61,49,19,.94); stroke: #ffd479; stroke-width: 2.2; }
+.conversation-hub-count { fill: #ffd479; font-size: 11px; font-weight: 800; text-anchor: middle; }
+.conversation-hub-live .conversation-hub-ring { animation: conversation-hub-pulse 1.2s ease-in-out infinite alternate; }
+@keyframes conversation-hub-pulse { from { filter: drop-shadow(0 0 3px rgba(255,212,121,.35)) } to { filter: drop-shadow(0 0 12px rgba(255,212,121,.85)) } }
+#graph .graph-viewport.has-action-focus .conversation-hub { opacity: 1 !important; filter: none !important; }
 .line-key.conversation { background: repeating-linear-gradient(90deg,#ffd479 0 2px,transparent 2px 8px); }

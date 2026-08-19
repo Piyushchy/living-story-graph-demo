@@ -728,7 +728,7 @@ function createGradient(defs,id,history,chapter){
 // it drags, settles, and re-flows smoothly whenever the underlying data changes.
 const SEPARATION_GAP = 22;
 const POD_TRAVEL_MS = 520;
-const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), podPos: new Map(), edges: [], dragId: null };
+const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), podPos: new Map(), hubPos: new Map(), edges: [], dragId: null };
 const view = { x: 0, y: 0, scale: 1 };
 let lastAutoFitSignature="";
 let viewportGroup = null;
@@ -736,7 +736,7 @@ let dragMoved = false, dragOffset = { x: 0, y: 0 }, dragStartClient = { x: 0, y:
 let panStart = null;
 let autoFitTimers = [], viewPinnedByUser = false, viewTween = null;
 
-function pointFor(id){return physics.pos.get(id)||physics.podPos.get(id)||null;}
+function pointFor(id){return physics.pos.get(id)||physics.podPos.get(id)||physics.hubPos.get(id)||null;}
 function ensurePos(id, seedFn) {
   if (!physics.pos.has(id)) { const [x, y] = seedFn(); physics.pos.set(id, { x, y }); physics.vel.set(id, { x: 0, y: 0 }); }
   return physics.pos.get(id);
@@ -920,7 +920,7 @@ function renderGraph() {
   physics.degree.clear();physics.edges.forEach(edge=>{physics.degree.set(edge.a,(physics.degree.get(edge.a)||0)+1);physics.degree.set(edge.b,(physics.degree.get(edge.b)||0)+1);});
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
-  const edgeLayer=svgEl("g"),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,nodeLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
+  const edgeLayer=svgEl("g"),conversationLayer=svgEl("g",{class:"conversation-layer"}),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,nodeLayer,conversationLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
   // While an action pops a hidden place out of its parent, links point at the pod itself, so the
   // line sits on the place the reader is actually being shown and rides back in as it retracts.
   const podIds=syncPodTransitions(locView,currentEvent),podSet=new Set([...podIds,...retiringPodIds]);
@@ -951,12 +951,26 @@ function renderGraph() {
   derived.residences.forEach(link=>locationEdge(link.character,link.location,"residence-edge",currentEvent?.type==="residency"&&currentEvent.source===link.character&&currentEvent.location===link.location,link.from,`${link.role} here`));
   derived.locations.forEach((visit,character)=>locationEdge(character,visit.location,"location-edge",currentEvent?.type==="movement"&&currentEvent.source===character&&currentEvent.location===visit.location,visit.chapter,"Travelled here"));
   derived.locationParents.forEach(link=>{const child=edgeLocationId(link.child),parent=edgeLocationId(link.parent);if(!child||!parent||child===parent)return;noteEdge(child,parent,link.from,"Sits inside");straightEdge(child,parent,`edge hierarchy-edge${currentEvent?.type==="location_parent"&&currentEvent.source===link.child&&currentEvent.location===link.parent?" newly-revealed-edge":""}`,child,parent);});
-  // A conversation is one action covering everyone in it, so while it is showing, draw the whole
-  // group joined up rather than leaving it to be read from a pile of pairwise meetings.
-  if(currentEvent?.type==="conversation"){
-    const talkers=[...new Set([currentEvent.source,...(currentEvent.characters||[])])].filter(id=>renderIds.has(id));
-    talkers.forEach((a,index)=>talkers.slice(index+1).forEach(b=>{noteEdge(a,b,currentEvent.chapter,"In this conversation");straightEdge(a,b,"edge conversation-edge newly-revealed-edge",a,b);}));
-  }
+  // A conversation is one thing that happened between several people, so three or more of them
+  // meet at a marker joined to each — six lines between four people says nothing about them
+  // being in the same room. It shows while its action plays, and whenever anyone who was in it
+  // is selected, so it can still be found once the slider has moved on.
+  physics.hubPos.clear();
+  derived.conversations.filter(convo=>currentEvent?.id===convo.id||(selectedId&&convo.talkers.includes(selectedId))).forEach(convo=>{
+    const talkers=convo.talkers.filter(id=>renderIds.has(id));if(talkers.length<2)return;
+    const live=currentEvent?.id===convo.id,edgeClass=`edge conversation-edge${live?" newly-revealed-edge":""}`;
+    if(talkers.length===2){noteEdge(talkers[0],talkers[1],convo.chapter,"In conversation");straightEdge(talkers[0],talkers[1],edgeClass,talkers[0],talkers[1]);return;}
+    const hubId=`conversation:${convo.id}`,centre=()=>{const points=talkers.map(pointFor).filter(Boolean);return points.length?{x:points.reduce((sum,point)=>sum+point.x,0)/points.length,y:points.reduce((sum,point)=>sum+point.y,0)/points.length}:null;};
+    const start=centre();if(!start)return;
+    physics.hubPos.set(hubId,start);
+    const hub=svgEl("g",{class:`conversation-hub${live?" conversation-hub-live":""}`,"data-id":hubId});
+    hub.append(svgEl("circle",{cx:0,cy:0,r:14,class:"conversation-hub-ring"}));
+    const count=svgEl("text",{x:0,y:3.8,class:"conversation-hub-count"});count.textContent=String(talkers.length);hub.appendChild(count);
+    conversationLayer.appendChild(hub);
+    const place=()=>{const point=centre();if(!point)return;physics.hubPos.set(hubId,point);hub.setAttribute("transform",`translate(${point.x.toFixed(2)},${point.y.toFixed(2)})`);};
+    place();edgeUpdaters.push(place);
+    talkers.forEach(id=>{noteEdge(id,hubId,convo.chapter,convo.description||"In this conversation");straightEdge(id,hubId,edgeClass,id,hubId);});
+  });
   // Plenty of actions name a place without being a movement — a meeting, a fight, a note. While
   // such an action is showing, tie everyone it involves to the place it names.
   if(currentEvent?.location&&entity(currentEvent.location)?.kind==="location"&&!["movement","residency","organization_location","location_parent"].includes(currentEvent.type)){
@@ -1159,12 +1173,13 @@ function edgeUnderPoint(point){
 }
 function showEdgeTip(entry,clientX,clientY){
   const tip=$("#edge-tip"),card=tip.parentElement.getBoundingClientRect();
-  tip.innerHTML=`<strong>${escapeHtml(stateName(currentDerived(),entry.a))} — ${escapeHtml(stateName(currentDerived(),entry.b))}</strong><span>${escapeHtml(entry.note)}</span><b>Last changed · Chapter ${entry.chapter}</b>`;
+  tip.innerHTML=`<strong>${escapeHtml(edgeEndpointName(entry.a))} — ${escapeHtml(edgeEndpointName(entry.b))}</strong><span>${escapeHtml(entry.note)}</span><b>Last changed · Chapter ${entry.chapter}</b>`;
   tip.hidden=false;
   const width=tip.offsetWidth,height=tip.offsetHeight;
   tip.style.left=`${Math.max(6,Math.min(card.width-width-6,clientX-card.left-width/2))}px`;
   tip.style.top=`${Math.max(6,clientY-card.top-height-14)}px`;
 }
+function edgeEndpointName(id){return String(id).startsWith("conversation:")?"this conversation":stateName(currentDerived(),id);}
 function hideEdgeTip(){const tip=$("#edge-tip");if(tip&&!tip.hidden)tip.hidden=true;}
 function setHoverNode(id){
   if(hoverId===id)return;hoverId=id;
@@ -1208,7 +1223,7 @@ function updateLabelVisibility(){
     if(visible){placed.push(item);if(!item.focused&&!item.linked)spent++;}
   });
 }
-function applyGraphFocus(derived){if(!selectedId)return;const chosen=entity(selectedId),connected=new Set([selectedId]),revealedSystems=lastSystemView?lastSystemView.rendered:new Set();document.querySelectorAll("#graph .edge").forEach(edge=>{const match=edge.dataset.a===selectedId||edge.dataset.b===selectedId||revealedSystems.has(edge.dataset.a)||revealedSystems.has(edge.dataset.b);if(match){connected.add(edge.dataset.a);connected.add(edge.dataset.b);edge.classList.add("selected-connection");}else edge.classList.add("dim");});document.querySelectorAll("#graph .node").forEach(node=>{if(node.dataset.id===selectedId)node.classList.add("selected");else if(connected.has(node.dataset.id))node.classList.add("selected-neighbor");else node.classList.add("dim");});if(chosen?.kind==="organization"||chosen?.kind==="location")document.querySelectorAll("#graph .relation-edge").forEach(edge=>edge.classList.add("hidden"));}
+function applyGraphFocus(derived){if(!selectedId)return;const chosen=entity(selectedId),connected=new Set([selectedId]),revealedSystems=lastSystemView?lastSystemView.rendered:new Set();document.querySelectorAll("#graph .edge").forEach(edge=>{const match=edge.dataset.a===selectedId||edge.dataset.b===selectedId||revealedSystems.has(edge.dataset.a)||revealedSystems.has(edge.dataset.b)||String(edge.dataset.a).startsWith("conversation:")||String(edge.dataset.b).startsWith("conversation:");if(match){connected.add(edge.dataset.a);connected.add(edge.dataset.b);edge.classList.add("selected-connection");}else edge.classList.add("dim");});document.querySelectorAll("#graph .node").forEach(node=>{if(node.dataset.id===selectedId)node.classList.add("selected");else if(connected.has(node.dataset.id))node.classList.add("selected-neighbor");else node.classList.add("dim");});if(chosen?.kind==="organization"||chosen?.kind==="location")document.querySelectorAll("#graph .relation-edge").forEach(edge=>edge.classList.add("hidden"));}
 
 function summaryPills(items,limit=3){if(!items.length)return "";return `<div class="summary-pills">${items.slice(0,limit).map(item=>{const record=typeof item==="string"?{label:item}:item,label=record.label||item,url=record.id?entityWikiUrl(record.id):"";return url?`<a class="${escapeHtml(record.tone||"")}" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}<i aria-hidden="true">↗</i></a>`:`<span class="${escapeHtml(record.tone||"")}">${escapeHtml(label)}</span>`;}).join("")}${items.length>limit?`<span class="more">+${items.length-limit}</span>`:""}</div>`;}
 function summaryGroup(label,items,limit){return items.length?`<div class="summary-group"><span>${escapeHtml(label)}</span>${summaryPills(items,limit)}</div>`:"";}

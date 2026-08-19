@@ -556,7 +556,7 @@ function pureSandbox(names) {
 
 test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /const edgeLayer=svgEl\("g"\),nodeLayer=svgEl\("g"\),labelLayer=svgEl\("g",\{class:"node-label-layer"\}\),podLayer=svgEl\("g",\{class:"location-pod-layer"\}\);viewportGroup\.append\(edgeLayer,nodeLayer,labelLayer,podLayer\);/);
+  assert.match(body, /viewportGroup\.append\(edgeLayer,nodeLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation markers");
   assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,halfWidth:/);
   assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=entry\.text\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
   assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
@@ -646,7 +646,7 @@ test("a place a character is standing in keeps the line while it is popped out, 
   assert.match(body, /const edgeLocationId=id=>entity\(id\)\?\.kind!=="location"\?id:\(podSet\.has\(id\)\?id:\(locView\.anchorOf\.get\(id\)\|\|id\)\)/);
   assert.match(body, /const aPos=pointFor\(a\),bPos=pointFor\(b\)/, "edges resolve pod positions as well as physics positions");
   assert.match(functionBody("renderLocationPods"), /reach=distance\*\(retiring\?1-progress\*\*3:1-\(1-progress\)\*\*3\)/, "the travel is driven in JS so an attached line moves with it");
-  assert.match(functionBody("pointFor"), /return physics\.pos\.get\(id\)\|\|physics\.podPos\.get\(id\)\|\|null;/);
+  assert.match(functionBody("pointFor"), /return physics\.pos\.get\(id\)\|\|physics\.podPos\.get\(id\)\|\|physics\.hubPos\.get\(id\)\|\|null;/);
 });
 
 test("an action that merely names a place — a meeting, a note — still draws everyone it involves to that place while it is showing", () => {
@@ -797,7 +797,7 @@ test("a conversation is one action covering everyone in it, not a pile of pairwi
   const record = functionBody("buildEventRecord");
   assert.match(record, /if\(talkers\.length<2\)\{toast\("A conversation needs at least two characters"\);return null;\}/);
   assert.match(record, /if\(named\.some\(item=>!item\)\)\{toast\("One of the conversation names does not match an identity"\)/, "a name that matches nothing is refused rather than silently dropped");
-  assert.match(functionBody("renderGraph"), /talkers\.forEach\(\(a,index\)=>talkers\.slice\(index\+1\)\.forEach\(b=>\{noteEdge\(a,b,currentEvent\.chapter,"In this conversation"\);straightEdge\(a,b,"edge conversation-edge newly-revealed-edge",a,b\);\}\)\)/, "and the whole group is drawn joined up while it plays");
+  assert.match(functionBody("renderGraph"), /derived\.conversations\.filter\(convo=>currentEvent\?\.id===convo\.id\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)\)/, "and the whole group is drawn joined up");
 });
 
 test("the demo story exercises systems and conversations, so both are visible without building a story first", () => {
@@ -815,4 +815,20 @@ test("two pods out at once keep away from each other, since nothing in the layou
   const body = functionBody("renderLocationPods");
   assert.match(body, /placedPods\.forEach\(point=>\{score\+=Math\.min\(170,Math\.hypot\(point\.x-x,point\.y-y\)\)\*2\.5;\}\)/);
   assert.match(body, /placedPods\.push\(\{x:anchorPos\.x\+Math\.cos\(angle\)\*distance,y:anchorPos\.y\+Math\.sin\(angle\)\*distance\}\)/);
+});
+
+test("three or more in a conversation meet at one marker joined to each, rather than a line between every pair", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /if\(talkers\.length===2\)\{noteEdge\(talkers\[0\],talkers\[1\],convo\.chapter,"In conversation"\);straightEdge\(talkers\[0\],talkers\[1\],edgeClass,talkers\[0\],talkers\[1\]\);return;\}/, "two people still just get a line");
+  assert.match(body, /const hubId=`conversation:\$\{convo\.id\}`,centre=\(\)=>\{const points=talkers\.map\(pointFor\)/, "the marker rides the middle of everyone in it");
+  assert.match(body, /count\.textContent=String\(talkers\.length\)/, "and says how many were in it");
+  assert.match(body, /talkers\.forEach\(id=>\{noteEdge\(id,hubId,convo\.chapter,convo\.description\|\|"In this conversation"\);straightEdge\(id,hubId,edgeClass,id,hubId\)/);
+  assert.match(functionBody("pointFor"), /physics\.hubPos\.get\(id\)/, "so links can end on it");
+});
+
+test("a conversation can be found again after the slider moves on — selecting anyone who was in it brings it back, and it counts as part of that focus", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /currentEvent\?\.id===convo\.id\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)/);
+  assert.match(functionBody("applyGraphFocus"), /String\(edge\.dataset\.a\)\.startsWith\("conversation:"\)\|\|String\(edge\.dataset\.b\)\.startsWith\("conversation:"\)/, "so the other spokes are not dimmed away from the one that touches the selection");
+  assert.match(functionBody("edgeEndpointName"), /String\(id\)\.startsWith\("conversation:"\)\?"this conversation"/, "and hovering a spoke names it rather than printing an id");
 });
