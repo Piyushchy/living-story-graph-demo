@@ -902,3 +902,26 @@ test("the demo carries a merged system, a destroyed one, and graded systems, and
   assert.match(sample, /id: "inn-system"[^}]*authority: 7, grade: "S"/);
   assert.match(source, /const isBundledDemo=\["lex","eclipse","inn-lobby"\]\.every\(id=>migrated\.entities\.some\(item=>item\.id===id\)\)/, "identified by its cast, not its title");
 });
+
+test("the demo exercises every action type the editor offers, so nothing ships without something in the sample that shows it working", () => {
+  const typeSelect = source.slice(source.indexOf("<span>Event type</span>"), source.indexOf("</select>", source.indexOf("<span>Event type</span>")));
+  const offered = [...typeSelect.matchAll(/value="([a-z_]+)"/g)].map(match => match[1]);
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  const used = new Set([...sample.matchAll(/type: "([a-z_]+)"/g)].map(match => match[1]));
+  const missing = offered.filter(type => !used.has(type));
+  assert.deepEqual(missing, [], `the demo never shows: ${missing.join(", ")}`);
+  assert.ok(offered.length >= 25, "and the list of types is the one being checked against");
+});
+
+test("the demo runs two progression ladders at once, a ghost action, and a character graded on authority rather than cultivation", () => {
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  assert.match(sample, /\{ id: "authority", name: "Authority", levels: \["G","F","E","D","C","B","A","S-","S","S\+","Divine"\] \}/);
+  assert.match(sample, /type: "cultivation", track: "authority", source: "vane"/, "somebody is actually on the second ladder");
+  assert.match(sample, /ghost: true/, "and a structural fact is carried as a ghost");
+  assert.match(sample, /id: "warden-system", kind: "system"[^}]*authority: 6, grade: "A"/);
+});
+
+test("a character's panel and profile name whichever ladder they are on, rather than always saying cultivation", () => {
+  assert.match(source, /!unrevealed&&state\.realm!=="Unrevealed"\?\{label:trackName\(state\.track\),value:/);
+  assert.match(source, /profileSection\("profile-cultivation",`\$\{trackName\(state\.track\)\} & abilities`/);
+});

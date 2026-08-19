@@ -13,7 +13,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const CULTIVATION_LEVELS = ["Mortal","Body Tempering","Qi Training","Foundation Establishment","Golden Core","Nascent Soul","Earth Immortal","Heaven Immortal","Celestial Immortal","Demi Dao Lord","Dao Lord","Above Dao Lord"];
 
 const sampleData = {
-  schemaVersion: 9,
+  schemaVersion: 10,
   novel: "The Innkeeper — graph demonstration",
   volumes: [
     { id: "v1", name: "Volume 1", from: 1, to: 40 },
@@ -21,7 +21,10 @@ const sampleData = {
     { id: "v3", name: "Volume 3", from: 81, to: 120 }
   ],
   cultivationLevels: CULTIVATION_LEVELS,
-  progressionTracks: [{ id: "cultivation", name: "Cultivation", levels: CULTIVATION_LEVELS }],
+  progressionTracks: [
+    { id: "cultivation", name: "Cultivation", levels: CULTIVATION_LEVELS },
+    { id: "authority", name: "Authority", levels: ["G","F","E","D","C","B","A","S-","S","S+","Divine"] }
+  ],
   entities: [
     { id: "inn", kind: "organization", name: "Midnight Inn", intro: 1, description: "A growing inter-realm sanctuary and organization." },
     { id: "jotun", kind: "organization", name: "Jotun Empire", intro: 30, description: "A major empire active across the story." },
@@ -37,12 +40,16 @@ const sampleData = {
     { id: "inn-taverns", kind: "system", name: "Midnight Taverns", intro: 12, authority: 3, grade: "B", description: "The tavern branch of the Midnight Inn System." },
     { id: "hearth-system", kind: "system", name: "Hearthkeeper System", intro: 18, authority: 2, grade: "C", description: "A small hearth system that the Midnight Inn System later swallowed." },
     { id: "ash-system", kind: "system", name: "Ashfall System", intro: 26, authority: 4, grade: "Death", description: "A rival system destroyed in the Inn's early years." },
+    { id: "warden-system", kind: "system", name: "Warden System", intro: 34, authority: 6, grade: "A", description: "An authority-graded system bonded to Vane." },
     { id: "inn-resorts", kind: "system", name: "Midnight Resorts", intro: 50, authority: 5, grade: "A-", description: "The resort branch of the Midnight Inn System." },
     { id: "lex", kind: "character", name: "Lex", gender: "male", mentioned: 1, appeared: 1, description: "Founder and central figure of the Midnight Inn." },
     { id: "mary", kind: "character", name: "Mary", gender: "female", mentioned: 8, appeared: 8, description: "An administrator and adviser within the Inn." },
     { id: "gerald", kind: "character", name: "Gerald", gender: "male", mentioned: 18, appeared: 22, description: "A charming host known for welcoming guests." },
     { id: "luthor", kind: "character", name: "Luthor", gender: "male", mentioned: 18, appeared: 18, description: "A reliable but dangerous member of the Inn." },
-    { id: "eclipse", kind: "character", name: "Eclipse", gender: "female", mentioned: 45, appeared: 58, description: "An ancient primordial queen whose identity resists perception." }
+    { id: "eclipse", kind: "character", name: "Eclipse", gender: "female", mentioned: 45, appeared: 58, description: "An ancient primordial queen whose identity resists perception." },
+    { id: "vane", kind: "character", name: "Vane", gender: "female", mentioned: 30, appeared: 33, description: "A warden who answers to an authority grade rather than a cultivation tier." },
+    { id: "halden", kind: "character", name: "Halden", gender: "male", mentioned: 36, appeared: 36, description: "A courier whose body is found before he is ever seen alive." },
+    { id: "eclipse-veil", kind: "character", name: "The Veil", gender: "female", mentioned: 62, appeared: 62, description: "An avatar Eclipse wears when she walks outside the Garden." }
   ],
   events: [
     { id: "e1", chapter: 1, type: "cultivation", source: "lex", level: 1, value: "Mortal", description: "Lex is recorded at Mortal cultivation." },
@@ -99,7 +106,7 @@ const sampleData = {
     { id: "hier-1", chapter: 1, order: 3, type: "location_parent", source: "inn-lobby", location: "inn-estate", action: "add", description: "The Midnight Inn Lobby is inside the Midnight Inn Estate." },
     { id: "hier-2", chapter: 1, order: 3, type: "location_parent", source: "inn-estate", location: "stonevale", action: "add", description: "The Midnight Inn Estate stands inside the city of Stonevale." },
     { id: "hier-3", chapter: 1, order: 3, type: "location_parent", source: "stonevale", location: "verdan", action: "add", description: "Stonevale is a city of the world Verdan." },
-    { id: "hier-4", chapter: 1, order: 3, type: "location_parent", source: "verdan", location: "azure-realm", action: "add", description: "Verdan is one of the worlds held by the Azure Mortal Realm." },
+    { id: "hier-4", chapter: 1, order: 3, type: "location_parent", source: "verdan", location: "azure-realm", action: "add", ghost: true, description: "Verdan is one of the worlds held by the Azure Mortal Realm." },
     { id: "hier-5", chapter: 45, order: 3, type: "location_parent", source: "garden-heart", location: "garden-realm", action: "add", description: "The Heart of the Garden lies at the centre of the Primordial Garden Realm." },
     { id: "sys-1", chapter: 1, order: 5, type: "system_host", source: "inn-system", target: "lex", value: "Host", action: "add", description: "The Midnight Inn System bonds to Lex as its host." },
     { id: "sys-2", chapter: 12, order: 1, type: "system_parent", source: "inn-taverns", target: "inn-system", action: "add", description: "Midnight Taverns becomes a subsystem of the Midnight Inn System." },
@@ -111,6 +118,24 @@ const sampleData = {
     { id: "sys-10", chapter: 30, order: 6, type: "system_end", source: "ash-system", value: "Burned out in the Jotun campaign", action: "add", description: "The Ashfall System is destroyed." },
     { id: "sys-5", chapter: 50, order: 1, type: "system_parent", source: "inn-resorts", target: "inn-system", action: "add", description: "Midnight Resorts becomes a subsystem of the Midnight Inn System." },
     { id: "sys-6", chapter: 50, order: 2, type: "system_location", source: "inn-resorts", location: "garden-realm", value: "Resort", action: "open", description: "Midnight Resorts opens inside the Primordial Garden Realm." },
+    { id: "age-1", chapter: 5, order: 6, type: "age", source: "lex", value: "Around thirty", description: "Lex is described as being around thirty." },
+    { id: "note-1", chapter: 15, order: 1, type: "note", source: "inn", description: "The Inn survives its first hard winter without losing a guest." },
+    { id: "dn-1", chapter: 30, order: 7, type: "display_name", source: "luthor", value: "Envoy Luthor", description: "Luthor is publicly styled Envoy Luthor once the Jotun posting is announced." },
+    { id: "vane-1", chapter: 30, order: 8, type: "mention", source: "vane", description: "A warden named Vane is mentioned." },
+    { id: "vane-2", chapter: 33, order: 1, type: "appearance", source: "vane", description: "Vane appears alive." },
+    { id: "vane-3", chapter: 33, order: 2, type: "status", source: "vane", value: "alive", description: "Vane is alive." },
+    { id: "auth-1", chapter: 33, order: 3, type: "cultivation", track: "authority", source: "vane", level: 7, value: "A", description: "Vane is recorded at authority grade A." },
+    { id: "vane-4", chapter: 33, order: 4, type: "movement", source: "vane", location: "stonevale", description: "Vane takes up her post in Stonevale." },
+    { id: "vsys-1", chapter: 34, order: 1, type: "system_host", source: "warden-system", target: "vane", value: "Host", action: "add", description: "The Warden System bonds to Vane." },
+    { id: "vsys-2", chapter: 34, order: 2, type: "system_location", source: "warden-system", location: "stonevale", value: "Watchpost", action: "open", description: "The Warden System opens a watchpost in Stonevale." },
+    { id: "corpse-1", chapter: 36, order: 1, type: "corpse_appearance", source: "halden", description: "Halden's body is found in Stonevale before anyone has seen him alive." },
+    { id: "corpse-2", chapter: 36, order: 2, type: "movement", source: "halden", location: "stonevale", description: "Halden's body is recovered in Stonevale." },
+    { id: "gender-1", chapter: 38, order: 1, type: "gender", source: "vane", value: "female", description: "Vane, taken for a man behind the warden's mask, is confirmed to be a woman." },
+    { id: "auth-2", chapter: 39, order: 1, type: "cultivation", track: "authority", source: "vane", level: 8, value: "S-", description: "Vane is raised to authority grade S-." },
+    { id: "veil-1", chapter: 62, order: 1, type: "mention", source: "eclipse-veil", description: "A figure called the Veil is mentioned." },
+    { id: "veil-2", chapter: 62, order: 2, type: "appearance", source: "eclipse-veil", description: "The Veil appears alive." },
+    { id: "veil-3", chapter: 62, order: 3, type: "status", source: "eclipse-veil", value: "alive", description: "The Veil is alive." },
+    { id: "ip-1", chapter: 62, order: 4, type: "identity_parent", source: "eclipse-veil", target: "eclipse", value: "Avatar", action: "add", description: "The Veil is revealed to be an avatar Eclipse wears outside the Garden." },
     { id: "talk-1", chapter: 22, order: 5, type: "conversation", source: "lex", characters: ["lex","mary","gerald"], location: "inn-lobby", description: "Lex, Mary, and Gerald settle how the Inn will run its front of house." },
     { id: "talk-2", chapter: 58, order: 4, type: "conversation", source: "lex", characters: ["lex","gerald","eclipse"], location: "garden-realm", description: "Lex, Gerald, and Eclipse speak in the Primordial Garden Realm." },
     { id: "home-1", chapter: 1, order: 4, type: "residency", source: "lex", location: "inn-estate", value: "Home", action: "begin", description: "Lex makes the Midnight Inn Estate his home." },
@@ -401,6 +426,20 @@ function loadLocalData() {
         sampleData.events.filter(event=>["sys-7","sys-8","sys-9","sys-10"].includes(event.id)&&!eventIds.has(event.id)).forEach(event=>migrated.events.push(deepClone(event)));
       }
       migrated.schemaVersion=9;
+    }
+    if((migrated.schemaVersion||1)<10){
+      const isBundledDemo=["lex","eclipse","inn-lobby"].every(id=>migrated.entities.some(item=>item.id===id));
+      if(isBundledDemo){
+        if(!(migrated.progressionTracks||[]).some(track=>track.id==="authority"))
+          migrated.progressionTracks=[...(migrated.progressionTracks||[]),deepClone(sampleData.progressionTracks.find(track=>track.id==="authority"))];
+        const entityIds=new Set(migrated.entities.map(item=>item.id));
+        sampleData.entities.filter(item=>["vane","halden","eclipse-veil","warden-system"].includes(item.id)&&!entityIds.has(item.id)).forEach(item=>migrated.entities.push(deepClone(item)));
+        const eventIds=new Set((migrated.events||[]).map(event=>event.id));
+        sampleData.events.filter(event=>/^(age-|note-|dn-|vane-|auth-|vsys-|corpse-|gender-|veil-|ip-)/.test(event.id)&&!eventIds.has(event.id)).forEach(event=>migrated.events.push(deepClone(event)));
+        const hierarchyFact=(migrated.events||[]).find(event=>event.id==="hier-4");
+        if(hierarchyFact&&hierarchyFact.ghost===undefined)hierarchyFact.ghost=true;
+      }
+      migrated.schemaVersion=10;
     }
     localStorage.setItem(STORAGE_KEY,JSON.stringify(migrated));return migrated;
   }
@@ -1334,7 +1373,7 @@ function renderSummary(){
   }
   const applied=appliedEvents(),unrevealed=state.appeared===null||state.appeared>currentChapter,relationItems=[...new Set(applied.filter(e=>e.type==="relationship"&&(e.source===chosen.id||e.target===chosen.id)).map(e=>pairKey(e.source,e.target)))].map(key=>{const [a,b]=key.split("|"),other=a===chosen.id?b:a,history=applied.filter(e=>e.type==="relationship"&&pairKey(e.source,e.target)===key),type=String(history.at(-1)?.value||"neutral").toLowerCase();return {id:other,label:stateName(d,other),tone:`tone-${type}`};}),meetingIds=[...new Set(applied.filter(e=>e.type==="meeting"&&(e.source===chosen.id||e.target===chosen.id)).map(e=>e.source===chosen.id?e.target:e.source))],meetings=meetingIds.map(id=>({id,label:stateName(d,id)})),awareOutIds=[...new Set(applied.filter(e=>e.type==="awareness"&&e.source===chosen.id).map(e=>e.target))],awareOut=awareOutIds.map(id=>({id,label:stateName(d,id)})),awareInIds=[...new Set(applied.filter(e=>e.type==="awareness"&&e.target===chosen.id).map(e=>e.source))],awareIn=awareInIds.map(id=>({id,label:stateName(d,id)})),aliases=state.aliases.map(alias=>({label:alias.value})),organizations=state.memberships.map(m=>({id:m.organization,label:`${stateName(d,m.organization)} · ${m.role}`})),identityParent=d.identityParents.find(link=>link.child===chosen.id),identityChildren=d.identityParents.filter(link=>link.parent===chosen.id).map(link=>({id:link.child,label:`${stateName(d,link.child)} · ${link.relation}`})),identityFamily=[...(identityParent?[{id:identityParent.parent,label:`${stateName(d,identityParent.parent)} · ${identityParent.relation} parent`}]:[]),...identityChildren];
   const currentPlace=d.locations.get(chosen.id),currentPlaces=currentPlace?[{id:currentPlace.location,label:entity(currentPlace.location)?.name||currentPlace.location}]:[],chapterPlaces=[...new Set(d.locationVisits.filter(visit=>visit.character===chosen.id&&visit.chapter===currentChapter).map(visit=>visit.location))].map(id=>({id,label:entity(id)?.name||id})),residences=d.residences.filter(link=>link.character===chosen.id).map(link=>({id:link.location,label:`${entity(link.location)?.name} · ${link.role}`}));
-  const stats=[{label:"State",value:unrevealed?"Mentioned":"Appeared"},!unrevealed&&state.realm!=="Unrevealed"?{label:"Cultivation",value:state.realm.toLowerCase()===state.canonicalRealm.toLowerCase()?state.realm:`${state.realm} · ${state.canonicalRealm}`} : null,!unrevealed&&state.status!=="unknown"?{label:"Status",value:state.status}:null].filter(Boolean);
+  const stats=[{label:"State",value:unrevealed?"Mentioned":"Appeared"},!unrevealed&&state.realm!=="Unrevealed"?{label:trackName(state.track),value:state.realm.toLowerCase()===state.canonicalRealm.toLowerCase()?state.realm:`${state.realm} · ${state.canonicalRealm}`} : null,!unrevealed&&state.status!=="unknown"?{label:"Status",value:state.status}:null].filter(Boolean);
   box.className=`side-card summary${panelActive?" mobile-active":""}${unrevealed?" muted":""}`;box.innerHTML=`${header}<div class="summary-stats">${stats.map(stat=>`<article><span>${escapeHtml(stat.label)}</span><strong>${escapeHtml(stat.value)}</strong></article>`).join("")}</div><div class="summary-groups">${summaryGroup("Identity family",identityFamily,4)}${summaryGroup("Current place",currentPlaces,1)}${summaryGroup("Homes / bases",residences,3)}${summaryGroup("Places this chapter",chapterPlaces,4)}${summaryGroup("Aliases",aliases,3)}${summaryGroup("Organizations",organizations,2)}${summaryGroup("Relations",relationItems,4)}${summaryGroup("Met",meetings,4)}${summaryGroup("Aware of",awareOut,4)}${summaryGroup("Known by",awareIn,4)}</div>`;$("#full-details").onclick=()=>openProfile(chosen.id);
 }
 
@@ -1428,7 +1467,7 @@ async function openProfile(id,focusChapter=null){
   const biography=profile.history?profileSection("profile-biography",item.kind==="character"?"Biography":"History",`<p>${richText(profile.history)}</p>`,"Story"):"";
   const appearance=item.kind==="character"&&profile.appearance?profileSection("profile-appearance","Appearance",`<p>${richText(profile.appearance)}</p>`,"Physical description"):"";
   const personality=item.kind==="character"&&profile.personality?profileSection("profile-personality","Personality",`<p>${richText(profile.personality)}</p>`,"Characterization"):"";
-  const powerOrPurpose=item.kind==="character"?(cultivation.length||profile.abilities?.length?profileSection("profile-cultivation","Cultivation & abilities",`${cultivationBody}${profile.abilities?.length?`<h3>Known abilities</h3>${proseList(profile.abilities)}`:""}`,"Progression"):""):(profile.purpose||profile.traits?.length?profileSection("profile-purpose",item.kind==="location"?"Description & features":"Purpose & identity",`${profile.purpose?`<p>${richText(profile.purpose)}</p>`:""}${profile.traits?.length?`<h3>${item.kind==="location"?"Notable features":"Defining traits"}</h3>${chipList(profile.traits)}`:""}`,item.kind==="location"?"Location":"Organization"):"");
+  const powerOrPurpose=item.kind==="character"?(cultivation.length||profile.abilities?.length?profileSection("profile-cultivation",`${trackName(state.track)} & abilities`,`${cultivationBody}${profile.abilities?.length?`<h3>Known abilities</h3>${proseList(profile.abilities)}`:""}`,"Progression"):""):(profile.purpose||profile.traits?.length?profileSection("profile-purpose",item.kind==="location"?"Description & features":"Purpose & identity",`${profile.purpose?`<p>${richText(profile.purpose)}</p>`:""}${profile.traits?.length?`<h3>${item.kind==="location"?"Notable features":"Defining traits"}</h3>${chipList(profile.traits)}`:""}`,item.kind==="location"?"Location":"Organization"):"");
   const affiliations=activeMemberships.length||membershipEvents.length?profileSection("profile-affiliations","Affiliations",`${chipList(organizationNames)}${membershipBody}`,"Organizations"):"";
   const relationships=relationIds.length?profileSection("profile-relationships","Relationships",`<div class="relation-grid">${relationCards}</div>`,"Connections"):"";
   const chronology=profileEvents.length?profileSection("profile-chronology","Complete chronology",`<div class="chronology-scroll"><ol class="profile-timeline">${timeline}</ol></div>`,`${profileEvents.length} recorded events`):"";
@@ -1772,7 +1811,7 @@ $("#export-data").onclick=()=>{const blob=new Blob([JSON.stringify(data,null,2)]
 $("#publish-data").onclick=publishData;
 $("#import-data").addEventListener("change",async event=>{const file=event.target.files[0];if(!file)return;try{const parsed=JSON.parse(await file.text());if(!Array.isArray(parsed.entities)||!Array.isArray(parsed.events)||!Array.isArray(parsed.volumes)||validateVolumes(parsed.volumes))throw new Error();data=parsed;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;saveData();selectedId=null;locationPovId=null;configure();renderAll();toast("Data imported");}catch{toast("That JSON file is not valid graph data");}event.target.value="";});
 $("#reset-data").onclick=()=>{if(!confirm("Reset this browser's demo data to the original sample?"))return;cancelChapterSequence();expandedChapter=null;data=deepClone(sampleData);saveData();selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=activeVol().from;configure();renderAll();toast("Sample data restored");};
-$("#clear-all-data").onclick=()=>{const answer=prompt("This permanently deletes every character, organization, location, profile, and event from the published graph. Your volume structure will remain. Type DELETE to continue.");if(answer!=="DELETE"){if(answer!==null)toast("Nothing was deleted");return;}cancelChapterSequence();expandedChapter=null;data={schemaVersion:9,novel:data.novel||"Living Story Graph",volumes:deepClone(data.volumes?.length?data.volumes:sampleData.volumes),cultivationLevels:deepClone(CULTIVATION_LEVELS),progressionTracks:deepClone(data.progressionTracks?.length?data.progressionTracks:sampleData.progressionTracks),chapterUrlTemplate:data.chapterUrlTemplate||"",chapterSources:deepClone(data.chapterSources||{}),entities:[],events:[]};eventDrafts=[];selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;physics.pos.clear();physics.vel.clear();lastAutoFitSignature="";saveData();resetEntityEditor();resetEventEditor();renderEventBatch();configure();renderAll();toast("All story data deleted");};
+$("#clear-all-data").onclick=()=>{const answer=prompt("This permanently deletes every character, organization, location, profile, and event from the published graph. Your volume structure will remain. Type DELETE to continue.");if(answer!=="DELETE"){if(answer!==null)toast("Nothing was deleted");return;}cancelChapterSequence();expandedChapter=null;data={schemaVersion:10,novel:data.novel||"Living Story Graph",volumes:deepClone(data.volumes?.length?data.volumes:sampleData.volumes),cultivationLevels:deepClone(CULTIVATION_LEVELS),progressionTracks:deepClone(data.progressionTracks?.length?data.progressionTracks:sampleData.progressionTracks),chapterUrlTemplate:data.chapterUrlTemplate||"",chapterSources:deepClone(data.chapterSources||{}),entities:[],events:[]};eventDrafts=[];selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;physics.pos.clear();physics.vel.clear();lastAutoFitSignature="";saveData();resetEntityEditor();resetEventEditor();renderEventBatch();configure();renderAll();toast("All story data deleted");};
 
 function toast(message){const el=$("#toast");el.textContent=message;el.classList.add("show");clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove("show"),2200);}
 
