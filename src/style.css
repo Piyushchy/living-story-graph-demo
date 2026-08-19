@@ -118,11 +118,12 @@ input[type="range"] { padding: 0; accent-color: var(--blue); }
 .empty { color: var(--muted); font-size: 13px; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 12px; align-items: center; }
 .legend span { display: inline-flex; gap: 6px; align-items: center; }
-.dot, .ring, .hex, .diamond, .pin { width: 12px; height: 12px; display: inline-block; }
+.dot, .ring, .hex, .diamond, .pin, .gem { width: 12px; height: 12px; display: inline-block; }
 .dot { border-radius: 50%; }
 .dot.female { background: var(--pink); }.dot.male { background: var(--blue); }
 .ring { border-radius: 50%; border: 3px solid var(--green); }.ring.dead { border-color: var(--red); border-style: dashed; }
 .hex { background: var(--panel-2); border: 1px solid var(--muted); clip-path: polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%); }
+.gem { width: 11px; height: 11px; border: 2px solid #b98cff; background: rgba(46,28,78,.92); transform: rotate(45deg); }
 .pin { width: 11px; height: 11px; border: 2px solid #6de0d5; border-radius: 4px; background: rgba(18,54,56,.92); }
 .diamond { background: var(--violet); transform: rotate(45deg); width: 9px; height: 9px; }
 .line-key { width: 22px; height: 4px; border-radius: 3px; display: inline-block; }.line-key.friendly{background:var(--green)}.line-key.hostile{background:var(--red)}.line-key.neutral{background:var(--muted)}.line-key.member{background:repeating-linear-gradient(90deg,var(--muted) 0 6px,transparent 6px 10px)}.line-key.location{background:repeating-linear-gradient(90deg,#22c7b8 0 5px,transparent 5px 8px)}.line-key.residence{background:repeating-linear-gradient(90deg,#55d6a7 0 3px,transparent 3px 7px)}.line-key.hierarchy{background:repeating-linear-gradient(90deg,#f2c95e 0 9px,transparent 9px 13px)}.line-key.organization-location{background:repeating-linear-gradient(90deg,#c084fc 0 8px,transparent 8px 11px,#c084fc 11px 13px,transparent 13px 17px)}
@@ -680,3 +681,20 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .track-row { display: grid; gap: 8px; padding: 11px; border: 1px solid #2a3a4e; border-radius: 10px; background: #0e1725; }
 .track-row textarea { min-height: 96px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.55; }
 .track-row .track-remove { justify-self: start; padding: 5px 9px; font-size: 10px; }
+
+/* Systems — a facet-cut diamond, so nothing else on the graph reads like one. */
+.system-shape { fill: rgba(46,28,78,.92); stroke: #b98cff; stroke-width: 2.6; pointer-events: none; transition: fill .18s ease, stroke .18s ease; }
+.system-shape-inner { fill: none; stroke: rgba(185,140,255,.5); stroke-width: 1.4; pointer-events: none; }
+.system-core { fill: #e6d4ff; pointer-events: none; }
+.system:hover .system-shape { fill: rgba(140,90,220,.42); stroke: #d9c2ff; }
+.system.selected .system-shape { fill: rgba(140,90,220,.52); stroke: #f0e6ff; }
+.system-child-badge { fill: #150c26; stroke: #b98cff; stroke-width: 1.6; pointer-events: none; }
+.system-child-badge-text { fill: #d9c2ff !important; }
+.system-tier-label { fill: #8f74c4; }
+.system-open-dot { fill: #b98cff; pointer-events: none; }
+.system-open-halo { fill: rgba(185,140,255,.09); stroke: rgba(185,140,255,.6); stroke-width: 1.6; stroke-dasharray: 3 4; pointer-events: none; animation: opened-location-spin 9s linear infinite; }
+.node.system.location-opened .node-label { fill: #b98cff; font-size: 10px; }
+.system-host-edge { fill: none; stroke: #b98cff; stroke-width: 3; stroke-dasharray: 1 5; stroke-linecap: round; opacity: .95; }
+.system-location-edge { fill: none; stroke: #8f74c4; stroke-width: 2.4; stroke-dasharray: 7 4 2 4; opacity: .8; }
+.system-parent-edge { fill: none; stroke: #b98cff; stroke-width: 2.4; stroke-dasharray: 6 4; opacity: .75; }
+.line-key.system { background: repeating-linear-gradient(90deg,#b98cff 0 2px,transparent 2px 7px); }

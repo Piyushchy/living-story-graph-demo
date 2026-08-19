@@ -428,7 +428,8 @@ function locationView({ entities, parents, expanded = [], visible }) {
     functionBody("isLocationRoot"),
     functionBody("locationParentOf"),
     functionBody("buildLocationView"),
-    functionBody("renderedLocationSubtree"),
+    functionBody("buildDrillView"),
+    functionBody("renderedSubtree"),
     functionBody("locationGlyphRadius"),
   ].join("\n");
   const ctx = { __entities: entities, __parents: parents, __expanded: expanded };
@@ -498,7 +499,7 @@ test("opening a place moves the drill-down one level down: its children are draw
 test("a place with no revealed children is never drawn as a dot, and closing a parent takes its whole opened subtree with it", () => {
   const view = locationView({ ...NESTED_WORLD, expanded: ["realm", "world", "city"] });
   assert.deepEqual(view.opened, ["city", "realm", "world"]);
-  assert.deepEqual(view.read('renderedLocationSubtree("realm",view).sort()'), ["city", "inn", "world"]);
+  assert.deepEqual(view.read('renderedSubtree("realm",view).sort()'), ["city", "inn", "world"]);
   const leafOpen = locationView({ ...NESTED_WORLD, expanded: ["inn"], visible: ["realm", "inn"] });
   assert.deepEqual(leafOpen.opened, [], "opening a place that contains nothing revealed is a no-op");
 });
@@ -566,7 +567,7 @@ test("shapes are pushed apart by their real radii, not just by inverse-square re
   const body = functionBody("stepPhysics");
   assert.match(body, /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+SEPARATION_GAP;/);
   assert.match(body, /if\(d<clearance\)\{const push=Math\.min\(6,\(clearance-d\)\*\.24\);/);
-  assert.match(functionBody("renderGraph"), /visible\.forEach\(item=>physics\.radii\.set\(item\.id,nodeRadiusFor\(item,derived\.states\.get\(item\.id\),locView,currentChapter\)\)\);/);
+  assert.match(functionBody("renderGraph"), /visible\.forEach\(item=>physics\.radii\.set\(item\.id,nodeRadiusFor\(item,derived\.states\.get\(item\.id\),locView,currentChapter,sysView\)\)\);/);
 });
 
 test("label text keeps a readable size across the zoom range instead of ballooning when zoomed out", () => {
@@ -753,4 +754,38 @@ test("every action's message can be edited where the actions are listed, includi
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
   assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
+});
+
+test("a system is drawn only while its host is selected — that is the whole difference from a place, which shows whenever anyone connected to it is on screen", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const queue=derived\.systemHosts\.filter\(link=>link\.host===selectedId\)\.map\(link=>link\.system\)/);
+  assert.match(body, /if\(entity\(selectedId\)\?\.kind==="system"\)queue\.push\(selectedId\)/, "selecting the system itself keeps it up");
+  assert.match(body, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\)return false;/, "a system never rides in on the ordinary reveal path");
+  assert.match(body, /sysView\.rendered\.forEach\(id=>renderIds\.add\(id\)\)/, "it is added back only through the host-selection path");
+  assert.match(body, /revealedSystems\.forEach\(id=>derived\.systemLocations\.filter\(link=>link\.system===id\)\.forEach\(link=>visibleIds\.add\(link\.location\)\)\)/, "and brings the places it operates at on screen with it");
+});
+
+test("a system drills down exactly like a place, sharing one tree builder, and opening one never disturbs the selection that revealed it", () => {
+  assert.match(functionBody("buildLocationView"), /return buildDrillView\(\[\.\.\.visibleIds\]\.filter\(id=>entity\(id\)\?\.kind==="location"\),id=>locationParentOf\(id,derived\),expandedLocations\)/);
+  assert.match(functionBody("buildSystemView"), /return buildDrillView\(\[\.\.\.systemIds\],id=>parentOf\.get\(id\)\|\|null,expandedSystems\)/);
+  const activate = functionBody("activateSystem");
+  assert.match(activate, /if\(view\.expanded\.has\(id\)\)\{closeSystem\(id\);return;\}/);
+  assert.match(activate, /if\(\(view\.children\.get\(id\)\|\|\[\]\)\.length\)\{openSystem\(id\);return;\}/);
+  assert.doesNotMatch(activate, /selectedId=/, "opening a system must not steal the selection that is keeping it visible");
+  assert.match(functionBody("renderGraph"), /if\(item\.kind==="system"\)\{activateSystem\(item\.id\);return;\}/);
+});
+
+test("a system subtree revealed by a selection counts as part of that focus, so its links to places are not dimmed away", () => {
+  assert.match(functionBody("applyGraphFocus"), /revealedSystems=lastSystemView\?lastSystemView\.rendered:new Set\(\)/);
+  assert.match(functionBody("applyGraphFocus"), /revealedSystems\.has\(edge\.dataset\.a\)\|\|revealedSystems\.has\(edge\.dataset\.b\)/);
+});
+
+test("systems carry a host, a parent system and any number of places, and are drawn as something no other kind looks like", () => {
+  assert.match(source, /if\(event\.type==="system_host"&&source\?\.kind==="system"&&states\.get\(event\.target\)\?\.kind==="character"\)/);
+  assert.match(source, /if\(event\.type==="system_parent"&&source\?\.kind==="system"&&states\.get\(event\.target\)\?\.kind==="system"\)/);
+  assert.match(source, /if\(event\.type==="system_location"&&source\?\.kind==="system"&&states\.get\(event\.location\)\?\.kind==="location"\)/, "many places per system — keyed by system and place together");
+  assert.match(source, /<option value="system">System<\/option>/);
+  assert.match(functionBody("renderGraph"), /class:"system-shape"/);
+  assert.match(styleSource, /\.system-shape \{ fill: rgba\(46,28,78,\.92\); stroke: #b98cff/);
+  assert.match(source, /if\(type==="system_parent"&&source\.id===target\?\.id\)\{toast\("A system cannot be its own subsystem"\)/);
 });
