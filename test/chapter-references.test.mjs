@@ -789,3 +789,30 @@ test("systems carry a host, a parent system and any number of places, and are dr
   assert.match(styleSource, /\.system-shape \{ fill: rgba\(46,28,78,\.92\); stroke: #b98cff/);
   assert.match(source, /if\(type==="system_parent"&&source\.id===target\?\.id\)\{toast\("A system cannot be its own subsystem"\)/);
 });
+
+test("a conversation is one action covering everyone in it, not a pile of pairwise meetings", () => {
+  assert.match(source, /<option value="conversation">Conversation between characters<\/option>/);
+  assert.match(source, /const talkers=\[\.\.\.new Set\(\[event\.source,\.\.\.\(event\.characters\|\|\[\]\)\]\)\]\.filter\(id=>states\.get\(id\)\?\.kind==="character"\)/);
+  assert.match(source, /talkers\.forEach\(\(a,index\)=>talkers\.slice\(index\+1\)\.forEach\(b=>\{if\(!meetings\.has\(pairKey\(a,b\)\)\)meetings\.set\(pairKey\(a,b\),event\)/, "everyone in it counts as having met everyone else");
+  const record = functionBody("buildEventRecord");
+  assert.match(record, /if\(talkers\.length<2\)\{toast\("A conversation needs at least two characters"\);return null;\}/);
+  assert.match(record, /if\(named\.some\(item=>!item\)\)\{toast\("One of the conversation names does not match an identity"\)/, "a name that matches nothing is refused rather than silently dropped");
+  assert.match(functionBody("renderGraph"), /talkers\.forEach\(\(a,index\)=>talkers\.slice\(index\+1\)\.forEach\(b=>\{noteEdge\(a,b,currentEvent\.chapter,"In this conversation"\);straightEdge\(a,b,"edge conversation-edge newly-revealed-edge",a,b\);\}\)\)/, "and the whole group is drawn joined up while it plays");
+});
+
+test("the demo story exercises systems and conversations, so both are visible without building a story first", () => {
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("function deepClone"));
+  assert.match(sample, /id: "inn-system", kind: "system"/);
+  assert.match(sample, /id: "inn-taverns", kind: "system"/);
+  assert.match(sample, /type: "system_host", source: "inn-system", target: "lex"/);
+  assert.match(sample, /type: "system_location", source: "inn-taverns", location: "inn-lobby"/);
+  assert.match(sample, /type: "system_location", source: "inn-taverns", location: "stonevale"/, "one subsystem across two different places");
+  assert.match(sample, /type: "conversation", source: "lex", characters: \["lex","mary","gerald"\]/);
+  assert.match(source, /sampleData\.events\.filter\(event=>\/\^\(sys-\|talk-\)\/\.test\(event\.id\)&&!eventIds\.has\(event\.id\)\)/, "and a stored copy of the demo picks them up");
+});
+
+test("two pods out at once keep away from each other, since nothing in the layout holds them apart", () => {
+  const body = functionBody("renderLocationPods");
+  assert.match(body, /placedPods\.forEach\(point=>\{score\+=Math\.min\(170,Math\.hypot\(point\.x-x,point\.y-y\)\)\*2\.5;\}\)/);
+  assert.match(body, /placedPods\.push\(\{x:anchorPos\.x\+Math\.cos\(angle\)\*distance,y:anchorPos\.y\+Math\.sin\(angle\)\*distance\}\)/);
+});
