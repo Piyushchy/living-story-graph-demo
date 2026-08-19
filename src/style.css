@@ -736,3 +736,10 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .system-satellite-edge { fill: none; stroke: #8f74c4; stroke-width: 1.6; stroke-dasharray: 2 3; opacity: .6; }
 #graph .graph-viewport.has-action-focus .system-satellite,
 #graph .graph-viewport.has-selection-focus .system-satellite { opacity: 1 !important; filter: none !important; }
+.system-authority-pip { fill: rgba(12,8,24,.96); stroke: #b98cff; stroke-width: 1.6; pointer-events: none; }
+.system-authority-text { fill: #d9c2ff; font-size: 10px; font-weight: 800; text-anchor: middle; pointer-events: none; }
+.system-rank-pulse { fill: none; stroke: #ffd479; stroke-width: 2.4; opacity: .9; animation: system-rank-pulse 1.1s ease-in-out infinite alternate; pointer-events: none; }
+@keyframes system-rank-pulse { from { opacity: .35 } to { opacity: 1 } }
+.system-rank-label { font-size: 11px; font-weight: 800; text-anchor: middle; paint-order: stroke; stroke: #081018; stroke-width: 5px; stroke-linejoin: round; pointer-events: none; }
+.system-rank-label.rank-rose { fill: #8de7b0; }
+.system-rank-label.rank-fell { fill: #ff9ba3; }

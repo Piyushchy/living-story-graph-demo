@@ -842,21 +842,23 @@ test("a ghost action changes the world without taking a turn: no stop on the sli
   assert.match(functionBody("renderOrderEditor"), /if\(record\.ghost\)delete record\.ghost;else record\.ghost=true;/, "and it can be toggled where the actions are managed");
 });
 
-test("a system carries a plain authority number and a short grade — three characters at most, or one of the named gradings", () => {
+test("a system's grade is letters with an optional plus or minus, or one of the named gradings — and authority is a plain number, never a letter", () => {
   const ctx = {};
   vm.createContext(ctx);
   vm.runInContext([source.match(/^const SPECIAL_GRADES = .*$/m)[0], functionBody("isSpecialGrade"), functionBody("gradeIsValid")].join("\n"), ctx);
   const run = expression => JSON.parse(vm.runInContext(`JSON.stringify(${expression})`, ctx));
   assert.equal(run('gradeIsValid("S")'), true);
   assert.equal(run('gradeIsValid("A+")'), true);
-  assert.equal(run('gradeIsValid("SSS")'), true);
-  assert.equal(run('gradeIsValid("SSSS")'), false, "four characters is too long");
-  assert.equal(run('gradeIsValid("Divine")'), true, "the named gradings are exempt from the length rule");
+  assert.equal(run('gradeIsValid("SS")'), true, "double letter");
+  assert.equal(run('gradeIsValid("SSS")'), true, "triple letter");
+  assert.equal(run('gradeIsValid("SSS-")'), true, "triple letter with a minus");
+  assert.equal(run('gradeIsValid("SSSS")'), false, "four letters is too many");
+  assert.equal(run('gradeIsValid("7")'), false, "a number is authority, not a grade");
+  assert.equal(run('gradeIsValid("Divine")'), true);
   assert.equal(run('gradeIsValid("Death")'), true);
   assert.equal(run('gradeIsValid("life")'), true);
-  assert.match(source, /if\(kind==="system"&&!gradeIsValid\(form\.get\("grade"\)\)\)\{toast\("A grade is at most three characters, or one of Divine, Death, Life"\)/);
-  assert.match(functionBody("renderGraph"), /if\(item\.grade\)\{const grade=svgEl\("text"/, "the grade is drawn in the middle of the diamond, which is what a one-to-three character rank is for");
-  assert.match(functionBody("renderGraph"), /Number\.isFinite\(item\.authority\)\?`SYSTEM · AUTHORITY \$\{item\.authority\}`:"SYSTEM"/);
+  assert.match(functionBody("systemGlyphRadius"), /const authority=Number\(state\?\.authority\)/, "authority reads as size, since it is an unbounded number");
+  assert.doesNotMatch(source, /name: "Authority", levels:/, "authority is a system property, not a character progression ladder");
 });
 
 test("the progression track picker belongs to characters only — it was showing on every kind, including systems, which have nothing to do with it", () => {
@@ -867,7 +869,7 @@ test("the progression track picker belongs to characters only — it was showing
 test("a system that was merged away or destroyed shrinks to a small marker on whatever succeeded it, named only when that system is the one being looked at", () => {
   const body = functionBody("renderGraph");
   assert.match(body, /const retired=new Set\(\[\.\.\.derived\.systemMerges\.map\(link=>link\.absorbed\),\.\.\.derived\.systemEnds\.map\(link=>link\.system\)\]\)/);
-  assert.match(body, /entity\(id\)\?\.kind!=="system"\|\|retired\.has\(id\)\)continue;/, "it stops being a node of its own");
+  assert.match(body, /entity\(id\)\?\.kind!=="system"\|\|\(retired\.has\(id\)&&id!==actionSystem\)\)continue;/, "it stops being a node of its own, except for the action that retires it");
   assert.match(body, /const named=selectedId===satellite\.anchor\|\|selectedId===satellite\.id\|\|sysView\.expanded\.has\(satellite\.anchor\)/);
   assert.match(body, /if\(selectedId&&!renderIds\.has\(selectedId\)&&!systemSatellites\.some\(item=>item\.id===selectedId\)\)selectedId=null;/, "and selecting one is not thrown away just because it is not a node");
   assert.match(styleSource, /\.system-satellite-mark \{ fill: rgba\(46,28,78,\.96\); stroke: #8f74c4/);
@@ -913,15 +915,35 @@ test("the demo exercises every action type the editor offers, so nothing ships w
   assert.ok(offered.length >= 25, "and the list of types is the one being checked against");
 });
 
-test("the demo runs two progression ladders at once, a ghost action, and a character graded on authority rather than cultivation", () => {
+test("a system's authority and grade both move over time, in the demo and independently of each other", () => {
   const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
-  assert.match(sample, /\{ id: "authority", name: "Authority", levels: \["G","F","E","D","C","B","A","S-","S","S\+","Divine"\] \}/);
-  assert.match(sample, /type: "cultivation", track: "authority", source: "vane"/, "somebody is actually on the second ladder");
-  assert.match(sample, /ghost: true/, "and a structural fact is carried as a ghost");
-  assert.match(sample, /id: "warden-system", kind: "system"[^}]*authority: 6, grade: "A"/);
+  assert.match(sample, /type: "system_rank", source: "inn-system", grade: "S\+"/, "a grade change on its own");
+  assert.match(sample, /type: "system_rank", source: "inn-system", authority: 11/, "an authority change on its own");
+  assert.match(sample, /type: "system_rank", source: "ash-system", authority: 2, grade: "D"/, "and both falling together");
+  assert.match(sample, /type: "system_rank", source: "warden-system", authority: 9, grade: "SS"/, "and both rising together");
+  assert.match(sample, /ghost: true/, "a structural fact is still carried as a ghost");
+  assert.match(source, /if\(!rankAuthority&&!rankGrade\)\{toast\("Give the new authority, the new grade, or both"\)/);
+  assert.match(source, /source\.previousAuthority=source\.authority;source\.previousGrade=source\.grade;/, "what it was is kept so the move can be shown");
+});
+
+test("a rank change is visible when it happens: the system comes up for its own action even with no host selected, and says which way it moved", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const actionSystem=currentEvent&&String\(currentEvent\.type\)\.startsWith\("system_"\)\?\[currentEvent\.source,currentEvent\.target\]\.find\(id=>entity\(id\)\?\.kind==="system"\):null/);
+  assert.match(body, /if\(actionSystem\)queue\.push\(actionSystem\)/);
+  assert.match(body, /\(retired\.has\(id\)&&id!==actionSystem\)/, "a system destroyed by the very action being played is still drawn for that beat");
+  assert.match(body, /moves\.push\(`\$\{state\.previousGrade\|\|"ungraded"\} → \$\{state\.grade\|\|"ungraded"\}`\)/);
+  assert.match(body, /moves\.push\(`authority \$\{state\.previousAuthority\?\?"—"\} → \$\{state\.authority\}`\)/);
+  assert.match(styleSource, /\.system-rank-label\.rank-rose \{ fill: #8de7b0; \}/);
+  assert.match(styleSource, /\.system-authority-text \{ fill: #d9c2ff/, "the number has its own pip under the diamond");
 });
 
 test("a character's panel and profile name whichever ladder they are on, rather than always saying cultivation", () => {
   assert.match(source, /!unrevealed&&state\.realm!=="Unrevealed"\?\{label:trackName\(state\.track\),value:/);
   assert.match(source, /profileSection\("profile-cultivation",`\$\{trackName\(state\.track\)\} & abilities`/);
+});
+
+test("a failed migration keeps the reader's own story rather than silently replacing it with the demo", () => {
+  const body = functionBody("loadLocalData");
+  assert.match(body, /let stored = null;/);
+  assert.match(body, /catch \(error\) \{ console\.error\("Story data could not be brought up to date; keeping it as it was\.", error\); return stored \|\| deepClone\(sampleData\); \}/);
 });
