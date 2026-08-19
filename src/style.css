@@ -706,3 +706,33 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 @keyframes conversation-hub-pulse { from { filter: drop-shadow(0 0 3px rgba(255,212,121,.35)) } to { filter: drop-shadow(0 0 12px rgba(255,212,121,.85)) } }
 #graph .graph-viewport.has-action-focus .conversation-hub { opacity: 1 !important; filter: none !important; }
 .line-key.conversation { background: repeating-linear-gradient(90deg,#ffd479 0 2px,transparent 2px 8px); }
+.order-row-ghost { border-style: dashed; opacity: .78; }
+.order-ghost.is-ghost { border-color: #7f6ad0; color: #b9a6f5; }
+.checkbox-field { display: flex !important; flex-direction: row !important; gap: 8px; align-items: center; }
+.checkbox-field input { width: 15px; height: 15px; }
+.checkbox-field span { color: #9fb0c5; font-size: 11px; }
+.event-message-edit { width: 100%; margin: 5px 0 0; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #d5deeb; font: inherit; font-size: 12px; line-height: 1.42; }
+.event-message-edit:hover { border-color: #2a3a4e; background: #0b1421; }
+.event-message-edit:focus { border-color: #6de0d5; background: #0b1421; color: #eaf2ff; outline: none; }
+.system-grade { fill: #e6d4ff; font-size: 15px; font-weight: 800; letter-spacing: .01em; text-anchor: middle; pointer-events: none; }
+.system-grade-special { font-size: 9px; letter-spacing: .08em; }
+.node.system-divine .system-shape { fill: rgba(78,64,20,.94); stroke: #ffd479; }
+.node.system-divine .system-grade { fill: #ffe9b0; }
+.node.system-death .system-shape { fill: rgba(66,22,30,.94); stroke: #ef5d67; }
+.node.system-death .system-grade { fill: #ffc3c7; }
+.node.system-life .system-shape { fill: rgba(18,54,40,.94); stroke: #55d6a7; }
+.node.system-life .system-grade { fill: #b6f2d8; }
+/* A system that was merged away or destroyed: a small marker, named only when the system it
+   belongs to is the one selected. */
+.system-satellite-layer { pointer-events: none; }
+.system-satellite { pointer-events: auto; cursor: pointer; }
+.system-satellite-hit { fill: transparent; stroke: none; pointer-events: all; }
+.system-satellite-mark { fill: rgba(46,28,78,.96); stroke: #8f74c4; stroke-width: 2; }
+.system-satellite:hover .system-satellite-mark { stroke: #d9c2ff; }
+.system-satellite.satellite-selected .system-satellite-mark { fill: #b98cff; stroke: #f0e6ff; }
+.system-satellite-ended .system-satellite-mark { stroke: #ef5d67; }
+.system-satellite-cross { stroke: #ef5d67; stroke-width: 1.6; stroke-linecap: round; pointer-events: none; }
+.system-satellite-label { fill: #d9c2ff; font-size: 9px; font-weight: 700; text-anchor: middle; paint-order: stroke; stroke: #081018; stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
+.system-satellite-edge { fill: none; stroke: #8f74c4; stroke-width: 1.6; stroke-dasharray: 2 3; opacity: .6; }
+#graph .graph-viewport.has-action-focus .system-satellite,
+#graph .graph-viewport.has-selection-focus .system-satellite { opacity: 1 !important; filter: none !important; }

@@ -556,7 +556,7 @@ function pureSandbox(names) {
 
 test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /viewportGroup\.append\(edgeLayer,nodeLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation markers");
+  assert.match(body, /viewportGroup\.append\(edgeLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation and system markers");
   assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,halfWidth:/);
   assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=entry\.text\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
   assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
@@ -758,8 +758,8 @@ test("a character moving on only replaces where they are — leaving one place f
 
 test("a system is drawn only while its host is selected — that is the whole difference from a place, which shows whenever anyone connected to it is on screen", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /const queue=derived\.systemHosts\.filter\(link=>link\.host===selectedId\)\.map\(link=>link\.system\)/);
-  assert.match(body, /if\(entity\(selectedId\)\?\.kind==="system"\)queue\.push\(selectedId\)/, "selecting the system itself keeps it up");
+  assert.match(body, /queue=derived\.systemHosts\.filter\(link=>link\.host===selectedId\)\.map\(link=>link\.system\)/);
+  assert.match(body, /if\(cursor&&entity\(cursor\)\?\.kind==="system"\)queue\.push\(cursor\);/, "selecting a system — even one that was swallowed — keeps its line up");
   assert.match(body, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\)return false;/, "a system never rides in on the ordinary reveal path");
   assert.match(body, /sysView\.rendered\.forEach\(id=>renderIds\.add\(id\)\)/, "it is added back only through the host-selection path");
   assert.match(body, /revealedSystems\.forEach\(id=>derived\.systemLocations\.filter\(link=>link\.system===id\)\.forEach\(link=>visibleIds\.add\(link\.location\)\)\)/, "and brings the places it operates at on screen with it");
@@ -770,8 +770,8 @@ test("a system drills down exactly like a place, sharing one tree builder, and o
   assert.match(functionBody("buildSystemView"), /return buildDrillView\(\[\.\.\.systemIds\],id=>parentOf\.get\(id\)\|\|null,expandedSystems\)/);
   const activate = functionBody("activateSystem");
   assert.match(activate, /if\(view\.expanded\.has\(id\)\)\{closeSystem\(id\);return;\}/);
-  assert.match(activate, /if\(\(view\.children\.get\(id\)\|\|\[\]\)\.length\)\{openSystem\(id\);return;\}/);
-  assert.doesNotMatch(activate, /selectedId=/, "opening a system must not steal the selection that is keeping it visible");
+  assert.match(activate, /if\(selectedId===id&&\(view\.children\.get\(id\)\|\|\[\]\)\.length\)\{openSystem\(id\);return;\}/);
+  assert.match(activate, /selectedId=id;setMobilePanel\("info"\);renderAll\(\);/, "the first click selects it, which is how its own history is reached");
   assert.match(functionBody("renderGraph"), /if\(item\.kind==="system"\)\{activateSystem\(item\.id\);return;\}/);
 });
 
@@ -831,4 +831,74 @@ test("a conversation can be found again after the slider moves on — selecting 
   assert.match(body, /currentEvent\?\.id===convo\.id\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)/);
   assert.match(functionBody("applyGraphFocus"), /String\(edge\.dataset\.a\)\.startsWith\("conversation:"\)\|\|String\(edge\.dataset\.b\)\.startsWith\("conversation:"\)/, "so the other spokes are not dimmed away from the one that touches the selection");
   assert.match(functionBody("edgeEndpointName"), /String\(id\)\.startsWith\("conversation:"\)\?"this conversation"/, "and hovering a spoke names it rather than printing an id");
+});
+
+test("a ghost action changes the world without taking a turn: no stop on the slider, not in the list, but everything it does is in force", () => {
+  assert.match(functionBody("volumeActions"), /&&!event\.ghost\);/, "never a stop");
+  assert.match(functionBody("ghostActions"), /event\.ghost&&event\.chapter>=volume\.from&&event\.chapter<=volume\.to&&event\.chapter<=chapter/, "in force from its chapter onward");
+  assert.match(functionBody("revealedVolumeActions"), /return \[\.\.\.volumeActions\(\)\.slice\(0,currentActionIndex\),\.\.\.ghostActions\(\)\];/);
+  assert.match(functionBody("appliedEvents"), /const volume=activeVol\(\),selected=new Set\(revealedVolumeActions\(\)\.map\(event=>event\.id\)\)/, "so derivation sees it too");
+  assert.match(source, /if\(form\.get\("ghost"\)\)record\.ghost=true;/);
+  assert.match(functionBody("renderOrderEditor"), /if\(record\.ghost\)delete record\.ghost;else record\.ghost=true;/, "and it can be toggled where the actions are managed");
+});
+
+test("a system carries a plain authority number and a short grade — three characters at most, or one of the named gradings", () => {
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext([source.match(/^const SPECIAL_GRADES = .*$/m)[0], functionBody("isSpecialGrade"), functionBody("gradeIsValid")].join("\n"), ctx);
+  const run = expression => JSON.parse(vm.runInContext(`JSON.stringify(${expression})`, ctx));
+  assert.equal(run('gradeIsValid("S")'), true);
+  assert.equal(run('gradeIsValid("A+")'), true);
+  assert.equal(run('gradeIsValid("SSS")'), true);
+  assert.equal(run('gradeIsValid("SSSS")'), false, "four characters is too long");
+  assert.equal(run('gradeIsValid("Divine")'), true, "the named gradings are exempt from the length rule");
+  assert.equal(run('gradeIsValid("Death")'), true);
+  assert.equal(run('gradeIsValid("life")'), true);
+  assert.match(source, /if\(kind==="system"&&!gradeIsValid\(form\.get\("grade"\)\)\)\{toast\("A grade is at most three characters, or one of Divine, Death, Life"\)/);
+  assert.match(functionBody("renderGraph"), /if\(item\.grade\)\{const grade=svgEl\("text"/, "the grade is drawn in the middle of the diamond, which is what a one-to-three character rank is for");
+  assert.match(functionBody("renderGraph"), /Number\.isFinite\(item\.authority\)\?`SYSTEM · AUTHORITY \$\{item\.authority\}`:"SYSTEM"/);
+});
+
+test("the progression track picker belongs to characters only — it was showing on every kind, including systems, which have nothing to do with it", () => {
+  assert.match(functionBody("updateEntityFormFields"), /\$\("#entity-initial-track-field"\)\.hidden=!isCharacter;/);
+  assert.match(functionBody("updateEntityFormFields"), /const isSystem=kind==="system";\$\("#entity-authority-field"\)\.hidden=!isSystem;\$\("#entity-grade-field"\)\.hidden=!isSystem;/);
+});
+
+test("a system that was merged away or destroyed shrinks to a small marker on whatever succeeded it, named only when that system is the one being looked at", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const retired=new Set\(\[\.\.\.derived\.systemMerges\.map\(link=>link\.absorbed\),\.\.\.derived\.systemEnds\.map\(link=>link\.system\)\]\)/);
+  assert.match(body, /entity\(id\)\?\.kind!=="system"\|\|retired\.has\(id\)\)continue;/, "it stops being a node of its own");
+  assert.match(body, /const named=selectedId===satellite\.anchor\|\|selectedId===satellite\.id\|\|sysView\.expanded\.has\(satellite\.anchor\)/);
+  assert.match(body, /if\(selectedId&&!renderIds\.has\(selectedId\)&&!systemSatellites\.some\(item=>item\.id===selectedId\)\)selectedId=null;/, "and selecting one is not thrown away just because it is not a node");
+  assert.match(styleSource, /\.system-satellite-mark \{ fill: rgba\(46,28,78,\.96\); stroke: #8f74c4/);
+});
+
+test("a merged system's history also belongs to the system that took it, and the merge itself shows there", () => {
+  assert.match(functionBody("absorbedInto"), /\(derived\.systemMerges\|\|\[\]\)\.filter\(link=>link\.into===current\)/, "following the chain, so a merge of a merge still reports upward");
+  assert.match(functionBody("renderEvents"), /family=new Set\(\[selectedId,\.\.\.\(entity\(selectedId\)\?\.kind==="system"\?absorbedInto\(selectedId,currentDerived\(\)\):\[\]\)\]\)/);
+  assert.match(functionBody("renderEvents"), /\[\.\.\.family\]\.some\(id=>eventInvolves\(entry\.event,id\)\)/);
+});
+
+test("a system is selected on the first click and opened on the second, the same as a place, so its own history is reachable", () => {
+  const body = functionBody("activateSystem");
+  assert.match(body, /if\(view\.expanded\.has\(id\)\)\{closeSystem\(id\);return;\}/);
+  assert.match(body, /if\(selectedId===id&&\(view\.children\.get\(id\)\|\|\[\]\)\.length\)\{openSystem\(id\);return;\}/);
+  assert.match(body, /selectedId=id;setMobilePanel\("info"\);renderAll\(\);/);
+});
+
+test("an action's message is editable where it is read in the editor, and stays plain prose on the public graph", () => {
+  assert.match(functionBody("canEditEvents"), /return isUploadRoute&&adminAuthenticated;/);
+  assert.match(functionBody("eventPanelRow"), /\$\{canEditEvents\(\)\?`<input class="event-message-edit"/);
+  assert.match(functionBody("bindEventPanelRows"), /record\.description=field\.value\.trim\(\);saveData\(\)/);
+  assert.match(functionBody("bindEventPanelRows"), /if\(event\.target\.closest\("button,a,input"\)\)return;/, "so typing in it does not also jump the graph");
+});
+
+test("the demo carries a merged system, a destroyed one, and graded systems, and a stored copy picks them up even if its novel was renamed", () => {
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("function deepClone"));
+  assert.match(sample, /id: "hearth-system", kind: "system"[^}]*grade: "C"/);
+  assert.match(sample, /id: "ash-system", kind: "system"[^}]*grade: "Death"/);
+  assert.match(sample, /type: "system_merge", source: "hearth-system", target: "inn-system"/);
+  assert.match(sample, /type: "system_end", source: "ash-system"/);
+  assert.match(sample, /id: "inn-system"[^}]*authority: 7, grade: "S"/);
+  assert.match(source, /const isBundledDemo=\["lex","eclipse","inn-lobby"\]\.every\(id=>migrated\.entities\.some\(item=>item\.id===id\)\)/, "identified by its cast, not its title");
 });
