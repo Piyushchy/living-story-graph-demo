@@ -685,3 +685,30 @@ test("event order is edited one chapter at a time, which is what keeps it usable
   assert.match(body, /list\.querySelectorAll\("\.order-up"\)\.forEach\(button=>button\.onclick=\(\)=>swap\(button\.dataset\.id,-1\)\)/, "with arrow buttons as the keyboard-reachable path");
   assert.match(functionBody("commitEventOrder"), /ids\.forEach\(\(id,index\)=>\{const record=data\.events\.find\(event=>event\.id===id\);if\(record\)record\.order=index\+1;\}\)/);
 });
+
+test("a node's radius is settled once, before the springs and the separation force need it — clearing the map after filling it left every shape asking for the fallback size, so big characters walked straight through each other", () => {
+  const body = functionBody("renderGraph");
+  const filled = body.indexOf("visible.forEach(item=>physics.radii.set(item.id,nodeRadiusFor(");
+  assert.ok(filled > 0, "radii are filled from the same rule the renderer draws with");
+  assert.ok(body.indexOf("const restLength=") > filled, "springs read them");
+  assert.equal(body.split("physics.radii.clear()").length - 1, 1, "and nothing clears the map a second time");
+  assert.match(functionBody("stepPhysics"), /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+SEPARATION_GAP;/);
+});
+
+test("a crowd sharing one place gets a ring wide enough to hold it, rather than everyone being pulled onto a circle with no room", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /hubMembers\.forEach\(\(members,hub\)=>\{[\s\S]*?circumference\+=2\*\(physics\.radii\.get\(id\)\|\|24\)\+SEPARATION_GAP;[\s\S]*?hubRing\.set\(hub,circumference\/\(2\*Math\.PI\)\)/);
+  assert.match(body, /hubLinks\.forEach\(link=>addSpring\(link\.member,link\.hub,Math\.max\(link\.desired,hubRing\.get\(link\.hub\)\|\|0\),link\.strength\)\)/);
+});
+
+test("the chapter's actions are all listed and scrollable, and hovering the list holds the auto-advance so it can be read at the reader's pace", () => {
+  const body = functionBody("renderEvents");
+  assert.match(body, /const chapterRows=volumeActions\(\)\.map\(\(item,index\)=>\(\{event:item,index:index\+1\}\)\)\.filter\(entry=>entry\.event\.chapter===event\.chapter\)/);
+  assert.match(body, /upcoming:entry\.index>currentActionIndex/, "actions not yet reached are shown but marked");
+  assert.match(body, /if\(!eventScrollHold\)requestAnimationFrame\(\(\)=>list\.querySelector\("\.current-action"\)\?\.scrollIntoView\(\{block:"nearest"\}\)\)/, "and the list does not yank itself while the reader is in it");
+  assert.match(functionBody("scheduleChapterSequence"), /if\(expandedChapter!==null\|\|eventScrollHold\)return;/);
+  assert.match(source, /autoplayHeldByHover=Boolean\(chapterAutoplayTimer\);cancelChapterSequence\(\)/, "only resumes if it was actually playing when the pointer arrived");
+  assert.match(source, /eventsCard\.addEventListener\("pointerleave",release\)/);
+  assert.match(styleSource, /\.events-list \{[^}]*overflow-y: auto/);
+  assert.match(styleSource, /\.events-list > \.upcoming-action \{ opacity: \.5; \}/);
+});

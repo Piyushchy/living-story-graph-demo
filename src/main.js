@@ -131,6 +131,7 @@ let activePodIds = [], activePodKey = "", retiringPodIds = [], podRetireTimer = 
 let currentChapter = 1;
 let currentActionIndex = 0;
 let chapterAutoplayTimer=null,expandedChapter=null;
+let eventScrollHold=false,autoplayHeldByHover=false;
 let activeVolume = "";
 let activeView = "graph";
 let wheelDelta = 0;
@@ -170,7 +171,7 @@ app.innerHTML = `
                 <button class="mobile-panel-tab" data-panel="legend" role="tab">Legend</button>
               </div>
               <section id="summary" class="side-card summary mobile-active" data-panel-content="info"><div class="empty">Select a character, organization, or location. Double-click a node for full details.</div></section>
-              <section class="side-card events-card" data-panel-content="events"><div class="events-head"><strong id="events-title">Chapter events</strong><span id="events-count"></span></div><ul id="events-list" class="events-list"></ul></section>
+              <section class="side-card events-card" data-panel-content="events"><div class="events-head"><strong id="events-title">Chapter events</strong><span id="events-count"></span><span id="events-hold" class="events-hold" hidden>Paused</span></div><ul id="events-list" class="events-list"></ul></section>
               <section class="side-card mobile-legend" data-panel-content="legend" aria-label="Mobile graph legend">
                 <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span>
                 <span><i class="line-key friendly"></i>Friendly</span><span><i class="line-key hostile"></i>Hostile</span><span><i class="line-key neutral"></i>Neutral / awareness</span><span><i class="line-key clone"></i>Clone / avatar</span><span><i class="line-key member"></i>Membership</span><span><i class="line-key location"></i>Travel / activity</span><span><i class="line-key residence"></i>Residence</span><span><i class="line-key hierarchy"></i>Inside location</span><span><i class="line-key organization-location"></i>Organization place</span>
@@ -604,7 +605,7 @@ function configureTimeline() {
 function cancelChapterSequence(){clearTimeout(chapterAutoplayTimer);chapterAutoplayTimer=null;}
 function expandChapterEvents(chapter){const entries=chapterEventEntries(chapter);if(entries.length<2)return;cancelChapterSequence();expandedChapter=chapter;if(currentActionEvent()?.chapter!==chapter)currentActionIndex=entries[0].index;currentChapter=chapter;renderAll();}
 function collapseChapterEvents(){cancelChapterSequence();expandedChapter=null;renderAll();}
-function scheduleChapterSequence(){cancelChapterSequence();if(expandedChapter!==null)return;const current=currentActionEvent(),next=volumeActions()[currentActionIndex];if(!current||!next||next.chapter!==current.chapter)return;chapterAutoplayTimer=setTimeout(()=>{chapterAutoplayTimer=null;currentActionIndex+=1;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();scheduleChapterSequence();},1150);}
+function scheduleChapterSequence(){cancelChapterSequence();if(expandedChapter!==null||eventScrollHold)return;const current=currentActionEvent(),next=volumeActions()[currentActionIndex];if(!current||!next||next.chapter!==current.chapter)return;chapterAutoplayTimer=setTimeout(()=>{chapterAutoplayTimer=null;currentActionIndex+=1;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();scheduleChapterSequence();},1150);}
 function applyTimeline() {
   const previous=currentActionIndex,value=Number(timeline.value);cancelChapterSequence();if(timeline.dataset.mode==="chapter-events"){const groups=volumeChapterGroups(),groupIndex=groups.findIndex(group=>group.chapter===expandedChapter),entries=groups[groupIndex]?.entries||[];if(value<=0){expandedChapter=null;currentActionIndex=groupIndex>0?groups[groupIndex-1].entries.at(-1).index:0;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();return;}if(value>=entries.length+1){expandedChapter=null;const nextGroup=groups[groupIndex+1];currentActionIndex=nextGroup?nextGroup.entries[0].index:entries.at(-1)?.index||0;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();if(nextGroup)scheduleChapterSequence();return;}currentActionIndex=entries[value-1].index;currentChapter=expandedChapter;renderAll();return;}const groups=volumeChapterGroups();if(value<=0){currentActionIndex=0;currentChapter=activeVol().from;renderAll();return;}const group=groups[value-1];if(!group)return;currentActionIndex=group.entries[0].index;currentChapter=group.chapter;renderAll();if(currentActionIndex>previous)scheduleChapterSequence();
 }
@@ -666,7 +667,7 @@ function stepPhysics() {
       const d = Math.sqrt(d2), f = REPEL / d2, fx = dx / d * f, fy = dy / d * f;
       fa.x += fx; fa.y += fy; fb.x -= fx; fb.y -= fy;
       // Hard separation: inverse-square repulsion alone still lets two shapes sit on top of
-      // each other once springs pull them together, which is what made the graph look tangled.
+      // each other once springs pull them together.
       const ra=physics.radii.get(ids[i])||24,rb=physics.radii.get(ids[j])||24,clearance=ra+rb+SEPARATION_GAP;
       if(d<clearance){const push=Math.min(6,(clearance-d)*.24);fa.x+=dx/d*push;fa.y+=dy/d*push;fb.x-=dx/d*push;fb.y-=dy/d*push;}
       const ab=physics.bounds.get(ids[i]),bb=physics.bounds.get(ids[j]);
@@ -776,16 +777,33 @@ function renderGraph() {
   // which is what made the whole graph shiver. Every rest length clears both shapes.
   const restLength=(a,b,desired)=>Math.max(desired,(physics.radii.get(a)||24)+(physics.radii.get(b)||24)+SEPARATION_GAP+8);
   const springs=new Map(),addSpring=(a,b,desired,strength)=>{if(!a||!b||a===b||!renderIds.has(a)||!renderIds.has(b))return;const length=restLength(a,b,desired),key=a<b?`${a}|${b}`:`${b}|${a}`,existing=springs.get(key);if(existing){existing.length=Math.min(existing.length,length);existing.strength=Math.max(existing.strength,strength);return;}springs.set(key,{a,b,length,strength});};
-  derived.memberships.forEach(m=>addSpring(m.character,m.organization,105,.022));
+  // Everything that orbits a hub — members of an organisation, everyone standing in a place, the
+  // children of an opened place — is collected first so the ring can be widened to fit the crowd.
+  // Eighteen people cannot all sit 90 units from one place: they end up pressed together, and the
+  // contact solver shoves them apart again every frame, which never stops moving.
+  const hubLinks=[],hubMembers=new Map();
+  const queueHubLink=(member,hub,desired,strength)=>{
+    if(!member||!hub||member===hub||!renderIds.has(member)||!renderIds.has(hub))return;
+    hubLinks.push({member,hub,desired,strength});
+    if(!hubMembers.has(hub))hubMembers.set(hub,new Set());
+    hubMembers.get(hub).add(member);
+  };
+  derived.memberships.forEach(m=>queueHubLink(m.character,m.organization,105,.022));
+  derived.organizationLocations.forEach(link=>queueHubLink(link.organization,resolveLocationId(link.location),locationDistance(resolveLocationId(link.location)),.032));
+  derived.residences.forEach(link=>queueHubLink(link.character,resolveLocationId(link.location),locationDistance(resolveLocationId(link.location)),.04));
+  [...derived.locations.values()].forEach(visit=>queueHubLink(visit.character,resolveLocationId(visit.location),locationDistance(resolveLocationId(visit.location)),.047));
+  locView.rendered.forEach(id=>{if(!locView.expanded.has(id))return;(locView.children.get(id)||[]).forEach(kid=>queueHubLink(kid,id,86+glyphRadius(kid),.14));});
+  const hubRing=new Map();
+  hubMembers.forEach((members,hub)=>{
+    if(members.size<2)return hubRing.set(hub,0);
+    let circumference=0;members.forEach(id=>{circumference+=2*(physics.radii.get(id)||24)+SEPARATION_GAP;});
+    hubRing.set(hub,circumference/(2*Math.PI));
+  });
+  hubLinks.forEach(link=>addSpring(link.member,link.hub,Math.max(link.desired,hubRing.get(link.hub)||0),link.strength));
   derived.identityParents.forEach(link=>addSpring(link.child,link.parent,68,.09));
-  derived.organizationLocations.forEach(link=>{const place=resolveLocationId(link.location);addSpring(link.organization,place,locationDistance(place),.032);});
-  derived.residences.forEach(link=>{const place=resolveLocationId(link.location);addSpring(link.character,place,locationDistance(place),.04);});
-  [...derived.locations.values()].forEach(visit=>{const place=resolveLocationId(visit.location);addSpring(visit.character,place,locationDistance(place),.047);});
-  // An opened location keeps its children in a tight ring so the drill-down reads as one cluster.
-  locView.rendered.forEach(id=>{if(!locView.expanded.has(id))return;(locView.children.get(id)||[]).forEach(kid=>addSpring(kid,id,86+glyphRadius(kid),.14));});
   [...derived.relations.keys(),...derived.awareness.keys()].forEach(key=>{const [a,b]=key.split("|");addSpring(a,b,150,.02);});
   physics.edges=[...springs.values()];
-  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null; physics.radii.clear();
+  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null;
   physics.degree.clear();physics.edges.forEach(edge=>{physics.degree.set(edge.a,(physics.degree.get(edge.a)||0)+1);physics.degree.set(edge.b,(physics.degree.get(edge.b)||0)+1);});
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
@@ -865,7 +883,7 @@ function renderGraph() {
   // Measure the names once they are all in the document. Guessing width from character count
   // under-read real text by about a third, which left the separation forces satisfied while
   // names still overlapped on screen. One pass after the loop keeps the layout thrash to one.
-  labelEls.forEach((entry,id)=>{const box=entry.text.getBBox();if(!box.width)return;entry.halfWidth=box.width/2;entry.halfHeight=box.height/2;entry.offset=box.y+box.height/2;physics.bounds.set(id,{ox:box.x+box.width/2,oy:entry.offset,hw:entry.halfWidth,hh:entry.halfHeight});});
+  labelEls.forEach((entry,id)=>{const box=entry.text.getBBox();if(!box.width)return;entry.halfWidth=box.width/2;entry.halfHeight=box.height/2;entry.offset=box.y+box.height/2;entry.box={ox:box.x+box.width/2,oy:entry.offset,hw:entry.halfWidth,hh:entry.halfHeight};physics.bounds.set(id,entry.box);});
   renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius);
   applyGraphFocus(derived);
   updateLabelVisibility();
@@ -1028,6 +1046,7 @@ function updateLabelVisibility(){
     let visible=item.focused||(item.linked||!zoomedOut||item.rank>=3)&&(item.linked||spent<budget);
     if(visible&&crowded&&!item.focused)visible=!placed.some(other=>Math.abs(other.x-item.x)<other.hw+item.hw&&Math.abs(other.y-item.y)<other.hh+item.hh);
     item.entry.group.classList.toggle("label-culled",!visible);
+    if(visible&&item.entry.box)physics.bounds.set(item.id,item.entry.box);else physics.bounds.delete(item.id);
     if(visible){placed.push(item);if(!item.focused&&!item.linked)spent++;}
   });
 }
@@ -1050,9 +1069,16 @@ function renderSummary(){
   box.className=`side-card summary${panelActive?" mobile-active":""}${unrevealed?" muted":""}`;box.innerHTML=`${header}<div class="summary-stats">${stats.map(stat=>`<article><span>${escapeHtml(stat.label)}</span><strong>${escapeHtml(stat.value)}</strong></article>`).join("")}</div><div class="summary-groups">${summaryGroup("Identity family",identityFamily,4)}${summaryGroup("Current place",currentPlaces,1)}${summaryGroup("Homes / bases",residences,3)}${summaryGroup("Places this chapter",chapterPlaces,4)}${summaryGroup("Aliases",aliases,3)}${summaryGroup("Organizations",organizations,2)}${summaryGroup("Relations",relationItems,4)}${summaryGroup("Met",meetings,4)}${summaryGroup("Aware of",awareOut,4)}${summaryGroup("Known by",awareIn,4)}</div>`;$("#full-details").onclick=()=>openProfile(chosen.id);
 }
 
-function eventPanelRow(event,index,{current=false,related=false}={}){return `<li class="event-summary-row${current?" current-action":""}${related?" selection-related-event":""}"${index?` data-focus-action="${index}" title="Show this action on the graph"`:""}><div><div class="event-panel-meta"><span>Chapter ${event.chapter}</span><b class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type.replaceAll("_"," "))}</b></div><p>${richText(event.description||event.type)}${event.location?` <small>· ${escapeHtml(entity(event.location)?.name||event.location)}</small>`:""}</p></div>${eventOriginControl(event)}</li>`;}
+function eventPanelRow(event,index,{current=false,related=false,upcoming=false}={}){return `<li class="event-summary-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}"${index?` data-focus-action="${index}" title="Show this action on the graph"`:""}><div><div class="event-panel-meta"><span>Chapter ${event.chapter}</span><b class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type.replaceAll("_"," "))}</b></div><p>${richText(event.description||event.type)}${event.location?` <small>· ${escapeHtml(entity(event.location)?.name||event.location)}</small>`:""}</p></div>${eventOriginControl(event)}</li>`;}
 function bindEventPanelRows(){document.querySelectorAll("[data-focus-action]").forEach(row=>row.onclick=event=>{if(event.target.closest("button,a"))return;cancelChapterSequence();currentActionIndex=Number(row.dataset.focusAction);currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();});}
-function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),card=list.closest(".events-card");list.className="events-list";card.classList.toggle("selection-event-mode",Boolean(selectedId));card.classList.toggle("current-event-mode",Boolean(event&&!selectedId));if(!event){$("#events-title").textContent=`${activeVol().name} · Start`;$("#events-count").textContent="Action 0";list.innerHTML='<li class="slider-start-message"><strong>Use the slider to begin</strong><span>Each step reveals one story action in entry order.</span></li>';return;}if(selectedId){const chosen=entity(selectedId),actions=volumeActions().slice(0,currentActionIndex).map((item,index)=>({event:item,index:index+1})).filter(entry=>eventInvolves(entry.event,selectedId));$("#events-title").textContent=`${stateName(currentDerived(),selectedId)} · connected events`;$("#events-count").textContent=`${actions.length} shown`;list.innerHTML=`<li class="selection-event-note"><strong>Connection focus</strong><span>Click ${escapeHtml(chosen?.name||"this node")} again to return to the current event.</span></li>${actions.length?actions.slice().reverse().map(entry=>eventPanelRow(entry.event,entry.index,{current:entry.index===currentActionIndex,related:true})).join(""):'<li class="selection-event-empty">No connected event has been revealed yet.</li>'}`;bindEventPanelRows();return;}$("#events-title").textContent=`Chapter ${event.chapter} · Action ${currentActionIndex}`;$("#events-count").textContent=event.type;list.innerHTML=eventPanelRow(event,currentActionIndex,{current:true});bindEventPanelRows();}
+function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),card=list.closest(".events-card");list.className="events-list";card.classList.toggle("selection-event-mode",Boolean(selectedId));card.classList.toggle("current-event-mode",Boolean(event&&!selectedId));if(!event){$("#events-title").textContent=`${activeVol().name} · Start`;$("#events-count").textContent="Action 0";list.innerHTML='<li class="slider-start-message"><strong>Use the slider to begin</strong><span>Each step reveals one story action in entry order.</span></li>';return;}if(selectedId){const chosen=entity(selectedId),actions=volumeActions().slice(0,currentActionIndex).map((item,index)=>({event:item,index:index+1})).filter(entry=>eventInvolves(entry.event,selectedId));$("#events-title").textContent=`${stateName(currentDerived(),selectedId)} · connected events`;$("#events-count").textContent=`${actions.length} shown`;list.innerHTML=`<li class="selection-event-note"><strong>Connection focus</strong><span>Click ${escapeHtml(chosen?.name||"this node")} again to return to the current event.</span></li>${actions.length?actions.slice().reverse().map(entry=>eventPanelRow(entry.event,entry.index,{current:entry.index===currentActionIndex,related:true})).join(""):'<li class="selection-event-empty">No connected event has been revealed yet.</li>'}`;bindEventPanelRows();return;}$("#events-title").textContent=`Chapter ${event.chapter} · Action ${currentActionIndex}`;
+  // The whole chapter is listed, not just the action being played, so the reader can scroll
+  // back and forth through it at their own pace while the slider keeps its place.
+  const chapterRows=volumeActions().map((item,index)=>({event:item,index:index+1})).filter(entry=>entry.event.chapter===event.chapter);
+  $("#events-count").textContent=`${chapterRows.length} in chapter`;
+  list.innerHTML=chapterRows.map(entry=>eventPanelRow(entry.event,entry.index,{current:entry.index===currentActionIndex,upcoming:entry.index>currentActionIndex})).join("");
+  bindEventPanelRows();
+  if(!eventScrollHold)requestAnimationFrame(()=>list.querySelector(".current-action")?.scrollIntoView({block:"nearest"}));}
 
 function renderAll(){configureTimeline();renderGraph();renderSummary();renderEvents();renderAdmin();updateSuggestions();cacheActiveVolume();}
 
@@ -1448,6 +1474,17 @@ graph.addEventListener("pointermove",event=>{
   if(found)showEdgeTip(found,event.clientX,event.clientY);else hideEdgeTip();
 });
 graph.addEventListener("pointerleave",hideEdgeTip);
+// Hovering the chapter list holds the auto-advance so the reader can scroll it without the
+// slider moving under them. It resumes only if it was actually playing when they arrived.
+const eventsCard=$("#events-list")?.closest(".events-card");
+if(eventsCard){
+  const hold=()=>{if(eventScrollHold)return;eventScrollHold=true;autoplayHeldByHover=Boolean(chapterAutoplayTimer);cancelChapterSequence();eventsCard.classList.add("events-holding");$("#events-hold").hidden=!autoplayHeldByHover;};
+  const release=()=>{if(!eventScrollHold)return;eventScrollHold=false;eventsCard.classList.remove("events-holding");$("#events-hold").hidden=true;if(autoplayHeldByHover){autoplayHeldByHover=false;scheduleChapterSequence();}};
+  eventsCard.addEventListener("pointerenter",hold);
+  eventsCard.addEventListener("pointerleave",release);
+  eventsCard.addEventListener("focusin",hold);
+  eventsCard.addEventListener("focusout",event=>{if(!eventsCard.contains(event.relatedTarget))release();});
+}
 $("#order-prev").onclick=()=>stepOrderChapter(-1);
 $("#order-next").onclick=()=>stepOrderChapter(1);
 $("#order-chapter").addEventListener("change",event=>{const wanted=Number(event.target.value);if(!Number.isFinite(wanted))return;const chapters=chaptersWithEvents();if(!chapters.length)return;
