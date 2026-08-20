@@ -557,8 +557,8 @@ function pureSandbox(names) {
 test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
   const body = functionBody("renderGraph");
   assert.match(body, /viewportGroup\.append\(edgeLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation and system markers");
-  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,halfWidth:/);
-  assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=entry\.text\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
+  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,tall:Boolean\(rankLabel\),halfWidth:/);
+  assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=\(entry\.tall\?entry\.group:entry\.text\)\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
   assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
   assert.match(styleSource, /\.node-label-layer \{ pointer-events: none; \}/);
 });
@@ -756,18 +756,23 @@ test("a character moving on only replaces where they are — leaving one place f
   assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });
 
-test("a system is drawn only while its host is selected — that is the whole difference from a place, which shows whenever anyone connected to it is on screen", () => {
+test("a system stands on the graph as soon as the story touches it, but the places it runs at wait until it or its host is picked out", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /queue=derived\.systemHosts\.filter\(link=>link\.host===selectedId\)\.map\(link=>link\.system\)/);
-  assert.match(body, /if\(cursor&&entity\(cursor\)\?\.kind==="system"\)queue\.push\(cursor\);/, "selecting a system — even one that was swallowed — keeps its line up");
-  assert.match(body, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\)return false;/, "a system never rides in on the ordinary reveal path");
-  assert.match(body, /sysView\.rendered\.forEach\(id=>renderIds\.add\(id\)\)/, "it is added back only through the host-selection path");
-  assert.match(body, /revealedSystems\.forEach\(id=>derived\.systemLocations\.filter\(link=>link\.system===id\)\.forEach\(link=>visibleIds\.add\(link\.location\)\)\)/, "and brings the places it operates at on screen with it");
+  assert.match(body, /queue=\[\.\.\.visibleIds\]\.filter\(id=>entity\(id\)\?\.kind==="system"\)/, "no selection needed — an action that names a system puts it on screen");
+  assert.match(body, /derived\.systemHosts\.forEach\(link=>\{if\(visibleIds\.has\(link\.host\)\)queue\.push\(link\.system\);\}\)/, "and a host on screen brings whatever they carry");
+  assert.match(body, /derived\.systemHosts\.filter\(link=>link\.host===selectedId\)\.forEach\(link=>\{queue\.push\(link\.system\);focusSystems\.add\(link\.system\);autoOpenSystems\.add\(link\.system\);\}\)/, "picking the host is what opens the system out — subsystems become nodes and their places come with them");
+  assert.match(body, /if\(cursor&&entity\(cursor\)\?\.kind==="system"\)\{queue\.push\(cursor\);focusSystems\.add\(cursor\);\}/, "selecting a system — even one that was swallowed — keeps its line up");
+  assert.match(body, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\)return false;/, "a system still comes in through the system view, so the drill-down holds");
+  assert.match(body, /sysView\.rendered\.forEach\(id=>renderIds\.add\(id\)\)/);
+  assert.match(body, /focusSystems\.forEach\(id=>\{if\(revealedSystems\.has\(id\)\)derived\.systemLocations\.filter\(link=>link\.system===id\)\.forEach\(link=>visibleIds\.add\(link\.location\)\)\;\}\)/, "the places it operates at are the part that stays folded away");
+  assert.match(body, /derived\.systemLocations\.forEach\(link=>\{if\(!focusSystems\.has\(link\.system\)\)return;/, "and those lines are not drawn either, unlike a place's, which show whenever anyone connected is up");
 });
 
 test("a system drills down exactly like a place, sharing one tree builder, and opening one never disturbs the selection that revealed it", () => {
   assert.match(functionBody("buildLocationView"), /return buildDrillView\(\[\.\.\.visibleIds\]\.filter\(id=>entity\(id\)\?\.kind==="location"\),id=>locationParentOf\(id,derived\),expandedLocations\)/);
-  assert.match(functionBody("buildSystemView"), /return buildDrillView\(\[\.\.\.systemIds\],id=>parentOf\.get\(id\)\|\|null,expandedSystems\)/);
+  assert.match(functionBody("buildSystemView"), /return buildDrillView\(\[\.\.\.systemIds\],id=>parentOf\.get\(id\)\|\|null,expanded\)/);
+  assert.match(functionBody("buildSystemView"), /expanded=alsoExpanded&&alsoExpanded\.size\?new Set\(\[\.\.\.expandedSystems,\.\.\.alsoExpanded\]\):expandedSystems/, "a subsystem acting this beat is shown for it, then folds back on its own");
+  assert.match(functionBody("renderGraph"), /const sysView=buildSystemView\(derived,revealedSystems,autoOpenSystems\)/);
   const activate = functionBody("activateSystem");
   assert.match(activate, /if\(view\.expanded\.has\(id\)\)\{closeSystem\(id\);return;\}/);
   assert.match(activate, /if\(selectedId===id&&\(view\.children\.get\(id\)\|\|\[\]\)\.length\)\{openSystem\(id\);return;\}/);
@@ -845,7 +850,7 @@ test("a ghost action changes the world without taking a turn: no stop on the sli
 test("a system's grade is letters with an optional plus or minus, or one of the named gradings — and authority is a plain number, never a letter", () => {
   const ctx = {};
   vm.createContext(ctx);
-  vm.runInContext([source.match(/^const SPECIAL_GRADES = .*$/m)[0], functionBody("isSpecialGrade"), functionBody("gradeIsValid")].join("\n"), ctx);
+  vm.runInContext(source.slice(source.indexOf("const SPECIAL_GRADES"), source.indexOf("function progressionTracks")), ctx);
   const run = expression => JSON.parse(vm.runInContext(`JSON.stringify(${expression})`, ctx));
   assert.equal(run('gradeIsValid("S")'), true);
   assert.equal(run('gradeIsValid("A+")'), true);
@@ -857,6 +862,12 @@ test("a system's grade is letters with an optional plus or minus, or one of the 
   assert.equal(run('gradeIsValid("Divine")'), true);
   assert.equal(run('gradeIsValid("Death")'), true);
   assert.equal(run('gradeIsValid("life")'), true);
+  assert.equal(run('gradeIsValid("")'), true, "a system may simply have no grade");
+  assert.equal(run('gradeIsValid("unknown")'), true, "or one nobody has been told");
+  assert.equal(run('authorityIsValid("7")'), true);
+  assert.equal(run('authorityIsValid("")'), true, "authority is optional in the same way");
+  assert.equal(run('authorityIsValid("unknown")'), true);
+  assert.equal(run('authorityIsValid("S")'), false, "a letter is a grade, not an authority");
   assert.match(functionBody("systemGlyphRadius"), /const authority=Number\(state\?\.authority\)/, "authority reads as size, since it is an unbounded number");
   assert.doesNotMatch(source, /name: "Authority", levels:/, "authority is a system property, not a character progression ladder");
 });
@@ -922,17 +933,36 @@ test("a system's authority and grade both move over time, in the demo and indepe
   assert.match(sample, /type: "system_rank", source: "ash-system", authority: 2, grade: "D"/, "and both falling together");
   assert.match(sample, /type: "system_rank", source: "warden-system", authority: 9, grade: "SS"/, "and both rising together");
   assert.match(sample, /ghost: true/, "a structural fact is still carried as a ghost");
-  assert.match(source, /if\(!rankAuthority&&!rankGrade\)\{toast\("Give the new authority, the new grade, or both"\)/);
+  assert.match(source, /if\(!rankAuthority&&!rankGrade\)\{toast\("Give the new authority, the new grade, or both — or write unknown to take one away"\)/);
   assert.match(source, /source\.previousAuthority=source\.authority;source\.previousGrade=source\.grade;/, "what it was is kept so the move can be shown");
+});
+
+test("neither a number nor a grade is compulsory: a system can start without one, be given one later, or have one taken away", () => {
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  assert.match(sample, /id: "inn-taverns", kind: "system", name: "Midnight Taverns", intro: 12, description:/, "founded with neither, because nobody has said");
+  assert.match(sample, /type: "system_rank", source: "inn-taverns", authority: 3, grade: "B"/, "and rated for the first time later on");
+  assert.match(sample, /type: "system_rank", source: "hearth-system", grade: null/, "a system swallowed by a bigger one can lose its grade outright");
+  assert.match(source, /if\(event\.grade===null\)source\.grade=undefined;else if\(event\.grade\)source\.grade=String\(event\.grade\)\.trim\(\);/, "null takes it away; blank leaves it alone");
+  assert.match(source, /if\(event\.authority===null\)source\.authority=undefined;/);
+  assert.match(source, /if\(rankGrade\)record\.grade=meansUnknown\(rankGrade\)\?null:rankGrade;/, "which is what writing unknown in the editor records");
+  assert.match(source, /if\(rankAuthority\)record\.authority=meansUnknown\(rankAuthority\)\?null:Number\(rankAuthority\);/);
+  assert.match(functionBody("rankWord"), /return text===""\?"none":text;/, "an absent rank and an unknown one read the same on the graph");
+  assert.match(source, /<span>Authority \(optional\)<\/span>/);
+  assert.match(source, /<span>Grade \(optional\)<\/span>/);
+  assert.match(source, /<article><span>Authority<\/span><strong>\$\{Number\.isFinite\(Number\(state\.authority\)\)\?escapeHtml\(String\(state\.authority\)\):"—"\}/, "the panel says so plainly rather than inventing a value");
+  assert.match(source, /migrated\.schemaVersion=12;/, "and readers already holding the demo are brought along");
 });
 
 test("a rank change is visible when it happens: the system comes up for its own action even with no host selected, and says which way it moved", () => {
   const body = functionBody("renderGraph");
   assert.match(body, /const actionSystem=currentEvent&&String\(currentEvent\.type\)\.startsWith\("system_"\)\?\[currentEvent\.source,currentEvent\.target\]\.find\(id=>entity\(id\)\?\.kind==="system"\):null/);
-  assert.match(body, /if\(actionSystem\)queue\.push\(actionSystem\)/);
+  assert.match(body, /if\(actionSystem\)\{queue\.push\(actionSystem\);focusSystems\.add\(actionSystem\);\}/);
   assert.match(body, /\(retired\.has\(id\)&&id!==actionSystem\)/, "a system destroyed by the very action being played is still drawn for that beat");
-  assert.match(body, /moves\.push\(`\$\{state\.previousGrade\|\|"ungraded"\} → \$\{state\.grade\|\|"ungraded"\}`\)/);
-  assert.match(body, /moves\.push\(`authority \$\{state\.previousAuthority\?\?"—"\} → \$\{state\.authority\}`\)/);
+  assert.match(body, /moves\.push\(`\$\{rankWord\(state\.previousGrade\)\} → \$\{rankWord\(state\.grade\)\}`\)/);
+  assert.match(body, /moves\.push\(`authority \$\{rankWord\(state\.previousAuthority\)\} → \$\{rankWord\(state\.authority\)\}`\)/);
+  assert.match(body, /rankLabel=\{text:moves\.join\(" · "\),y:r\+\(Number\.isFinite\(now\)\?26:19\),tone:fell\?"rank-fell":"rank-rose"\}/, "the movement is written under the diamond, clear of the system's own name above it");
+  assert.match(body, /if\(rankLabel\)\{const moved=svgEl\("text",\{x:0,y:rankLabel\.y,class:`system-rank-label \$\{rankLabel\.tone\}`\}\);.*labelGroup\.appendChild\(moved\);\}/, "and it sits in the label layer, where nothing else can be drawn over it");
+  assert.match(body, /const box=\(entry\.tall\?entry\.group:entry\.text\)\.getBBox\(\)/, "reserving the whole strip so no other name is placed across it");
   assert.match(styleSource, /\.system-rank-label\.rank-rose \{ fill: #8de7b0; \}/);
   assert.match(styleSource, /\.system-authority-text \{ fill: #d9c2ff/, "the number has its own pip under the diamond");
 });

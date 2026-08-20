@@ -13,7 +13,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const CULTIVATION_LEVELS = ["Mortal","Body Tempering","Qi Training","Foundation Establishment","Golden Core","Nascent Soul","Earth Immortal","Heaven Immortal","Celestial Immortal","Demi Dao Lord","Dao Lord","Above Dao Lord"];
 
 const sampleData = {
-  schemaVersion: 11,
+  schemaVersion: 12,
   novel: "The Innkeeper — graph demonstration",
   volumes: [
     { id: "v1", name: "Volume 1", from: 1, to: 40 },
@@ -34,7 +34,7 @@ const sampleData = {
     { id: "stonevale", kind: "location", locationType: "City", name: "Stonevale", intro: 1, description: "The trade city on Verdan where the Midnight Inn was built." },
     { id: "garden-heart", kind: "location", locationType: "Site", name: "Heart of the Garden", intro: 45, description: "The still centre of the Primordial Garden Realm." },
     { id: "inn-system", kind: "system", name: "Midnight Inn System", intro: 1, authority: 7, grade: "S", description: "The system bonded to Lex that runs the Inn's holdings." },
-    { id: "inn-taverns", kind: "system", name: "Midnight Taverns", intro: 12, authority: 3, grade: "B", description: "The tavern branch of the Midnight Inn System." },
+    { id: "inn-taverns", kind: "system", name: "Midnight Taverns", intro: 12, description: "The tavern branch of the Midnight Inn System. Neither its authority nor its grade is known when it is founded." },
     { id: "hearth-system", kind: "system", name: "Hearthkeeper System", intro: 18, authority: 2, grade: "C", description: "A small hearth system that the Midnight Inn System later swallowed." },
     { id: "ash-system", kind: "system", name: "Ashfall System", intro: 26, authority: 4, grade: "Death", description: "A rival system destroyed in the Inn's early years." },
     { id: "warden-system", kind: "system", name: "Warden System", intro: 34, authority: 6, grade: "A", description: "An authority-graded system bonded to Vane." },
@@ -137,6 +137,8 @@ const sampleData = {
     { id: "rank-2", chapter: 28, order: 1, type: "system_rank", source: "inn-system", authority: 11, description: "The Midnight Inn System's authority rises to 11." },
     { id: "rank-3", chapter: 31, order: 1, type: "system_rank", source: "ash-system", authority: 2, grade: "D", description: "The Ashfall System is broken down to authority 2, grade D, before it is destroyed." },
     { id: "rank-4", chapter: 37, order: 1, type: "system_rank", source: "warden-system", authority: 9, grade: "SS", description: "The Warden System is raised to authority 9 and regraded SS." },
+    { id: "rank-5", chapter: 24, order: 1, type: "system_rank", source: "inn-taverns", authority: 3, grade: "B", description: "The Midnight Taverns are rated for the first time: authority 3, grade B." },
+    { id: "rank-6", chapter: 25, order: 1, type: "system_rank", source: "hearth-system", grade: null, description: "The Hearthkeeper System is left ungraded in the days before the Inn swallows it." },
     { id: "talk-1", chapter: 22, order: 5, type: "conversation", source: "lex", characters: ["lex","mary","gerald"], location: "inn-lobby", description: "Lex, Mary, and Gerald settle how the Inn will run its front of house." },
     { id: "talk-2", chapter: 58, order: 4, type: "conversation", source: "lex", characters: ["lex","gerald","eclipse"], location: "garden-realm", description: "Lex, Gerald, and Eclipse speak in the Primordial Garden Realm." },
     { id: "home-1", chapter: 1, order: 4, type: "residency", source: "lex", location: "inn-estate", value: "Home", action: "begin", description: "Lex makes the Midnight Inn Estate his home." },
@@ -217,14 +219,14 @@ app.innerHTML = `
               <section id="summary" class="side-card summary mobile-active" data-panel-content="info"><div class="empty">Select a character, organization, or location. Double-click a node for full details.</div></section>
               <section class="side-card events-card" data-panel-content="events"><div class="events-head"><strong id="events-title">Chapter events</strong><span id="events-count"></span><span id="events-hold" class="events-hold" hidden>Paused</span></div><ul id="events-list" class="events-list"></ul></section>
               <section class="side-card mobile-legend" data-panel-content="legend" aria-label="Mobile graph legend">
-                <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="gem"></i>System — shown with its host</span><span><i class="line-key conversation"></i>Conversation</span>
+                <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span>
                 <span><i class="line-key friendly"></i>Friendly</span><span><i class="line-key hostile"></i>Hostile</span><span><i class="line-key neutral"></i>Neutral / awareness</span><span><i class="line-key clone"></i>Clone / avatar</span><span><i class="line-key member"></i>Membership</span><span><i class="line-key location"></i>Travel / activity</span><span><i class="line-key residence"></i>Residence</span><span><i class="line-key hierarchy"></i>Inside location</span><span><i class="line-key organization-location"></i>Organization place</span>
                 <span><i class="ring mentioned"></i>Mentioned only</span><span><i class="ring unknown"></i>Unknown status</span><span><i class="ring"></i>Alive</span><span><i class="ring dead"></i>Dead</span><span><i class="diamond"></i>Alias count</span><span><i class="corona-key"></i>Cultivation level</span>
               </section>
             </aside>
           </div>
           <div class="legend desktop-legend" aria-label="Graph legend">
-            <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="gem"></i>System — shown with its host</span><span><i class="line-key conversation"></i>Conversation</span>
+            <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span>
             <span><i class="line-key friendly"></i>Friendly</span><span><i class="line-key hostile"></i>Hostile</span><span><i class="line-key neutral"></i>Neutral / awareness arrow</span><span><i class="line-key clone"></i>Clone / avatar</span><span><i class="line-key member"></i>Membership</span><span><i class="line-key location"></i>Travel / activity</span><span><i class="line-key residence"></i>Residence</span><span><i class="line-key hierarchy"></i>Inside location</span><span><i class="line-key organization-location"></i>Organization place</span>
             <span><i class="ring mentioned"></i>Mentioned only</span><span><i class="ring unknown"></i>Unknown status</span><span><i class="ring"></i>Alive</span><span><i class="ring dead"></i>Dead</span><span><i class="diamond"></i>Alias count</span><span><i class="corona-key"></i>Cultivation level</span>
           </div>
@@ -263,8 +265,8 @@ app.innerHTML = `
               <label class="field"><span>Type</span><select name="kind"><option value="character">Character</option><option value="organization">Organization</option><option value="location">Location</option><option value="system">System</option></select></label>
               <label class="field"><span>Initial public name or descriptor</span><input name="name" required placeholder="E.g. Unknown Manufacturer"><small class="field-note">You may also paste <code>[[Visible name|https://fandom-page]]</code>; it will be separated automatically.</small></label>
               <label class="field" id="entity-gender-field"><span>Gender</span><select name="gender"><option value="unknown">Unknown</option><option value="female">Female</option><option value="male">Male</option></select></label>
-              <label class="field" id="entity-authority-field" hidden><span>Authority</span><input name="authority" type="number" step="1" placeholder="7" /><small class="field-note">A plain number, nothing else. This is the starting authority; use a rank action to change it later.</small></label>
-              <label class="field" id="entity-grade-field" hidden><span>Grade</span><input name="grade" list="system-grade-options" maxlength="7" placeholder="S" /><datalist id="system-grade-options"><option value="Divine"></option><option value="Death"></option><option value="Life"></option></datalist><small class="field-note">One to three letters with an optional + or − — S, A+, SS, SSS− — or one of the special grades: Divine, Death, Life. This is the starting grade; use a rank action to change it later.</small></label>
+              <label class="field" id="entity-authority-field" hidden><span>Authority (optional)</span><input name="authority" list="system-unknown-options" inputmode="numeric" maxlength="12" placeholder="7" /><small class="field-note">A plain number, nothing else. Leave it blank if this system has no authority or none has been revealed. This is the starting authority; use a rank action to change it later.</small></label>
+              <label class="field" id="entity-grade-field" hidden><span>Grade (optional)</span><input name="grade" list="system-grade-options" maxlength="7" placeholder="S" /><datalist id="system-grade-options"><option value="Divine"></option><option value="Death"></option><option value="Life"></option><option value="Unknown"></option></datalist><datalist id="system-unknown-options"><option value="Unknown"></option></datalist><small class="field-note">One to three letters with an optional + or − — S, A+, SS, SSS− — or one of the special grades: Divine, Death, Life. Leave it blank if this system is ungraded or its grade is unknown. This is the starting grade; use a rank action to change it later.</small></label>
               <label class="field" id="entity-location-type-field" hidden><span>Place level / type</span><select name="locationType"><option value="Universe">Universe</option><option value="Realm">Realm</option><option value="World">World / planet</option><option value="Continent">Continent</option><option value="Country">Country / empire</option><option value="State">State / province</option><option value="City">City / settlement</option><option value="District">District</option><option value="Site" selected>Site / estate</option><option value="Building">Building</option><option value="Room">Room / area</option><option value="Other">Other</option></select></label>
               <label class="field" id="entity-mentioned-field"><span>First mentioned chapter (optional)</span><input name="mentioned" type="number" min="1" placeholder="Leave blank if they appear directly"></label>
               <label class="field" id="entity-appeared-field"><span id="entity-appeared-label">First appearance chapter (optional)</span><input name="appeared" type="number" min="1" placeholder="Leave blank if they have not appeared yet"></label>
@@ -279,7 +281,7 @@ app.innerHTML = `
               <label class="field"><span>Chapter</span><input name="chapter" type="number" min="1" value="80" required></label>
               <label class="field" id="event-source-field"><span id="event-source-label">Character</span><input name="source" list="admin-entity-options" required placeholder="Type a name or alias"><datalist id="admin-entity-options"></datalist></label>
               <label class="field" id="event-location-field"><span id="event-location-label">Where this happened (optional)</span><input name="location" list="location-options" placeholder="Type a location"><datalist id="location-options"></datalist></label>
-              <label class="field" id="event-target-field"><span id="event-target-label">Second character</span><input name="target" list="admin-entity-options"></label><label class="field" id="event-authority-field"><span>New authority</span><input name="authority" type="number" step="1" placeholder="8" /><small class="field-note">Leave blank to keep the authority it already has.</small></label><label class="field" id="event-grade-field"><span>New grade</span><input name="grade" list="system-grade-options" maxlength="7" placeholder="S+" /><small class="field-note">Leave blank to keep the grade it already has.</small></label><label class="field checkbox-field" id="event-ghost-field"><input type="checkbox" name="ghost" /><span>Ghost action — change the world without appearing in the list</span></label><label class="field" id="event-characters-field"><span>Everyone in the conversation</span><input name="characters" list="admin-entity-options" placeholder="Lex, Mary, Gerald" /><small class="field-note">Separate names with commas. One action covers the whole conversation, however many are in it.</small></label>
+              <label class="field" id="event-target-field"><span id="event-target-label">Second character</span><input name="target" list="admin-entity-options"></label><label class="field" id="event-authority-field"><span>New authority</span><input name="authority" list="system-unknown-options" inputmode="numeric" maxlength="12" placeholder="8" /><small class="field-note">Leave blank to keep the authority it already has. Write unknown to take it away entirely.</small></label><label class="field" id="event-grade-field"><span>New grade</span><input name="grade" list="system-grade-options" maxlength="9" placeholder="S+" /><small class="field-note">Leave blank to keep the grade it already has. Write unknown to take it away entirely.</small></label><label class="field checkbox-field" id="event-ghost-field"><input type="checkbox" name="ghost" /><span>Ghost action — change the world without appearing in the list</span></label><label class="field" id="event-characters-field"><span>Everyone in the conversation</span><input name="characters" list="admin-entity-options" placeholder="Lex, Mary, Gerald" /><small class="field-note">Separate names with commas. One action covers the whole conversation, however many are in it.</small></label>
               <label class="field" id="event-value-field"><span id="event-value-label">Value</span><input name="value"><datalist id="location-role-options"><option value="Headquarters"></option><option value="Branch"></option><option value="Base"></option><option value="Territory"></option><option value="Outpost"></option></datalist><datalist id="residence-role-options"><option value="Home"></option><option value="Permanent resident"></option><option value="Resident staff"></option><option value="Long-term guest"></option><option value="Camp"></option><option value="Domain"></option></datalist></label>
               <label class="field" id="event-track-field"><span>Progression track</span><select name="track"></select></label><label class="field" id="event-level-field"><span>Rank on that track</span><select name="level"><option value="">Choose a rank…</option></select><small class="field-note">The rank controls graph size and progression automatically.</small></label>
               <label class="field" id="event-action-field"><span id="event-action-label">Organization membership change</span><select name="action"><option value="reveal">Existing membership is revealed</option><option value="join">Joins in this chapter</option><option value="leave">Leaves / membership ends</option></select></label>
@@ -357,7 +359,15 @@ function systemGlyphRadius(state){const authority=Number(state?.authority);retur
 // gradings that sit outside the letters entirely.
 const SPECIAL_GRADES = ["divine","death","life"];
 function isSpecialGrade(grade){return SPECIAL_GRADES.includes(String(grade||"").trim().toLowerCase());}
-function gradeIsValid(grade){const text=String(grade||"").trim();return !text||isSpecialGrade(text)||/^[A-Za-z]{1,3}[+-]?$/.test(text);}
+// Neither number nor grade is compulsory. A system can be born without one, lose it when it is
+// swallowed by something bigger, or simply never have had it revealed — so there has to be a way
+// to say "not this" as well as a way to leave a field alone.
+const UNKNOWN_WORDS = ["unknown","none","ungraded","no grade","-","—","–","?"];
+function meansUnknown(text){return UNKNOWN_WORDS.includes(String(text??"").trim().toLowerCase());}
+function gradeIsValid(grade){const text=String(grade||"").trim();return !text||meansUnknown(text)||isSpecialGrade(text)||/^[A-Za-z]{1,3}[+-]?$/.test(text);}
+// A rank that is absent and a rank that is unknown read the same on the graph: there isn't one.
+function rankWord(value){const text=String(value??"").trim();return text===""?"none":text;}
+function authorityIsValid(authority){const text=String(authority??"").trim();return !text||meansUnknown(text)||Number.isFinite(Number(text));}
 function progressionTracks(){
   const list=(Array.isArray(data.progressionTracks)?data.progressionTracks:[]).filter(track=>track&&track.id&&Array.isArray(track.levels)&&track.levels.length);
   return list.length?list:[{id:DEFAULT_TRACK_ID,name:"Cultivation",levels:deepClone(data.cultivationLevels?.length?data.cultivationLevels:CULTIVATION_LEVELS)}];
@@ -457,6 +467,18 @@ function loadLocalData() {
         sampleData.events.filter(event=>/^rank-/.test(event.id)&&!eventIds.has(event.id)).forEach(event=>migrated.events.push(deepClone(event)));
       }
       migrated.schemaVersion=11;
+    }
+    if((migrated.schemaVersion||1)<12){
+      const isBundledDemo=["lex","eclipse","inn-lobby"].every(id=>migrated.entities.some(item=>item.id===id));
+      if(isBundledDemo){
+        // Authority and grade are both optional now, so the demo shows a system that starts with
+        // neither and one that has its grade taken away before it is swallowed.
+        const taverns=migrated.entities.find(item=>item.id==="inn-taverns");
+        if(taverns){delete taverns.authority;delete taverns.grade;}
+        const eventIds=new Set((migrated.events||[]).map(event=>event.id));
+        sampleData.events.filter(event=>["rank-5","rank-6"].includes(event.id)&&!eventIds.has(event.id)).forEach(event=>migrated.events.push(deepClone(event)));
+      }
+      migrated.schemaVersion=12;
     }
     localStorage.setItem(STORAGE_KEY,JSON.stringify(migrated));return migrated;
   }
@@ -622,9 +644,12 @@ function buildLocationView(derived,visibleIds){
 }
 // Systems drill down exactly the way places do — collapsed to the outermost one, opened into a
 // dot ringed by its subsystems — so both share one tree builder.
-function buildSystemView(derived,systemIds){
-  const parentOf=new Map(derived.systemParents.map(link=>[link.child,link.parent]));
-  return buildDrillView([...systemIds],id=>parentOf.get(id)||null,expandedSystems);
+// `alsoExpanded` opens a branch for one beat without the reader having clicked: a subsystem that
+// is doing something right now has to be visible for that action, then folds back on its own.
+function buildSystemView(derived,systemIds,alsoExpanded=null){
+  const parentOf=new Map(derived.systemParents.map(link=>[link.child,link.parent])),
+    expanded=alsoExpanded&&alsoExpanded.size?new Set([...expandedSystems,...alsoExpanded]):expandedSystems;
+  return buildDrillView([...systemIds],id=>parentOf.get(id)||null,expanded);
 }
 // `parentOfRaw` gives the structural parent, which may not be on screen; the walk skips those so
 // a deep node still attaches to the closest ancestor the reader can actually see.
@@ -709,8 +734,8 @@ function derive(chapter,eventSubset=null) {
     }
     if(event.type==="system_rank"&&source?.kind==="system"){
       source.previousAuthority=source.authority;source.previousGrade=source.grade;
-      if(event.authority!==undefined&&String(event.authority).trim()!=="")source.authority=Number(event.authority);
-      if(event.grade)source.grade=String(event.grade).trim();
+      if(event.authority===null)source.authority=undefined;else if(event.authority!==undefined&&String(event.authority).trim()!=="")source.authority=Number(event.authority);
+      if(event.grade===null)source.grade=undefined;else if(event.grade)source.grade=String(event.grade).trim();
       source.rankFrom=event.chapter;
     }
     if(event.type==="system_merge"&&source?.kind==="system"&&states.get(event.target)?.kind==="system"){
@@ -959,23 +984,33 @@ function renderGraph() {
   const awaitingAction=currentActionIndex===0,layout=$("#graph-layout"),onboarding=$("#slider-onboarding");layout.classList.toggle("awaiting-action",awaitingAction);onboarding.hidden=!awaitingAction;
   if(awaitingAction){nodeEls=new Map();edgeUpdaters=[];physics.edges=[];graph.replaceChildren();requestAnimationFrame(positionSliderOnboarding);return;}
   const volumeApplied=revealedVolumeActions(),previousApplied=volumeActions().slice(0,Math.max(0,currentActionIndex-1)),currentEvent=currentActionEvent(),appliedNow=appliedEvents(),fullDerived=derive(currentChapter,appliedNow),priorCultivationDerived=currentEvent?.type==="cultivation"?derive(currentChapter,appliedNow.filter(event=>event.id!==currentEvent.id)):null,volumeDerived=derive(currentChapter,volumeApplied),derived={...volumeDerived,states:fullDerived.states,locationParents:fullDerived.locationParents},visibleIds=new Set(volumeApplied.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),previousVisibleIds=new Set(previousApplied.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),chapterChangedIds=new Set(volumeApplied.filter(event=>event.chapter===currentChapter).flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean)));
-  // Systems stay off the graph until their host is picked out — that is the whole difference
-  // from places, which are drawn whenever anyone connected to them is on screen.
-  const revealedSystems=new Set(),systemSatellites=[];
+  // A system stands on the graph as soon as the story has touched it, the same as anyone else.
+  // What stays folded away until you pick out the system or its host is the rest of its reach:
+  // the places it runs at. That is the difference from places, whose links are drawn whenever
+  // someone connected to them is on screen.
+  const revealedSystems=new Set(),systemSatellites=[],focusSystems=new Set(),autoOpenSystems=new Set();
   const actionSystem=currentEvent&&String(currentEvent.type).startsWith("system_")?[currentEvent.source,currentEvent.target].find(id=>entity(id)?.kind==="system"):null;
-  if(selectedId||actionSystem){
+  {
     const retired=new Set([...derived.systemMerges.map(link=>link.absorbed),...derived.systemEnds.map(link=>link.system)]),
-      queue=derived.systemHosts.filter(link=>link.host===selectedId).map(link=>link.system);
-    if(actionSystem)queue.push(actionSystem);
-    if(selectedId&&entity(selectedId)?.kind==="system"){
-      // Selecting a system that was swallowed should still bring up whatever swallowed it, so the
-      // marker has something to sit on.
-      let cursor=selectedId;const guard=new Set();
-      while(cursor&&retired.has(cursor)&&!guard.has(cursor)){guard.add(cursor);cursor=derived.systemMerges.find(link=>link.absorbed===cursor)?.into||derived.systemParents.find(link=>link.child===cursor)?.parent||null;}
-      if(cursor&&entity(cursor)?.kind==="system")queue.push(cursor);
+      queue=[...visibleIds].filter(id=>entity(id)?.kind==="system");
+    derived.systemHosts.forEach(link=>{if(visibleIds.has(link.host))queue.push(link.system);});
+    if(actionSystem){queue.push(actionSystem);focusSystems.add(actionSystem);}
+    if(selectedId){
+      // Picking the host is what opens the system out: its subsystems come up as nodes of their
+      // own and the places they run at come with them, the way a place opens into its children.
+      derived.systemHosts.filter(link=>link.host===selectedId).forEach(link=>{queue.push(link.system);focusSystems.add(link.system);autoOpenSystems.add(link.system);});
+      if(entity(selectedId)?.kind==="system"){
+        focusSystems.add(selectedId);
+        // Selecting a system that was swallowed should still bring up whatever swallowed it, so the
+        // marker has something to sit on.
+        let cursor=selectedId;const guard=new Set();
+        while(cursor&&retired.has(cursor)&&!guard.has(cursor)){guard.add(cursor);cursor=derived.systemMerges.find(link=>link.absorbed===cursor)?.into||derived.systemParents.find(link=>link.child===cursor)?.parent||null;}
+        if(cursor&&entity(cursor)?.kind==="system"){queue.push(cursor);focusSystems.add(cursor);}
+      }
     }
-    while(queue.length){const id=queue.shift();if(!id||revealedSystems.has(id)||entity(id)?.kind!=="system"||(retired.has(id)&&id!==actionSystem))continue;revealedSystems.add(id);derived.systemParents.filter(link=>link.parent===id).forEach(link=>queue.push(link.child));}
-    revealedSystems.forEach(id=>derived.systemLocations.filter(link=>link.system===id).forEach(link=>visibleIds.add(link.location)));
+    while(queue.length){const id=queue.shift();if(!id||revealedSystems.has(id)||entity(id)?.kind!=="system"||(retired.has(id)&&id!==actionSystem))continue;revealedSystems.add(id);
+      derived.systemParents.filter(link=>link.parent===id).forEach(link=>{queue.push(link.child);if(focusSystems.has(id))focusSystems.add(link.child);});}
+    focusSystems.forEach(id=>{if(revealedSystems.has(id))derived.systemLocations.filter(link=>link.system===id).forEach(link=>visibleIds.add(link.location));});
     // A system that was swallowed or destroyed keeps its history but stops taking up room: it
     // rides whatever succeeded it as a small marker instead of being a node of its own.
     derived.systemMerges.forEach(link=>{
@@ -987,12 +1022,17 @@ function renderGraph() {
       const parent=derived.systemParents.find(edge=>edge.child===link.system)?.parent,
         host=derived.systemHosts.find(edge=>edge.system===link.system)?.host,
         anchor=parent&&revealedSystems.has(parent)?parent:(host&&visibleIds.has(host)?host:null);
-      if(anchor&&(revealedSystems.has(parent)||selectedId===link.system||selectedId===host))
+      if(anchor)
         systemSatellites.push({id:link.system,anchor,mode:"ended",from:link.from,reason:link.reason});
     });
   }
   const locView=buildLocationView(derived,visibleIds);lastLocationView=locView;
-  const sysView=buildSystemView(derived,revealedSystems);lastSystemView=sysView;
+  // A system acting this beat has to be on screen for it, even when it normally sits folded
+  // inside a bigger one.
+  const actionAncestors=new Set();
+  if(actionSystem){let cursor=derived.systemParents.find(link=>link.child===actionSystem)?.parent;while(cursor&&!actionAncestors.has(cursor)){actionAncestors.add(cursor);cursor=derived.systemParents.find(link=>link.child===cursor)?.parent;}}
+  actionAncestors.forEach(id=>autoOpenSystems.add(id));
+  const sysView=buildSystemView(derived,revealedSystems,autoOpenSystems);lastSystemView=sysView;
   [...expandedSystems].forEach(id=>{if(!sysView.expanded.has(id))expandedSystems.delete(id);});
   [...expandedLocations].forEach(id=>{if(!locView.expanded.has(id))expandedLocations.delete(id);});
   if(collapsingLocationId&&!locView.expanded.has(collapsingLocationId))collapsingLocationId=null;
@@ -1036,7 +1076,7 @@ function renderGraph() {
   });
   hubLinks.forEach(link=>addSpring(link.member,link.hub,Math.max(link.desired,hubRing.get(link.hub)||0),link.strength));
   derived.systemHosts.forEach(link=>addSpring(link.system,link.host,120,.05));
-  derived.systemLocations.forEach(link=>addSpring(link.system,resolveLocationId(link.location),120,.03));
+  derived.systemLocations.forEach(link=>{if(focusSystems.has(link.system))addSpring(link.system,resolveLocationId(link.location),120,.03);});
   sysView.rendered.forEach(id=>{if(!sysView.expanded.has(id))return;(sysView.children.get(id)||[]).forEach(kid=>addSpring(kid,id,104,.12));});
   derived.identityParents.forEach(link=>addSpring(link.child,link.parent,68,.09));
   [...derived.relations.keys(),...derived.awareness.keys()].forEach(key=>{const [a,b]=key.split("|");addSpring(a,b,150,.02);});
@@ -1103,12 +1143,12 @@ function renderGraph() {
     locationCharacterIds(currentEvent).forEach(who=>{noteEdge(who,place,currentEvent.chapter,"Here for this action");straightEdge(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place);});
   }
   derived.systemHosts.forEach(link=>{noteEdge(link.system,link.host,link.from,`${link.role} of this system`);straightEdge(link.system,link.host,`edge system-host-edge${currentEvent?.type==="system_host"&&currentEvent.source===link.system&&currentEvent.target===link.host?" newly-revealed-edge":""}`,link.system,link.host);});
-  derived.systemLocations.forEach(link=>{const place=edgeLocationId(link.location);noteEdge(link.system,place,link.from,`${link.role} here`);straightEdge(link.system,place,`edge system-location-edge${currentEvent?.type==="system_location"&&currentEvent.source===link.system&&currentEvent.location===link.location?" newly-revealed-edge":""}`,link.system,place);});
+  derived.systemLocations.forEach(link=>{if(!focusSystems.has(link.system))return;const place=edgeLocationId(link.location);noteEdge(link.system,place,link.from,`${link.role} here`);straightEdge(link.system,place,`edge system-location-edge${currentEvent?.type==="system_location"&&currentEvent.source===link.system&&currentEvent.location===link.location?" newly-revealed-edge":""}`,link.system,place);});
   derived.systemParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,"Subsystem of");straightEdge(link.child,link.parent,`edge system-parent-edge${currentEvent?.type==="system_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent);});
   derived.identityParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,link.relation);return straightEdge(link.child,link.parent,`edge identity-edge${currentEvent?.type==="identity_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent);});
   const activeIds=new Set(currentEvent?[currentEvent.source,currentEvent.target,currentEvent.location,...(currentEvent.characters||[])].filter(Boolean).map(edgeLocationId):[]);
   const retractingIds=collapsingLocationId?new Set([...renderedSubtree(collapsingLocationId,locView)]):new Set();
-  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null;
+  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null;
     if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));
     }else if(item.kind==="system"){const opened=sysView.expanded.has(item.id),childCount=(sysView.children.get(item.id)||[]).length,r=systemGlyphRadius(state),
         rankMoved=currentEvent?.type==="system_rank"&&currentEvent.source===item.id;
@@ -1127,9 +1167,14 @@ function renderGraph() {
         if(rankMoved){
           locationShell.appendChild(svgEl("polygon",{points:points(r+9),class:"system-rank-pulse"}));
           const moves=[];
-          if(state.previousGrade!==undefined&&state.previousGrade!==state.grade)moves.push(`${state.previousGrade||"ungraded"} → ${state.grade||"ungraded"}`);
-          if(state.previousAuthority!==undefined&&Number(state.previousAuthority)!==Number(state.authority))moves.push(`authority ${state.previousAuthority??"—"} → ${state.authority}`);
-          if(moves.length){const rose=Number(state.authority)>Number(state.previousAuthority),label=svgEl("text",{x:0,y:-r-26,class:`system-rank-label ${moves.some(text=>text.startsWith("authority"))&&!rose?"rank-fell":"rank-rose"}`});label.textContent=moves.join(" · ");locationShell.appendChild(label);}
+          if(String(state.previousGrade??"")!==String(state.grade??""))moves.push(`${rankWord(state.previousGrade)} → ${rankWord(state.grade)}`);
+          if(String(state.previousAuthority??"")!==String(state.authority??""))moves.push(`authority ${rankWord(state.previousAuthority)} → ${rankWord(state.authority)}`);
+          // Losing a number counts as falling, the same as a smaller one would.
+          const before=Number(state.previousAuthority),now=Number(state.authority),
+            fell=Number.isFinite(before)&&(!Number.isFinite(now)||now<before);
+          // The movement is written under the diamond, clear of the system's own name above it,
+          // and it goes in the label layer so no other node can be drawn over it.
+          if(moves.length)rankLabel={text:moves.join(" · "),y:r+(Number.isFinite(now)?26:19),tone:fell?"rank-fell":"rank-rose"};
         }
         if(childCount){locationShell.append(svgEl("circle",{cx:r-6,cy:-r+6,r:9.5,class:"system-child-badge"}));const badge=svgEl("text",{x:r-6,y:-r+9.4,class:"location-child-badge-text system-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);}
       }
@@ -1146,8 +1191,9 @@ function renderGraph() {
     // another node's name, and so they can be culled independently when the graph gets dense.
     const labelGroup=svgEl("g",{class:`${group.getAttribute("class")} node-labels`,"data-id":item.id}),label=svgEl("text",{x:0,y:labelY,class:`node-label${item.kind==="location"?" location-region-label":""}`});label.textContent=shownName;labelGroup.appendChild(label);
     if(item.kind==="location"||item.kind==="system"){const tier=svgEl("text",{x:0,y:labelY-13,class:`location-tier-label${item.kind==="system"?" system-tier-label":""}`});tier.textContent=item.kind==="system"?"SYSTEM":String(item.locationType||"Place").toUpperCase();labelGroup.appendChild(tier);}
+    if(rankLabel){const moved=svgEl("text",{x:0,y:rankLabel.y,class:`system-rank-label ${rankLabel.tone}`});moved.textContent=rankLabel.text;labelGroup.appendChild(moved);}
     if(mentionedOnly){const stateLabel=svgEl("text",{x:0,y:39,class:"node-state-label"});stateLabel.textContent="MENTIONED";labelGroup.appendChild(stateLabel);}
-    labelLayer.appendChild(labelGroup);labelEls.set(item.id,{group:labelGroup,text:label,offset:labelY,kind:item.kind,halfWidth:Math.min(150,Math.max(28,String(shownName).length*4.2)),halfHeight:9});
+    labelLayer.appendChild(labelGroup);labelEls.set(item.id,{group:labelGroup,text:label,offset:labelY,kind:item.kind,tall:Boolean(rankLabel),halfWidth:Math.min(150,Math.max(28,String(shownName).length*4.2)),halfHeight:9});
     const selectNode=()=>{cancelChapterSequence();if(item.kind==="location"){activateLocation(item.id);return;}if(item.kind==="system"){activateSystem(item.id);return;}locationPovId=null;selectedId=selectedId===item.id?null:item.id;setMobilePanel("info");renderAll();};
     // A character's name is drawn across the middle of its circle and lives in the layer above,
     // so the same gestures have to work from the label as from the shape — otherwise a press in
@@ -1168,7 +1214,9 @@ function renderGraph() {
   // Measure the names once they are all in the document. Guessing width from character count
   // under-read real text by about a third, which left the separation forces satisfied while
   // names still overlapped on screen. One pass after the loop keeps the layout thrash to one.
-  labelEls.forEach((entry,id)=>{const box=entry.text.getBBox();if(!box.width)return;entry.halfWidth=box.width/2;entry.halfHeight=box.height/2;entry.offset=box.y+box.height/2;entry.box={ox:box.x+box.width/2,oy:entry.offset,hw:entry.halfWidth,hh:entry.halfHeight};physics.bounds.set(id,entry.box);});
+  // A system announcing a rank change reserves the whole strip — name above, movement below —
+  // so nothing else is placed across it for that beat.
+  labelEls.forEach((entry,id)=>{const box=(entry.tall?entry.group:entry.text).getBBox();if(!box.width)return;entry.halfWidth=box.width/2;entry.halfHeight=box.height/2;entry.offset=box.y+box.height/2;entry.box={ox:box.x+box.width/2,oy:entry.offset,hw:entry.halfWidth,hh:entry.halfHeight};physics.bounds.set(id,entry.box);});
   // Small, name-free markers unless the system they belong to is the one selected — a swallowed
   // system should be findable without competing with the systems still running.
   systemSatellites.forEach((satellite,index)=>{
@@ -1255,8 +1303,8 @@ function activateLocation(id){
   if(selectedId===id&&(view.children.get(id)||[]).length){openLocation(id);return;}
   locationPovId=null;selectedId=selectedId===id?null:id;setMobilePanel("info");renderAll();
 }
-// A system opens and closes like a place. The one difference is upstream: it is only on the
-// graph at all while its host is selected, so opening one never changes what is selected.
+// A system opens and closes like a place. The one difference is upstream: picking its host opens
+// it for you, so opening one by hand never changes what is selected.
 function activateSystem(id){
   const view=lastSystemView;
   if(!view||!view.rendered.has(id)){selectedId=id;setMobilePanel("info");renderAll();return;}
@@ -1372,7 +1420,9 @@ function updateLabelVisibility(){
   // their label and earn it back on hover or selection. Small graphs keep every name.
   // A small graph has room for every name once the separation forces settle, so nothing is
   // hidden there; culling is for graphs where names genuinely cannot all fit.
-  const budget=labelBudget(entries.length),crowded=entries.length>10,placed=[];
+  // A rank announcement is transient and must not be overprinted, so its beat is treated as
+  // crowded even on a sparse graph, where names are otherwise all kept.
+  const budget=labelBudget(entries.length),crowded=entries.length>10||entries.some(item=>item.entry.tall),placed=[];
   let spent=0;
   entries.forEach(item=>{
     // What the reader is looking at keeps its name whatever happens. Its neighbours skip the
@@ -1397,7 +1447,7 @@ function renderSummary(){
       subsystems=d.systemParents.filter(link=>link.parent===chosen.id).map(link=>({id:link.child,label:stateName(d,link.child)})),
       places=d.systemLocations.filter(link=>link.system===chosen.id).map(link=>({id:link.location,label:`${stateName(d,link.location)} · ${link.role}`}));
     box.className=`side-card summary${panelActive?" mobile-active":""}`;
-    box.innerHTML=`${header}<div class="summary-stats"><article><span>Subsystems</span><strong>${subsystems.length}</strong></article><article><span>Places</span><strong>${places.length}</strong></article><article><span>Hosts</span><strong>${host.length}</strong></article></div><div class="summary-groups">${summaryGroup("Host",host,3)}${summaryGroup("Inside",parent?[{id:parent.parent,label:stateName(d,parent.parent)}]:[],1)}${summaryGroup("Subsystems",subsystems,6)}${summaryGroup("Operates at",places,6)}</div>${subsystems.length?`<p class="location-drill-hint">${lastSystemView?.expanded.has(chosen.id)?"Opened — click the dot to fold the subsystems back in.":`Click again on the graph to open ${subsystems.length} subsystem${subsystems.length===1?"":"s"}.`}</p>`:""}`;
+    box.innerHTML=`${header}<div class="summary-stats"><article><span>Authority</span><strong>${Number.isFinite(Number(state.authority))?escapeHtml(String(state.authority)):"—"}</strong></article><article><span>Grade</span><strong>${state.grade?escapeHtml(String(state.grade)):"—"}</strong></article><article><span>Subsystems</span><strong>${subsystems.length}</strong></article><article><span>Places</span><strong>${places.length}</strong></article><article><span>Hosts</span><strong>${host.length}</strong></article></div><div class="summary-groups">${summaryGroup("Host",host,3)}${summaryGroup("Inside",parent?[{id:parent.parent,label:stateName(d,parent.parent)}]:[],1)}${summaryGroup("Subsystems",subsystems,6)}${summaryGroup("Operates at",places,6)}</div>${subsystems.length?`<p class="location-drill-hint">${lastSystemView?.expanded.has(chosen.id)?"Opened — click the dot to fold the subsystems back in.":`Click again on the graph to open ${subsystems.length} subsystem${subsystems.length===1?"":"s"}.`}</p>`:""}`;
     $("#full-details").onclick=()=>openProfile(chosen.id);return;
   }
   if(chosen.kind==="organization"){
@@ -1692,7 +1742,7 @@ async function fillProfileEditor(){
   form.elements.roles.value=(profile.roles||[]).join(", ");form.elements.abilities.value=(profile.abilities||[]).join("\n");form.elements.achievements.value=(profile.achievements||[]).map(achievementLine).join("\n");form.elements.traits.value=(profile.traits||[]).join("\n");form.elements.trivia.value=(profile.trivia||[]).join("\n");form.elements.facts.value=(profile.facts||[]).map(item=>`${item.label}: ${item.value}`).join("\n");setProfileEditorMode(item.kind);toast(`${item.name}'s wiki profile loaded`);
 }
 function updateEventHelp(){
-  const form=$("#event-form"),type=form.elements.type.value,isOrgLocation=type==="organization_location",isResidence=type==="residency",isHierarchy=type==="location_parent",isIdentityHierarchy=type==="identity_parent",needsTarget=["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge"].includes(type),showsTarget=needsTarget||type==="note",needsValue=["alias","display_name","status","gender","age","relationship","organization_location","residency","identity_parent"].includes(type),showsSystemValue=["system_host","system_location"].includes(type),showsValue=needsValue||showsSystemValue||type==="membership"||type==="cultivation",usesAction=["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end"].includes(type),help={mention:"Use this when an identity is referred to without physically appearing. Status remains unknown.",appearance:"A normal physical appearance also proves that the character is alive at this action.",corpse_appearance:"Use when a dead body is the character's first physical appearance. This sets appearance and dead status together.",display_name:"Changes the public label from this exact action onward. Add another display-name event later to end a spy name or restore an earlier name.",identity_parent:"Keeps clones, avatars, incarnations, split souls, and their original identity close together in the graph.",movement:"Records travel and changes the character's current physical position.",residency:"Records a home, permanent residence, long-term stay, camp, or personal domain.",location_parent:"Places one location directly inside another. The graph only draws the outermost place — a realm at most — until you open it.",alias:"Adds another searchable name without changing the main displayed label.",cultivation:"Choose the canonical tier by name; an equivalent path title remains synchronized.",status:"Use this for later changes or uncertain states such as missing and presumed dead.",gender:"Use this for a later reveal or an actual change — not needed if it was already set when the character was created.",age:"Use this whenever an age is stated or changes in-story — an exact number, a range, or a description.",awareness:"The first character knows the second exists.",meeting:"Records that two characters meet.",conversation:"One action for a whole conversation, however many characters are in it. Everyone listed counts as having met.",relationship:"Choose a second character and enter friendly, neutral, or hostile.",membership:"Choose whether the membership begins now, was already true but is only revealed now, or ends here.",organization_location:"Connect an organization to a headquarters, branch, base, territory, or outpost.",system_host:"Bind a system to the character who carries it. A system can have no host, and a host can carry more than one.",system_parent:"Place one system inside another — the taverns and resorts that belong to a larger system.",system_location:"A system operates at this place. A system can operate at many places at once.",system_rank:"A system rises or falls. Fill in whichever of authority or grade changed — the other keeps its current value.",system_merge:"One system is swallowed by another. It keeps its own history, shown as a small marker on the system that took it.",system_end:"The system is destroyed. It stays on the graph as a small marker so its history is still reachable.",note:"A general story event."};
+  const form=$("#event-form"),type=form.elements.type.value,isOrgLocation=type==="organization_location",isResidence=type==="residency",isHierarchy=type==="location_parent",isIdentityHierarchy=type==="identity_parent",needsTarget=["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge"].includes(type),showsTarget=needsTarget||type==="note",needsValue=["alias","display_name","status","gender","age","relationship","organization_location","residency","identity_parent"].includes(type),showsSystemValue=["system_host","system_location"].includes(type),showsValue=needsValue||showsSystemValue||type==="membership"||type==="cultivation",usesAction=["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end"].includes(type),help={mention:"Use this when an identity is referred to without physically appearing. Status remains unknown.",appearance:"A normal physical appearance also proves that the character is alive at this action.",corpse_appearance:"Use when a dead body is the character's first physical appearance. This sets appearance and dead status together.",display_name:"Changes the public label from this exact action onward. Add another display-name event later to end a spy name or restore an earlier name.",identity_parent:"Keeps clones, avatars, incarnations, split souls, and their original identity close together in the graph.",movement:"Records travel and changes the character's current physical position.",residency:"Records a home, permanent residence, long-term stay, camp, or personal domain.",location_parent:"Places one location directly inside another. The graph only draws the outermost place — a realm at most — until you open it.",alias:"Adds another searchable name without changing the main displayed label.",cultivation:"Choose the canonical tier by name; an equivalent path title remains synchronized.",status:"Use this for later changes or uncertain states such as missing and presumed dead.",gender:"Use this for a later reveal or an actual change — not needed if it was already set when the character was created.",age:"Use this whenever an age is stated or changes in-story — an exact number, a range, or a description.",awareness:"The first character knows the second exists.",meeting:"Records that two characters meet.",conversation:"One action for a whole conversation, however many characters are in it. Everyone listed counts as having met.",relationship:"Choose a second character and enter friendly, neutral, or hostile.",membership:"Choose whether the membership begins now, was already true but is only revealed now, or ends here.",organization_location:"Connect an organization to a headquarters, branch, base, territory, or outpost.",system_host:"Bind a system to the character who carries it. A system can have no host, and a host can carry more than one.",system_parent:"Place one system inside another — the taverns and resorts that belong to a larger system.",system_location:"A system operates at this place. A system can operate at many places at once.",system_rank:"A system rises or falls. Fill in whichever of authority or grade changed — the other keeps its current value. Write unknown in a field to take that rank away, for a system that loses its grade or whose number was never known.",system_merge:"One system is swallowed by another. It keeps its own history, shown as a small marker on the system that took it.",system_end:"The system is destroyed. It stays on the graph as a small marker so its history is still reachable.",note:"A general story event."};
   $("#event-target-field").hidden=!showsTarget;$("#event-characters-field").hidden=type!=="conversation";$("#event-authority-field").hidden=type!=="system_rank";$("#event-grade-field").hidden=type!=="system_rank";$("#event-value-field").hidden=!showsValue;$("#event-level-field").hidden=type!=="cultivation";$("#event-action-field").hidden=!usesAction;
   form.elements.target.required=needsTarget;form.elements.value.required=needsValue;form.elements.location.required=["movement","organization_location","residency","location_parent","system_location"].includes(type);
   $("#event-location-label").textContent=type==="movement"?"Destination":isOrgLocation?"Headquarters / branch location":isResidence?"Home / long-term location":isHierarchy?"Direct parent location":"Where this happened (optional)";
@@ -1712,11 +1762,19 @@ function updateEventHelp(){
   $("#event-help").textContent=`${help[type]||"Record a story change."} Add a wiki link inside details as [[visible text|https://full-link]].`;
 }
 
+// A rank action can raise a system, lower it, or take a rank away altogether, and the sentence
+// has to read properly in all three cases.
+function rankPhrase(source,rankAuthority,rankGrade){
+  const parts=[];
+  if(rankAuthority)parts.push(meansUnknown(rankAuthority)?"no longer has a known authority":`is now authority ${String(rankAuthority).trim()}`);
+  if(rankGrade)parts.push(meansUnknown(rankGrade)?"is left ungraded":`is now grade ${String(rankGrade).trim()}`);
+  return `${source.name} ${parts.join(" and ")||"is re-ranked"}.`;
+}
 function generatedEventDescription(type,source,target,location,value,level,action,initial=false,trackId=DEFAULT_TRACK_ID,participants=[],rankAuthority="",rankGrade=""){
   const other=target?.name;
   const canonical=trackLevels(trackId)[(Number(level)||1)-1]||"unknown rank",cultivationText=value?`${value}, equivalent to ${canonical}`:canonical;
   const membershipText=action==="leave"?`${source.name} leaves ${other}${value?` (${value})`:""}.`:action==="reveal"?`${source.name} is revealed to already be part of ${other}${value?` as ${value}`:""}.`:`${source.name} joins ${other}${value?` as ${value}`:""}.`;
-  return {mention:`${source.name} is mentioned.`,appearance:`${source.name} appears alive.`,corpse_appearance:`${source.name}'s dead body appears.`,display_name:`${source.name} is now publicly known as ${value}.`,identity_parent:action==="remove"?`${source.name} is separated from ${other}.`:`${source.name} is connected to ${other} as ${value||"a clone"}.`,movement:`${source.name} travels to ${location?.name}.`,residency:action==="end"?`${source.name}'s ${value||"residence"} at ${location?.name} ends.`:`${source.name} begins using ${location?.name} as ${value||"a residence"}.`,location_parent:action==="remove"?`${source.name} is no longer recorded inside ${location?.name}.`:`${source.name} is inside ${location?.name}.`,alias:`${value} is revealed as an alias of ${source.name}.`,cultivation:initial?`${source.name}'s cultivation is revealed as ${cultivationText}.`:`${source.name} reaches ${cultivationText}.`,status:`${source.name}'s status changes to ${value}.`,awareness:`${source.name} becomes aware that ${other} exists.`,meeting:`${source.name} meets ${other}.`,conversation:`${source.name} talks with ${(participants||[]).filter(name=>name!==source.name).join(", ")||"others"}.`,relationship:`${source.name} and ${other}'s relationship becomes ${value}.`,membership:membershipText,system_host:action==="remove"?`${source.name} unbinds from ${other}.`:`${source.name} bonds to ${other}${value?` as ${value}`:""}.`,system_parent:action==="remove"?`${source.name} is no longer a subsystem of ${other}.`:`${source.name} becomes a subsystem of ${other}.`,system_location:action==="close"?`${source.name} withdraws from ${location?.name}.`:`${source.name} operates at ${location?.name}${value?` as ${value}`:""}.`,system_rank:`${source.name} is now ${[rankAuthority?`authority ${rankAuthority}`:null,rankGrade?`grade ${rankGrade}`:null].filter(Boolean).join(" and ")}.`,system_merge:action==="remove"?`${source.name} separates from ${other} again.`:`${source.name} merges into ${other}.`,system_end:action==="remove"?`${source.name} is restored.`:`${source.name} is destroyed${value?` — ${value}`:""}.`,organization_location:action==="close"?`${source.name} closes its ${value||"location"} at ${location?.name}.`:`${location?.name} becomes ${source.name}'s ${value||"branch"}.`,note:`A story event involving ${source.name}.`}[type]||`${source.name}: ${type}.`;
+  return {mention:`${source.name} is mentioned.`,appearance:`${source.name} appears alive.`,corpse_appearance:`${source.name}'s dead body appears.`,display_name:`${source.name} is now publicly known as ${value}.`,identity_parent:action==="remove"?`${source.name} is separated from ${other}.`:`${source.name} is connected to ${other} as ${value||"a clone"}.`,movement:`${source.name} travels to ${location?.name}.`,residency:action==="end"?`${source.name}'s ${value||"residence"} at ${location?.name} ends.`:`${source.name} begins using ${location?.name} as ${value||"a residence"}.`,location_parent:action==="remove"?`${source.name} is no longer recorded inside ${location?.name}.`:`${source.name} is inside ${location?.name}.`,alias:`${value} is revealed as an alias of ${source.name}.`,cultivation:initial?`${source.name}'s cultivation is revealed as ${cultivationText}.`:`${source.name} reaches ${cultivationText}.`,status:`${source.name}'s status changes to ${value}.`,awareness:`${source.name} becomes aware that ${other} exists.`,meeting:`${source.name} meets ${other}.`,conversation:`${source.name} talks with ${(participants||[]).filter(name=>name!==source.name).join(", ")||"others"}.`,relationship:`${source.name} and ${other}'s relationship becomes ${value}.`,membership:membershipText,system_host:action==="remove"?`${source.name} unbinds from ${other}.`:`${source.name} bonds to ${other}${value?` as ${value}`:""}.`,system_parent:action==="remove"?`${source.name} is no longer a subsystem of ${other}.`:`${source.name} becomes a subsystem of ${other}.`,system_location:action==="close"?`${source.name} withdraws from ${location?.name}.`:`${source.name} operates at ${location?.name}${value?` as ${value}`:""}.`,system_rank:rankPhrase(source,rankAuthority,rankGrade),system_merge:action==="remove"?`${source.name} separates from ${other} again.`:`${source.name} merges into ${other}.`,system_end:action==="remove"?`${source.name} is restored.`:`${source.name} is destroyed${value?` — ${value}`:""}.`,organization_location:action==="close"?`${source.name} closes its ${value||"location"} at ${location?.name}.`:`${location?.name} becomes ${source.name}'s ${value||"branch"}.`,note:`A story event involving ${source.name}.`}[type]||`${source.name}: ${type}.`;
 }
 
 function isAutomaticCultivationDescription(description,previous){if(!previous||previous.type!=="cultivation")return false;const text=String(description||""),oldNames=[cultivationDisplay(previous),cultivationCanonical(previous)].filter(Boolean);return /\b(cultivation is revealed as|reaches|is introduced at)\b/i.test(text)&&oldNames.some(name=>text.toLowerCase().includes(name.toLowerCase()));}
@@ -1772,10 +1830,11 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   if(type==="system_rank"){
     if(source.kind!=="system"){toast("Only a system has an authority and a grade");return null;}
     const rankAuthority=String(form.get("authority")||"").trim(),rankGrade=String(form.get("grade")||"").trim();
-    if(!rankAuthority&&!rankGrade){toast("Give the new authority, the new grade, or both");return null;}
-    if(rankGrade&&!gradeIsValid(rankGrade)){toast("A grade is one to three letters with an optional + or −, or one of Divine, Death, Life");return null;}
-    if(rankAuthority)record.authority=Number(rankAuthority);
-    if(rankGrade)record.grade=rankGrade;
+    if(!rankAuthority&&!rankGrade){toast("Give the new authority, the new grade, or both — or write unknown to take one away");return null;}
+    if(!authorityIsValid(rankAuthority)){toast("Authority is a plain number, or unknown to take it away");return null;}
+    if(rankGrade&&!gradeIsValid(rankGrade)){toast("A grade is one to three letters with an optional + or −, one of Divine, Death, Life, or unknown to take it away");return null;}
+    if(rankAuthority)record.authority=meansUnknown(rankAuthority)?null:Number(rankAuthority);
+    if(rankGrade)record.grade=meansUnknown(rankGrade)?null:rankGrade;
   }
   if(form.get("ghost"))record.ghost=true;
   if(["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end"].includes(type))record.action=action;
@@ -1804,8 +1863,9 @@ $("#entity-form").addEventListener("submit",event=>{
   event.preventDefault();const form=new FormData(event.currentTarget),parsedName=parseIdentityName(form.get("name")),name=parsedName.name,existingName=resolveEntity(name);let editingId=String(form.get("editingId")||"");if(!name){toast("Enter a public name or descriptor");return;}if(existingName&&existingName.id!==editingId){const hasEvents=data.events.some(storyEvent=>eventInvolves(storyEvent,existingName.id));if(!editingId&&!hasEvents){editingId=existingName.id;toast(`${existingName.name} existed without a graph event; repairing it now`);}else{$("#manage-entity").value=existingName.name;loadEntityEditor();toast(`${existingName.name} already exists and has been loaded for editing`);return;}}
   const kind=String(form.get("kind")),mentioned=validChapter(form.get("mentioned")),appeared=validChapter(form.get("appeared")),initialLevel=Number(form.get("initialLevel"))||0,initialCultivationAlias=String(form.get("initialCultivationAlias")||"").trim(),creationSourceUrl=String(form.get("creationSourceUrl")||"").trim(),editingCreationEventId=String(form.get("editingCreationEventId")||""),creationEventDescription=String(form.get("creationEventDescription")||"").trim();if(kind==="character"&&!mentioned&&!appeared){toast("Enter either a first mention or a first appearance");return;}if(kind!=="character"&&!appeared){toast(`${kind==="location"?"Locations":"Organizations"} need an introduction chapter`);return;}if(initialCultivationAlias&&!initialLevel){toast("Choose the canonical cultivation tier for that equivalent path title");return;}if(initialCultivationAlias&&CULTIVATION_LEVELS.some(tier=>tier.toLowerCase()===initialCultivationAlias.toLowerCase())){toast("An equivalent path title cannot be another canonical tier. Clear it or choose that tier above.");return;}if(creationSourceUrl&&!safeExternalUrl(creationSourceUrl)){toast("The introduction citation must be a complete http:// or https:// URL");return;}
   let id=editingId;if(!id){id=slugify(name);let suffix=2;while(entity(id))id=slugify(name)+"-"+suffix++;}
-  if(kind==="system"&&!gradeIsValid(form.get("grade"))){toast("A grade is one to three letters with an optional + or −, or one of Divine, Death, Life");return null;}
-  const record=editingId?entity(editingId):{id},managedBefore=data.events.filter(storyEvent=>storyEvent.source===id&&isCreationManagedEvent(storyEvent)),selectedBefore=managedBefore.find(storyEvent=>storyEvent.id===editingCreationEventId),initialCultivationEvent=managedBefore.find(storyEvent=>storyEvent.type==="cultivation"&&storyEvent.initial===true);Object.assign(record,{kind,name,gender:kind==="character"?String(form.get("gender")):undefined,locationType:kind==="location"?String(form.get("locationType")||"Other"):undefined,authority:kind==="system"?(String(form.get("authority")||"").trim()===""?undefined:Number(form.get("authority"))):undefined,grade:kind==="system"?(String(form.get("grade")||"").trim()||undefined):undefined,mentioned:kind==="character"?mentioned:null,appeared:kind==="character"?appeared:null,intro:kind!=="character"?appeared:(mentioned||appeared),description:String(form.get("description")||"")});if(parsedName.wikiUrl)record.profile={...(record.profile||{}),wikiUrl:parsedName.wikiUrl};if(!editingId)data.entities.push(record);
+  if(kind==="system"&&!gradeIsValid(form.get("grade"))){toast("A grade is one to three letters with an optional + or −, one of Divine, Death, Life, or left blank");return null;}
+  if(kind==="system"&&!authorityIsValid(form.get("authority"))){toast("Authority is a plain number, or left blank");return null;}
+  const record=editingId?entity(editingId):{id},managedBefore=data.events.filter(storyEvent=>storyEvent.source===id&&isCreationManagedEvent(storyEvent)),selectedBefore=managedBefore.find(storyEvent=>storyEvent.id===editingCreationEventId),initialCultivationEvent=managedBefore.find(storyEvent=>storyEvent.type==="cultivation"&&storyEvent.initial===true);Object.assign(record,{kind,name,gender:kind==="character"?String(form.get("gender")):undefined,locationType:kind==="location"?String(form.get("locationType")||"Other"):undefined,authority:kind==="system"?(String(form.get("authority")||"").trim()===""||meansUnknown(form.get("authority"))?undefined:Number(form.get("authority"))):undefined,grade:kind==="system"?(meansUnknown(form.get("grade"))?undefined:String(form.get("grade")||"").trim()||undefined):undefined,mentioned:kind==="character"?mentioned:null,appeared:kind==="character"?appeared:null,intro:kind!=="character"?appeared:(mentioned||appeared),description:String(form.get("description")||"")});if(parsedName.wikiUrl)record.profile={...(record.profile||{}),wikiUrl:parsedName.wikiUrl};if(!editingId)data.entities.push(record);
   const sourceFields=creationSourceUrl?{sourceUrl:safeExternalUrl(creationSourceUrl)}:{};
   const creationDescription=(previous,generated)=>previous?.id===selectedBefore?.id&&creationEventDescription&&!(creationEventDescription===previous?.description&&isAutomaticCreationDescription(previous))?creationEventDescription:isAutomaticCreationDescription(previous)?generated:(previous?.description||generated);
   if(kind==="character"){
