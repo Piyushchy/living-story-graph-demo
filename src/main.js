@@ -210,9 +210,16 @@ let openProfileId = null;
 let locationPovId = null;
 let expandedLocations = new Set(), expandedSystems = new Set();
 let lastLocationView = null, lastSystemView = null;
-let collapsingLocationId = null, locationCollapseTimer = null;
+let collapsingLocationId = null, locationCollapseTimer = null, lastContentFit = 0;
+// Ghosts of nodes on their way into whatever took them in. They are driven by the tick rather
+// than by a css transition, because the thing they are travelling to is itself still moving.
+let departingGhosts = [];
 let emergingLocations = new Set(), emergeTimer = null;
 let activePodIds = [], activePodKey = "", retiringPodIds = [], podRetireTimer = null;
+// Where a pod should start its journey from, when the place already had a node of its own a
+// moment ago. Without this the node flies into its new parent while its pod flies back out of
+// that same parent, and the reader sees the place going two ways at once.
+let podOrigins = new Map();
 let currentChapter = 1;
 let currentActionIndex = 0;
 let chapterAutoplayTimer=null,expandedChapter=null;
@@ -1099,7 +1106,7 @@ function createGradient(defs,id,history,chapter){
 // it drags, settles, and re-flows smoothly whenever the underlying data changes.
 const SEPARATION_GAP = 22;
 const POD_TRAVEL_MS = 520;
-const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), podPos: new Map(), hubPos: new Map(), edges: [], dragId: null };
+const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), podPos: new Map(), hubPos: new Map(), calm: new Map(), edges: [], dragId: null, alpha: 0 };
 const view = { x: 0, y: 0, scale: 1 };
 let lastAutoFitSignature="";
 let viewportGroup = null;
@@ -1112,10 +1119,24 @@ function ensurePos(id, seedFn) {
   if (!physics.pos.has(id)) { const [x, y] = seedFn(); physics.pos.set(id, { x, y }); physics.vel.set(id, { x: 0, y: 0 }); }
   return physics.pos.get(id);
 }
+// The layout used to run until it happened to go quiet, which after a busy action meant seconds
+// of drifting — and with an action a second, it never stopped. It now runs on a budget: a change
+// heats it, every frame cools it, and below a floor it stops dead. Motion is bounded to about
+// half a second whatever happens.
+const ALPHA_DECAY = 0.9, ALPHA_FLOOR = 0.02, ALPHA_CONTACT = 0.3;
 function stepPhysics() {
   const ids = [...physics.pos.keys()]; if (!ids.length) return;
+  if (physics.alpha < ALPHA_FLOOR && !physics.dragId) return;
   const force = new Map(ids.map(id => [id, { x: 0, y: 0 }]));
-  const REPEL = 2600+Math.min(6200,Math.max(0,ids.length-10)*115), CENTER = Math.max(.00032,.00115-Math.max(0,ids.length-12)*.000015), cx = 360, cy = 260;
+  // Both constants used to move with every single node, which changed the balance the whole
+  // layout was resting in and slid everything across the screen each time one thing arrived.
+  // Rounding the count to a step of eight means they change rarely instead of constantly.
+  const scaleCount = Math.round(ids.length/8)*8;
+  const REPEL = 2600+Math.min(6200,Math.max(0,scaleCount-10)*115), CENTER = Math.max(.00032,.00115-Math.max(0,scaleCount-12)*.000015), cx = 360, cy = 260;
+  // A node that has been sitting still has earned the right to stay put: it takes a fraction of
+  // the force until something actually touches it. New arrivals are fully mobile and find their
+  // own place around a layout that no longer swims away from them.
+  const disturbed = new Set(), overlapping = new Set();
   // Keeps one node's name from settling on top of another node's shape — label-versus-label
   // separation alone still let a long place name sit across a neighbouring character.
   const clearLabelOfShape=(labelPos,labelBox,shapePos,shapeRadius,labelForce,shapeForce)=>{
@@ -1137,7 +1158,10 @@ function stepPhysics() {
       // Hard separation: inverse-square repulsion alone still lets two shapes sit on top of
       // each other once springs pull them together.
       const ra=physics.radii.get(ids[i])||24,rb=physics.radii.get(ids[j])||24,clearance=ra+rb+SEPARATION_GAP;
-      if(d<clearance){const push=Math.min(6,(clearance-d)*.24);fa.x+=dx/d*push;fa.y+=dy/d*push;fb.x-=dx/d*push;fb.y-=dy/d*push;}
+      if(d<clearance){const push=Math.min(6,(clearance-d)*.24);fa.x+=dx/d*push;fa.y+=dy/d*push;fb.x-=dx/d*push;fb.y-=dy/d*push;disturbed.add(ids[i]);disturbed.add(ids[j]);
+        // Only shapes genuinely on top of each other keep the run alive. Reheating merely
+        // because two nodes are inside the comfort gap kept it awake for ever.
+        if(d<ra+rb){overlapping.add(ids[i]);overlapping.add(ids[j]);}}
       const ab=physics.bounds.get(ids[i]),bb=physics.bounds.get(ids[j]);
       if(ab&&bb){const labelDx=(a.x+ab.ox)-(b.x+bb.ox),labelDy=(a.y+ab.oy)-(b.y+bb.oy),overlapX=ab.hw+bb.hw+16-Math.abs(labelDx),overlapY=ab.hh+bb.hh+10-Math.abs(labelDy);if(overlapX>0&&overlapY>0){const opposed=(a.y-b.y)*labelDy<0;if(opposed||overlapX<overlapY){const direction=labelDx>=0?1:-1,push=Math.min(5,.14*overlapX);fa.x+=direction*push;fb.x-=direction*push;}else{const direction=labelDy>=0?1:-1,push=Math.min(5,.18*overlapY);fa.y+=direction*push;fb.y-=direction*push;}}}
       clearLabelOfShape(a,ab,b,rb,fa,fb);clearLabelOfShape(b,bb,a,ra,fb,fa);
@@ -1151,12 +1175,22 @@ function stepPhysics() {
     const fa = force.get(edge.a), fb = force.get(edge.b);
     if (fa) { fa.x += fx; fa.y += fy; } if (fb) { fb.x -= fx; fb.y -= fy; }
   });
+  // Shapes actually sitting on top of each other re-heat the run, so a crowded arrival still
+  // gets pushed apart however late it happens.
+  if (overlapping.size) physics.alpha = Math.max(physics.alpha, ALPHA_CONTACT);
+  const heat = physics.dragId ? 1 : Math.min(1, physics.alpha);
+  physics.alpha = physics.dragId ? 1 : physics.alpha * ALPHA_DECAY;
   const DAMP = 0.82, MAXV = 13, REST_SPEED = 0.12;
   ids.forEach(id => {
-    if (id === physics.dragId || physics.pos.get(id)?.pinned) return;
+    if (id === physics.dragId || physics.pos.get(id)?.pinned) { physics.calm.set(id,0); return; }
     const v = physics.vel.get(id), f = force.get(id), p = physics.pos.get(id);
-    v.x = Math.max(-MAXV, Math.min(MAXV, (v.x + f.x) * DAMP));
-    v.y = Math.max(-MAXV, Math.min(MAXV, (v.y + f.y) * DAMP));
+    // Two shapes actually touching always get their full push, so nothing settles overlapping.
+    const touching = disturbed.has(id), speed = Math.hypot(v.x,v.y),
+      calm = touching ? 0 : Math.max(0, Math.min(1, (physics.calm.get(id)||0) + (speed < 1.2 ? .04 : -.3))),
+      mobility = (1 - .78*calm) * heat;
+    physics.calm.set(id,calm);
+    v.x = Math.max(-MAXV, Math.min(MAXV, (v.x + f.x*mobility) * DAMP));
+    v.y = Math.max(-MAXV, Math.min(MAXV, (v.y + f.y*mobility) * DAMP));
     if (Math.abs(v.x) < REST_SPEED && Math.abs(v.y) < REST_SPEED) { v.x = 0; v.y = 0; return; }
     p.x += v.x; p.y += v.y;
   });
@@ -1195,11 +1229,19 @@ function zoomBy(factor, atX = 360, atY = 260) {
   view.x = atX - contentX * view.scale; view.y = atY - contentY * view.scale;
   applyViewTransform();
 }
-function fitGraphToCount(count,force=false){const signature=`${activeVolume}:${count}`;if(!force&&signature===lastAutoFitSignature)return;lastAutoFitSignature=signature;const scale=Math.max(.38,Math.min(1,Math.sqrt(18/Math.max(18,count))));glideViewTo({scale,x:360*(1-scale),y:260*(1-scale)});viewPinnedByUser=false;scheduleAutoFit();}
+// Seeded once per volume, not once per node. Re-guessing a scale from the node count on every
+// action fought the real fit that follows a moment later, and the graph was seen lurching in and
+// out on every step.
+function fitGraphToCount(count,force=false){
+  // The real fit, against the settled layout, gets its chance after every render. What happens
+  // only once per volume is the crude guess below, made before the simulation has run at all —
+  // re-guessing that on every action was what set the view lurching.
+  scheduleAutoFit();
+  const signature=`${activeVolume}`;if(!force&&signature===lastAutoFitSignature)return;lastAutoFitSignature=signature;const scale=Math.max(.38,Math.min(1,Math.sqrt(18/Math.max(18,count))));glideViewTo({scale,x:360*(1-scale),y:260*(1-scale)});viewPinnedByUser=false;}
 // The seeded scale above is a guess made before the simulation has run. Once the layout
 // settles, fit the real bounding box to the canvas so the graph fills the space instead of
 // huddling in the middle — and so a big graph zooms out far enough for the declutter to work.
-function scheduleAutoFit(){autoFitTimers.forEach(clearTimeout);autoFitTimers=[550,1500].map(delay=>setTimeout(()=>{if(!viewPinnedByUser&&!physics.dragId)fitGraphToContent();},delay));}
+function scheduleAutoFit(){autoFitTimers.forEach(clearTimeout);autoFitTimers=[850,1900].map(delay=>setTimeout(()=>{if(!viewPinnedByUser&&!physics.dragId)fitGraphToContent();},delay));}
 function fitGraphToContent(){
   const entries=[...physics.pos.entries()].filter(([id])=>nodeEls.has(id));
   if(entries.length<2)return;
@@ -1209,12 +1251,38 @@ function fitGraphToContent(){
   const width=Math.max(1,maxX-minX),height=Math.max(1,maxY-minY),padding=54,
     scale=Math.max(.3,Math.min(1.3,Math.min((720-padding*2)/width,(520-padding*2)/height))),
     target={scale,x:360-(minX+maxX)/2*scale,y:260-(minY+maxY)/2*scale};
-  // Nothing worth animating for a nudge; only glide when the framing really moves.
-  if(Math.abs(target.scale-view.scale)<.015&&Math.hypot(target.x-view.x,target.y-view.y)<12)return;
-  glideViewTo(target);updateLabelVisibility();
+  // The graph must still make room as the story grows — but a single threshold let it pull out
+  // and straight back in, over and over. Pulling out and easing in therefore answer to different
+  // thresholds: the moment the content needs more room the view gives it, while it only closes
+  // back in once there is a great deal of empty space, which is what stops the two chasing each
+  // other. A short cooldown keeps a busy chapter from refitting several times over.
+  const now=performance.now(),needsRoom=target.scale<view.scale*.97,
+    tooMuchRoom=target.scale>view.scale*1.5,
+    offCentre=Math.hypot(target.x-view.x,target.y-view.y)>120;
+  if(now-lastContentFit<900)return;
+  if(!needsRoom&&!tooMuchRoom&&!offCentre)return;
+  // When only the framing drifted, keep the scale rather than nudging it as well.
+  lastContentFit=now;
+  glideViewTo(needsRoom||tooMuchRoom?target:{...target,scale:view.scale});updateLabelVisibility();
+}
+// Follows the anchor as it settles, so the ghost arrives where the parent actually is rather
+// than where it stood when the journey began.
+function stepDepartingGhosts(){
+  if(!departingGhosts.length)return;
+  const now=performance.now();
+  departingGhosts=departingGhosts.filter(ghost=>{
+    const target=physics.pos.get(ghost.into),progress=Math.min(1,(now-ghost.start)/ghost.duration);
+    if(!target||progress>=1){ghost.el.remove();return false;}
+    const ease=1-Math.pow(1-progress,3),
+      x=ghost.from.x+(target.x-ghost.from.x)*ease,y=ghost.from.y+(target.y-ghost.from.y)*ease;
+    ghost.el.style.transform=`translate(${x}px,${y}px) scale(${(1-.74*ease).toFixed(3)})`;
+    ghost.el.style.opacity=String((1-ease*ease).toFixed(3));
+    return true;
+  });
 }
 function tickGraph() {
   stepViewTween();
+  stepDepartingGhosts();
   if (activeView === "graph" && physics.pos.size) {
     stepPhysics();
     nodeEls.forEach((el, id) => { const p = physics.pos.get(id); if (p) el.setAttribute("transform", `translate(${p.x.toFixed(2)},${p.y.toFixed(2)})`); });
@@ -1285,7 +1353,25 @@ function renderGraph() {
   const visible=data.entities.filter(item=>renderIds.has(item.id));
   const resolveLocationId=id=>entity(id)?.kind==="location"?(locView.anchorOf.get(id)||id):id;
   if(selectedId&&!renderIds.has(selectedId)&&!systemSatellites.some(item=>item.id===selectedId))selectedId=null;
-  [...physics.pos.keys()].filter(id=>!renderIds.has(id)).forEach(id=>{physics.pos.delete(id);physics.vel.delete(id);physics.bounds.delete(id);});
+  // A place that is folded into its parent, or a system swallowed by another, used to blink out
+  // of existence while the new connection appeared somewhere else. Before its position is
+  // forgotten, note where it was and what it went into, so it can be seen going there.
+  // The pods for this action are worked out the same way the pod pass will work them out, so a
+  // place that is about to become one is known before its old position is forgotten.
+  const podsComing=new Set(eventPodIds(locView,currentEvent)),departing=[];
+  [...physics.pos.keys()].filter(id=>!renderIds.has(id)).forEach(id=>{
+    const kind=entity(id)?.kind,
+      into=kind==="location"?locView.anchorOf.get(id)
+        :kind==="system"?(sysView.anchorOf.get(id)||systemSatellites.find(item=>item.id===id)?.anchor)
+        :null;
+    if(into&&into!==id&&renderIds.has(into)){
+      // If the place is about to be shown as a pod anyway, the pod itself travels from here —
+      // one continuous move — instead of a ghost going in and a pod coming straight back out.
+      if(kind==="location"&&podsComing.has(id))podOrigins.set(id,{...physics.pos.get(id)});
+      else departing.push({id,kind,from:{...physics.pos.get(id)},into,radius:physics.radii.get(id)||20});
+    }
+    physics.pos.delete(id);physics.vel.delete(id);physics.bounds.delete(id);physics.calm.delete(id);
+  });
   visible.forEach((item,index)=>ensurePos(item.id,()=>seedPosition(item,index,visible.length)));
   fitGraphToCount(visible.length);
   const positions=physics.pos;
@@ -1325,11 +1411,11 @@ function renderGraph() {
   derived.identityParents.forEach(link=>addSpring(link.child,link.parent,68,.09));
   [...derived.relations.keys(),...derived.awareness.keys()].forEach(key=>{const [a,b]=key.split("|");addSpring(a,b,150,.02);});
   physics.edges=[...springs.values()];
-  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null;
+  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null; departingGhosts=[]; physics.alpha=1;
   physics.degree.clear();physics.edges.forEach(edge=>{physics.degree.set(edge.a,(physics.degree.get(edge.a)||0)+1);physics.degree.set(edge.b,(physics.degree.get(edge.b)||0)+1);});
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
-  const edgeLayer=svgEl("g"),satelliteLayer=svgEl("g",{class:"system-satellite-layer"}),conversationLayer=svgEl("g",{class:"conversation-layer"}),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
+  const edgeLayer=svgEl("g"),departLayer=svgEl("g",{class:"node-depart-layer"}),satelliteLayer=svgEl("g",{class:"system-satellite-layer"}),conversationLayer=svgEl("g",{class:"conversation-layer"}),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,departLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
   // While an action pops a hidden place out of its parent, links point at the pod itself, so the
   // line sits on the place the reader is actually being shown and rides back in as it retracts.
   const podIds=syncPodTransitions(locView,currentEvent),podSet=new Set([...podIds,...retiringPodIds]);
@@ -1481,7 +1567,28 @@ function renderGraph() {
     noteEdge(satellite.id,satellite.anchor,satellite.from,satellite.mode==="merged"?"Merged into this system":satellite.reason||"Destroyed");
     straightEdge(satellite.id,satellite.anchor,`edge system-satellite-edge`,satellite.id,satellite.anchor);
   });
-  renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius);
+  renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius,podOrigins);
+  podOrigins=new Map();
+  // Draw each departing node where it last stood, then let it travel into whatever took it in.
+  departing.forEach(item=>{
+    if(!positions.get(item.into))return;
+    // The ghost is the node's own glyph, not a stand-in, so what travels is recognisably the
+    // place or system that was standing there a moment ago.
+    const ghost=svgEl("g",{class:`node-departing depart-${item.kind}`,"aria-hidden":"true"}),
+      state=derived.states.get(item.id),
+      radius=item.kind==="system"?systemGlyphRadius(state):locationGlyphRadius(item.id,locView),
+      name=state?.displayName||entity(item.id)?.name||"";
+    if(item.kind==="system")ghost.append(
+      svgEl("polygon",{points:Array.from({length:4},(_,i)=>{const angle=Math.PI/2*i;return `${radius*Math.cos(angle)},${radius*Math.sin(angle)}`}).join(" "),class:"system-shape"}),
+      svgEl("polygon",{points:Array.from({length:4},(_,i)=>{const angle=Math.PI/2*i;return `${radius*.62*Math.cos(angle)},${radius*.62*Math.sin(angle)}`}).join(" "),class:"system-shape-inner"}));
+    else ghost.append(
+      svgEl("path",{d:roundedSquarePath(radius,radius*.42),class:"location-glyph"}),
+      svgEl("path",{d:roundedSquarePath(radius*.44,radius*.22),class:"location-glyph-core"}));
+    if(name){const label=svgEl("text",{x:0,y:-radius-11,class:"depart-label"});label.textContent=name;ghost.appendChild(label);}
+    ghost.style.transform=`translate(${item.from.x}px,${item.from.y}px)`;
+    departLayer.appendChild(ghost);
+    departingGhosts.push({el:ghost,from:item.from,into:item.into,start:performance.now(),duration:640});
+  });
   applyGraphFocus(derived);
   updateLabelVisibility();
 }
@@ -1504,7 +1611,7 @@ function syncPodTransitions(view,currentEvent){
   }
   return podIds;
 }
-function renderLocationPods(view,currentEvent,positions,layer,glyphRadius){
+function renderLocationPods(view,currentEvent,positions,layer,glyphRadius,origins=new Map()){
   const podIds=activePodIds;
   const placedPods=[];
   const draw=(id,retiring)=>{
@@ -1522,8 +1629,12 @@ function renderLocationPods(view,currentEvent,positions,layer,glyphRadius){
     const bornAt=performance.now(),place=()=>{
       const base=positions.get(anchor);if(!base)return;
       const progress=Math.max(0,Math.min(1,(performance.now()-bornAt)/POD_TRAVEL_MS)),
-        reach=distance*(retiring?1-progress**3:1-(1-progress)**3),
-        x=base.x+Math.cos(angle)*reach,y=base.y+Math.sin(angle)*reach;
+        eased=retiring?1-progress**3:1-(1-progress)**3,
+        target={x:base.x+Math.cos(angle)*distance,y:base.y+Math.sin(angle)*distance},
+        // A pod normally grows out of its parent. One standing in for a node that was just
+        // folded away sets off from where that node stood instead.
+        origin=origins.get(id)||base,
+        x=origin.x+(target.x-origin.x)*eased,y=origin.y+(target.y-origin.y)*eased;
       physics.podPos.set(id,{x,y});
       group.setAttribute("transform",`translate(${x.toFixed(2)},${y.toFixed(2)})`);
       tether.setAttribute("x1",base.x);tether.setAttribute("y1",base.y);tether.setAttribute("x2",x);tether.setAttribute("y2",y);

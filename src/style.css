@@ -831,3 +831,9 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .events-list .event-page-more button, .quest-page-more button { width: 100%; border: 1px dashed var(--border); border-radius: 9px; background: none; color: var(--muted); font: inherit; font-size: 12px; padding: 5px 8px; cursor: pointer; }
 .events-list .event-page-more button:hover, .quest-page-more button:hover { color: var(--text); border-color: var(--text); border-style: solid; }
 .quest-page-more { margin-top: 2px; }
+
+/* A place folded into its parent, or a system swallowed by another, is seen going there rather
+   than blinking out where it stood. */
+.node-depart-layer { pointer-events: none; }
+.node-departing { transform-box: fill-box; transform-origin: center; }
+.depart-label { fill: #cddcf2; font-size: 11px; font-weight: 700; text-anchor: middle; paint-order: stroke; stroke: #081018; stroke-width: 4px; stroke-linejoin: round; }

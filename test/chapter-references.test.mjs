@@ -403,7 +403,7 @@ test("dragging a node pins it so the physics simulation stops pulling it back, a
   const body = functionBody("renderGraph");
   assert.match(body, /if\(dragMoved\)\{const p=physics\.pos\.get\(item\.id\);if\(p\)p\.pinned=true;\}else selectNode\(\);/);
   assert.match(body, /target\.addEventListener\("dblclick",event=>\{event\.stopPropagation\(\);const p=physics\.pos\.get\(item\.id\);if\(p\?\.pinned\)\{p\.pinned=false;/);
-  assert.match(source, /if \(id === physics\.dragId \|\| physics\.pos\.get\(id\)\?\.pinned\) return;/);
+  assert.match(source, /if \(id === physics\.dragId \|\| physics\.pos\.get\(id\)\?\.pinned\) \{ physics\.calm\.set\(id,0\); return; \}/);
 });
 
 test("a node can be dragged from anywhere on it, including from its own name — a character's label covers the middle of its circle, so binding drag only to the shape left just the outer ring grabbable", () => {
@@ -556,11 +556,23 @@ function pureSandbox(names) {
 
 test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /viewportGroup\.append\(edgeLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation and system markers");
+  assert.match(body, /viewportGroup\.append\(edgeLayer,departLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation and system markers");
   assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,tall:Boolean\(rankLabel\),halfWidth:/);
   assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=\(entry\.tall\?entry\.group:entry\.text\)\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
   assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
   assert.match(styleSource, /\.node-label-layer \{ pointer-events: none; \}/);
+});
+
+test("the layout runs on a budget, so a busy action cannot leave the graph drifting for seconds", () => {
+  const body = functionBody("stepPhysics");
+  assert.match(source, /const ALPHA_DECAY = 0\.9, ALPHA_FLOOR = 0\.02, ALPHA_CONTACT = 0\.3;/);
+  assert.match(body, /if \(physics\.alpha < ALPHA_FLOOR && !physics\.dragId\) return;/, "below the floor it stops dead rather than drifting");
+  assert.match(body, /physics\.alpha = physics\.dragId \? 1 : physics\.alpha \* ALPHA_DECAY;/, "every frame cools it");
+  assert.match(body, /if\(d<ra\+rb\)\{overlapping\.add\(ids\[i\]\);overlapping\.add\(ids\[j\]\);\}/, "only shapes genuinely on top of each other reheat it — the comfort gap kept it awake for ever");
+  assert.match(body, /if \(overlapping\.size\) physics\.alpha = Math\.max\(physics\.alpha, ALPHA_CONTACT\);/);
+  assert.match(functionBody("renderGraph"), /departingGhosts=\[\]; physics\.alpha=1;/, "and a change heats it again");
+  assert.match(body, /const scaleCount = Math\.round\(ids\.length\/8\)\*8;/, "the strength constants step in eights, so they do not shift the whole balance for one arrival");
+  assert.match(body, /calm = touching \? 0 : Math\.max\(0, Math\.min\(1, \(physics\.calm\.get\(id\)\|\|0\) \+ \(speed < 1\.2 \? \.04 : -\.3\)\)\)/, "and a node that has been sitting still takes a fraction of the force");
 });
 
 test("shapes are pushed apart by their real radii, not just by inverse-square repulsion which let them settle on top of each other", () => {
@@ -645,7 +657,8 @@ test("a place a character is standing in keeps the line while it is popped out, 
   assert.ok(body.indexOf("syncPodTransitions(locView") < body.indexOf("const straightEdge="), "and the transition is decided before any link is drawn, or the line snaps home a render early");
   assert.match(body, /const edgeLocationId=id=>entity\(id\)\?\.kind!=="location"\?id:\(podSet\.has\(id\)\?id:\(locView\.anchorOf\.get\(id\)\|\|id\)\)/);
   assert.match(body, /const aPos=pointFor\(a\),bPos=pointFor\(b\)/, "edges resolve pod positions as well as physics positions");
-  assert.match(functionBody("renderLocationPods"), /reach=distance\*\(retiring\?1-progress\*\*3:1-\(1-progress\)\*\*3\)/, "the travel is driven in JS so an attached line moves with it");
+  assert.match(functionBody("renderLocationPods"), /eased=retiring\?1-progress\*\*3:1-\(1-progress\)\*\*3/, "the travel is driven in JS so an attached line moves with it");
+  assert.match(functionBody("renderLocationPods"), /origin=origins\.get\(id\)\|\|base,\s*x=origin\.x\+\(target\.x-origin\.x\)\*eased/, "and a pod standing in for a node just folded away sets off from where that node stood");
   assert.match(functionBody("pointFor"), /return physics\.pos\.get\(id\)\|\|physics\.podPos\.get\(id\)\|\|physics\.hubPos\.get\(id\)\|\|null;/);
 });
 
@@ -658,7 +671,14 @@ test("an action that merely names a place — a meeting, a note — still draws 
 test("the view eases into a new framing instead of jumping, and a reader's own zoom or pan drops the tween immediately", () => {
   assert.match(functionBody("glideViewTo"), /viewTween=\{from:\{x:view\.x,y:view\.y,scale:view\.scale\},to:target,start:performance\.now\(\),duration\}/);
   assert.match(functionBody("stepViewTween"), /eased=progress<\.5\?4\*progress\*\*3:1-\(-2\*progress\+2\)\*\*3\/2/);
-  assert.match(functionBody("fitGraphToContent"), /if\(Math\.abs\(target\.scale-view\.scale\)<\.015&&Math\.hypot\(target\.x-view\.x,target\.y-view\.y\)<12\)return;/, "and a framing that barely moved is left alone rather than animated");
+  const fit = functionBody("fitGraphToContent");
+  // Pulling out and easing back in answer to different thresholds. One shared threshold let the
+  // view give room and take it straight back, over and over.
+  assert.match(fit, /needsRoom=target\.scale<view\.scale\*\.97/, "the moment the content needs room, it gets it");
+  assert.match(fit, /tooMuchRoom=target\.scale>view\.scale\*1\.5/, "but it only closes back in when there is a great deal of empty space");
+  assert.match(fit, /if\(now-lastContentFit<900\)return;/, "and a busy chapter cannot refit several times over");
+  assert.match(fit, /glideViewTo\(needsRoom\|\|tooMuchRoom\?target:\{\.\.\.target,scale:view\.scale\}\)/, "a drifted framing is recentred without touching the scale as well");
+  assert.match(functionBody("fitGraphToCount"), /scheduleAutoFit\(\);\s*const signature=`\$\{activeVolume\}`;/, "the real fit runs after every render; only the crude pre-simulation guess is once per volume");
   assert.match(source, /viewPinnedByUser = true; viewTween = null;/);
   assert.match(source, /if\(!panStart\)return;viewPinnedByUser=true;viewTween=null;/);
   assert.match(functionBody("tickGraph"), /stepViewTween\(\);/);
@@ -970,6 +990,30 @@ test("the bar is not a list of chapters — it carries where the reader is, and 
   assert.match(body, /class="main-timeline-mark here-mark expandable"[^`]*data-expand-chapter="\$\{here\.chapter\}"/, "where the reader is opens into that chapter's events");
   assert.match(body, /several=here\.entries\.length>1;/, "and it is only openable when the chapter actually holds several");
   assert.match(styleSource, /\.main-timeline-mark\.here-mark\{width:11px;height:11px/, "it is the one mark always present, so it is the loudest");
+});
+
+test("a node folded into something else is seen going there, rather than blinking out where it stood", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const podsComing=new Set\(eventPodIds\(locView,currentEvent\)\),departing=\[\];/);
+  assert.match(body, /into=kind==="location"\?locView\.anchorOf\.get\(id\)\s*:kind==="system"\?\(sysView\.anchorOf\.get\(id\)\|\|systemSatellites\.find\(item=>item\.id===id\)\?\.anchor\)/, "a place goes to the parent that took it in; a system to whatever swallowed or succeeded it");
+  assert.match(body, /if\(into&&into!==id&&renderIds\.has\(into\)\)\{/, "only when there is somewhere to go");
+  assert.match(body, /else departing\.push\(\{id,kind,from:\{\.\.\.physics\.pos\.get\(id\)\},into/, "captured before the position is forgotten");
+  assert.match(body, /ghost\.style\.transform=`translate\(\$\{item\.from\.x\}px,\$\{item\.from\.y\}px\)`;/, "it starts where the node last stood");
+  assert.match(body, /if\(kind==="location"&&podsComing\.has\(id\)\)podOrigins\.set\(id,\{\.\.\.physics\.pos\.get\(id\)\}\);/, "a place about to become a pod hands its journey to the pod, so it does not fly in and straight back out");
+  assert.match(body, /viewportGroup\.append\(edgeLayer,departLayer,nodeLayer/, "it travels under the nodes, so the parent covers it as it arrives");
+  const step = functionBody("stepDepartingGhosts");
+  assert.match(step, /const target=physics\.pos\.get\(ghost\.into\)/, "driven by the tick, so it follows the parent as that settles instead of landing where it used to be");
+  assert.match(step, /if\(!target\|\|progress>=1\)\{ghost\.el\.remove\(\);return false;\}/, "and does not linger once it is gone");
+  assert.match(body, /radius=item\.kind==="system"\?systemGlyphRadius\(state\):locationGlyphRadius\(item\.id,locView\)/, "the ghost is the node's own glyph, not a stand-in");
+});
+
+test("a place known only to be inside a realm can later be placed exactly, without confusing the hierarchy", () => {
+  // The link is keyed by the child, so the newest statement replaces the older, broader one.
+  assert.match(functionBody("derive"), /else locationParents\.set\(event\.source,\{child:event\.source,parent:event\.location,from:event\.chapter\}\)/);
+  assert.match(functionBody("buildDrillView"), /while\(true\)\{const parent=parentOfRaw\(cursor\);if\(!parent\|\|seen\.has\(parent\)\)break;/, "and the walk up cannot loop, whatever order the statements arrive in");
+  assert.match(source, /if\(type==="location_parent"&&source\.id===location\.id\)\{toast\("A location cannot contain itself"\)/);
+  assert.match(source, /if\(type==="location_parent"&&action!=="remove"&&locationLineage\(location\.id,derive\(chapter\)\)\.includes\(source\.id\)\)\{toast\("That would create a circular location hierarchy"\)/);
+  assert.match(source, /String\(source\.locationType\|\|""\)===LOCATION_ROOT_TYPE\)\{toast\("A realm is the widest place the graph draws/);
 });
 
 test("a quest is a record with a run of its own: issued, inched forward chapter by chapter, and settled", () => {
