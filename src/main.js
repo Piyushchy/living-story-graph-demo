@@ -4,6 +4,9 @@ import { normalizeIdentityIntroductionOrder } from "./order.js";
 const COLORS = { friendly: "#45c98b", hostile: "#ef5d67", neutral: "#9aa9c0" };
 const MARKED_EVENT_TYPES = new Set(["cultivation","relationship","status","alias","display_name","identity_parent","membership","movement","residency","location_parent","organization_location","system_host","system_parent","system_location","system_merge","system_end","system_rank","quest_issue","quest_progress","quest_end","quest_part","quest_update","quest_contribution"]);
 const EVENT_TYPE_COLORS = { cultivation:"#e8ad3c",relationship:"#45c98b",status:"#ef5d67",alias:"#9f7aea",display_name:"#7dd3fc",identity_parent:"#c084fc",membership:"#4f8df7",movement:"#22c7b8",residency:"#55d6a7",location_parent:"#f2c95e",organization_location:"#c084fc",meeting:"#27b8b8",conversation:"#ffd479",system_host:"#b98cff",system_parent:"#b98cff",system_location:"#8f74c4",system_merge:"#8f74c4",system_end:"#ef5d67",system_rank:"#ffd479",quest_issue:"#ffb347",quest_progress:"#7dd3fc",quest_end:"#45c98b",quest_part:"#e8ad3c",quest_update:"#9f7aea",quest_contribution:"#22c7b8",awareness:"#36a8d4",mention:"#7f8da3",appearance:"#ef71b8",corpse_appearance:"#ef5d67",note:"#edf2ff" };
+// What counts as a turning point for one person: the things that change who they are, what they
+// hold, or where they stand — not every mention and meeting along the way.
+const MAJOR_EVENT_TYPES = new Set(["appearance","corpse_appearance","cultivation","status","display_name","identity_parent","relationship","membership","system_host","system_rank","quest_end"]);
 const STORAGE_KEY = "living-story-graph-demo-v1";
 const VIEW_STATE_KEY = "living-story-graph-view-state-v1";
 const PUBLISH_DIRTY_KEY = "living-story-graph-publish-dirty-v1";
@@ -214,6 +217,8 @@ let currentChapter = 1;
 let currentActionIndex = 0;
 let chapterAutoplayTimer=null,expandedChapter=null;
 let eventScrollHold=false,autoplayHeldByHover=false;
+const SELECTION_EVENT_PAGE=30;
+let selectionEventPage=SELECTION_EVENT_PAGE,lastEventSelection=null,questPageActive=0,questPageSettled=0;
 let activeVolume = "";
 let activeView = "graph";
 let wheelDelta = 0;
@@ -974,6 +979,18 @@ function chapterEventEntries(chapter){return volumeChapterGroups().find(group=>g
 // Dots give way in two stages rather than one. They shrink first, which keeps every chapter
 // individually aimable for a volume of ordinary length, and only when even a small dot cannot
 // hold its ground do neighbouring chapters gather into a bar.
+// Whatever is being shown along the bar — chapters or one person's turning points — the same
+// answer applies when there are more of them than the track can hold: gather neighbours into a
+// bar whose height is how much falls in that stretch, and let it lead where the first one does.
+function binTimelineUnits(units,budget){
+  const perBin=Math.ceil(units.length/Math.max(1,budget)),bins=[];
+  for(let start=0;start<units.length;start+=perBin){
+    const slice=units.slice(start,start+perBin);
+    bins.push({start,end:start+slice.length-1,from:slice[0].from,to:slice.at(-1).to,units:slice.length,
+      events:slice.flatMap(unit=>unit.events),index:slice[0].index});
+  }
+  return bins;
+}
 function timelineMarkLayout(count){
   const width=$("#timeline-marks")?.clientWidth||520,per=count?width/count:width;
   if(per>=7)return {mode:"dots",size:Math.max(5,Math.min(8,per-5))};
@@ -986,6 +1003,39 @@ function renderTimelineMarkers(){
   // Below seven pixels a pie is a smudge, so a crowded chapter shows what it mostly was.
   const sliceLimit=(layout.size||8)<7?1:MARKER_SLICE_LIMIT;
   if(expandedChapter!==null){const entries=chapterEventEntries(expandedChapter),denominator=entries.length+1;marks.push(`<span class="expanded-boundary-mark previous-boundary" style="left:0" title="Drag here to close and go to the previous chapter">‹</span>`);entries.forEach((entry,index)=>{marks.push(`<button type="button" class="main-timeline-mark expanded-event-mark selectable" style="left:${(index+1)/denominator*100}%;--marker-fill:${EVENT_TYPE_COLORS[entry.event.type]||"#7f8da3"}" title="Event ${index+1} · ${escapeHtml(entry.event.type.replaceAll("_"," "))}" data-event-action="${entry.index}" aria-label="Show event ${index+1} of chapter ${expandedChapter}"></button>`);});marks.push(`<span class="expanded-boundary-mark next-boundary" style="left:100%" title="Drag here to close and go to the next chapter">›</span>`);}
+  // Holding the chapter list still is a reading posture, not a scrubbing one: while it is held,
+  // the bar stops being a list of chapters and becomes the selected person's turning points.
+  else if(eventScrollHold&&selectedId&&chapterGroups.length){
+    const chosen=entity(selectedId),
+      milestones=volumeActions().slice(0,currentActionIndex).map((event,index)=>({event,index:index+1}))
+        .filter(entry=>MAJOR_EVENT_TYPES.has(entry.event.type)&&eventInvolves(entry.event,selectedId)),
+      // A chapter where four things turned is still one place on the bar, so they merge before
+      // anything else is decided.
+      byChapter=new Map(),chapterAt=new Map(chapterGroups.map((group,index)=>[group.chapter,index]));
+    milestones.forEach(entry=>{
+      if(!chapterAt.has(entry.event.chapter))return;
+      if(!byChapter.has(entry.event.chapter))byChapter.set(entry.event.chapter,{from:entry.event.chapter,to:entry.event.chapter,at:chapterAt.get(entry.event.chapter),events:[],index:entry.index});
+      byChapter.get(entry.event.chapter).events.push(entry.event);
+    });
+    const units=[...byChapter.values()],fit=timelineMarkLayout(units.length),
+      place=at=>(at+1)/chapterGroups.length*100;
+    if(fit.mode==="dots"){
+      track.style.setProperty("--mark-size",`${fit.size}px`);
+      track.classList.toggle("tight-marks",fit.size<7);
+      units.forEach(unit=>{
+        const kinds=[...new Set(unit.events.map(event=>String(event.type).replaceAll("_"," ")))].join(", ");
+        marks.push(`<button type="button" class="main-timeline-mark milestone-mark selectable" style="left:${place(unit.at)}%;--marker-fill:${eventMarkerFill(unit.events,fit.size<7?1:MARKER_SLICE_LIMIT)}" title="Chapter ${unit.from} · ${escapeHtml(kinds)}" data-event-action="${unit.index}" aria-label="Go to chapter ${unit.from}"></button>`);
+      });
+    }else{
+      track.classList.remove("tight-marks");
+      const bins=binTimelineUnits(units,fit.budget),busiest=Math.max(1,...bins.map(bin=>bin.events.length));
+      bins.forEach(bin=>{
+        const span=bin.from===bin.to?`Chapter ${bin.from}`:`Chapters ${bin.from}–${bin.to}`;
+        marks.push(`<button type="button" class="main-timeline-mark binned-mark milestone-bin selectable" style="left:${place((units[bin.start].at+units[bin.end].at)/2)}%;--marker-fill:${eventMarkerFill(bin.events)};--mark-weight:${Math.sqrt(bin.events.length/busiest).toFixed(2)}" title="${span} · ${bin.events.length} turning point${bin.events.length===1?"":"s"} · click to go there" data-event-action="${bin.index}" aria-label="Go to ${span}"></button>`);
+      });
+    }
+    $("#event-position").textContent=`${stateName(currentDerived(),selectedId)||chosen?.name||"Selected"} · ${milestones.length} turning point${milestones.length===1?"":"s"}`;
+  }
   else if(layout.mode==="bins"){
     const groups=chapterGroups,perBin=Math.ceil(groups.length/layout.budget),bins=[];
     for(let start=0;start<groups.length;start+=perBin){
@@ -1000,8 +1050,15 @@ function renderTimelineMarkers(){
         span=bin.from===bin.to?`Chapter ${bin.from}`:`Chapters ${bin.from}–${bin.to}`;
       marks.push(`<button type="button" class="main-timeline-mark binned-mark selectable" style="left:${position}%;--marker-fill:${eventMarkerFill(bin.events)};--mark-weight:${weight.toFixed(2)}" title="${span} · ${bin.events.length} event${bin.events.length===1?"":"s"} across ${bin.chapters} chapter${bin.chapters===1?"":"s"} · click to go there" data-event-action="${bin.index}" aria-label="Go to ${span}"></button>`);
     });
+    // The chapter being read keeps its own mark on top of the bars, so it can still be opened
+    // however long the volume runs.
+    const hereIndex=groups.findIndex(group=>group.chapter===currentChapter),here=groups[hereIndex];
+    if(here&&here.entries.length>1)
+      marks.push(`<button type="button" class="main-timeline-mark multi-event-mark expandable here-mark" style="left:${(hereIndex+1)/groups.length*100}%;--marker-fill:${eventMarkerFill(here.entries.map(entry=>entry.event))}" title="Chapter ${here.chapter} · ${here.entries.length} events · click to expand" data-expand-chapter="${here.chapter}" aria-label="Expand chapter ${here.chapter} events"></button>`);
   }
-  else{const groups=chapterGroups;groups.forEach((group,index)=>{const position=groups.length?(index+1)/groups.length*100:0,multi=group.entries.length>1,tag=multi?"button":"span";marks.push(`<${tag}${multi?' type="button"':""} class="main-timeline-mark${multi?" multi-event-mark expandable":""}" style="left:${position}%;--marker-fill:${eventMarkerFill(group.entries.map(entry=>entry.event),sliceLimit)}" title="Chapter ${group.chapter}${multi?` · ${group.entries.length} events · click to expand`:""}"${multi?` data-expand-chapter="${group.chapter}" aria-label="Expand chapter ${group.chapter} events"`:""}></${tag}>`);});}
+  // Nearly every chapter holds several events, so offering to open all of them at once says
+  // nothing. Only the chapter being played offers it — the one the reader is actually in.
+  else{const groups=chapterGroups;groups.forEach((group,index)=>{const position=groups.length?(index+1)/groups.length*100:0,multi=group.entries.length>1&&group.chapter===currentChapter,tag=multi?"button":"span";marks.push(`<${tag}${multi?' type="button"':""} class="main-timeline-mark${multi?" multi-event-mark expandable":""}" style="left:${position}%;--marker-fill:${eventMarkerFill(group.entries.map(entry=>entry.event),sliceLimit)}" title="Chapter ${group.chapter}${multi?` · ${group.entries.length} events · click to expand`:""}"${multi?` data-expand-chapter="${group.chapter}" aria-label="Expand chapter ${group.chapter} events"`:""}></${tag}>`);});}
   $("#timeline-marks").innerHTML=marks.join("");document.querySelectorAll("[data-expand-chapter]").forEach(marker=>marker.onclick=event=>{event.preventDefault();event.stopPropagation();expandChapterEvents(Number(marker.dataset.expandChapter));});document.querySelectorAll("[data-event-action]").forEach(marker=>marker.onclick=event=>{event.preventDefault();event.stopPropagation();cancelChapterSequence();currentActionIndex=Number(marker.dataset.eventAction);currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();});
 }
 function configureTimeline() {
@@ -1656,7 +1713,30 @@ function bindEventPanelRows(){
     field.onclick=event=>event.stopPropagation();
   });
   document.querySelectorAll("[data-focus-action]").forEach(row=>row.onclick=event=>{if(event.target.closest("button,a,input"))return;cancelChapterSequence();currentActionIndex=Number(row.dataset.focusAction);currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();});}
-function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),card=list.closest(".events-card");list.className="events-list";card.classList.toggle("selection-event-mode",Boolean(selectedId));card.classList.toggle("current-event-mode",Boolean(event&&!selectedId));if(!event){$("#events-title").textContent=`${activeVol().name} · Start`;$("#events-count").textContent="Action 0";list.innerHTML='<li class="slider-start-message"><strong>Use the slider to begin</strong><span>Each step reveals one story action in entry order.</span></li>';return;}if(selectedId){const chosen=entity(selectedId),family=new Set([selectedId,...(entity(selectedId)?.kind==="system"?absorbedInto(selectedId,currentDerived()):[])]),actions=volumeActions().slice(0,currentActionIndex).map((item,index)=>({event:item,index:index+1})).filter(entry=>[...family].some(id=>eventInvolves(entry.event,id)));$("#events-title").textContent=`${stateName(currentDerived(),selectedId)} · connected events`;$("#events-count").textContent=`${actions.length} shown`;list.innerHTML=`<li class="selection-event-note"><strong>Connection focus</strong><span>Click ${escapeHtml(chosen?.name||"this node")} again to return to the current event.</span></li>${actions.length?actions.slice().reverse().map(entry=>eventPanelRow(entry.event,entry.index,{current:entry.index===currentActionIndex,related:true})).join(""):'<li class="selection-event-empty">No connected event has been revealed yet.</li>'}`;bindEventPanelRows();return;}$("#events-title").textContent=`Chapter ${event.chapter} · Action ${currentActionIndex}`;
+function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),card=list.closest(".events-card");
+  // Paging through one character's history should not carry over to the next one picked.
+  if(lastEventSelection!==selectedId){lastEventSelection=selectedId;selectionEventPage=SELECTION_EVENT_PAGE;}list.className="events-list";card.classList.toggle("selection-event-mode",Boolean(selectedId));card.classList.toggle("current-event-mode",Boolean(event&&!selectedId));if(!event){$("#events-title").textContent=`${activeVol().name} · Start`;$("#events-count").textContent="Action 0";list.innerHTML='<li class="slider-start-message"><strong>Use the slider to begin</strong><span>Each step reveals one story action in entry order.</span></li>';return;}if(selectedId){
+    const chosen=entity(selectedId),family=new Set([selectedId,...(entity(selectedId)?.kind==="system"?absorbedInto(selectedId,currentDerived()):[])]),
+      actions=volumeActions().slice(0,currentActionIndex).map((item,index)=>({event:item,index:index+1})).filter(entry=>[...family].some(id=>eventInvolves(entry.event,id))),
+      // Across three hundred chapters a well-connected character has hundreds of these. They are
+      // headed by chapter so the run of them can be read, and only the most recent are built —
+      // the rest come in a page at a time rather than all at once.
+      newestFirst=actions.slice().reverse(),shown=newestFirst.slice(0,selectionEventPage),rest=newestFirst.length-shown.length,
+      rows=[];
+    let heading=null;
+    shown.forEach(entry=>{
+      if(entry.event.chapter!==heading){heading=entry.event.chapter;
+        const count=actions.filter(item=>item.event.chapter===heading).length;
+        rows.push(`<li class="event-chapter-heading"><span>Chapter ${heading}</span><small>${count} action${count===1?"":"s"}</small></li>`);}
+      rows.push(eventPanelRow(entry.event,entry.index,{current:entry.index===currentActionIndex,related:true}));
+    });
+    $("#events-title").textContent=`${stateName(currentDerived(),selectedId)} · connected events`;
+    $("#events-count").textContent=`${newestFirst.length} shown`;
+    list.innerHTML=`<li class="selection-event-note"><strong>Connection focus</strong><span>Click ${escapeHtml(chosen?.name||"this node")} again to return to the current event.</span></li>${rows.length?rows.join(""):'<li class="selection-event-empty">No connected event has been revealed yet.</li>'}${rest>0?`<li class="event-page-more"><button type="button" id="more-connected-events">Show ${Math.min(rest,SELECTION_EVENT_PAGE)} earlier · ${rest} left</button></li>`:""}`;
+    bindEventPanelRows();
+    $("#more-connected-events")?.addEventListener("click",()=>{selectionEventPage+=SELECTION_EVENT_PAGE;renderEvents();});
+    return;
+  }$("#events-title").textContent=`Chapter ${event.chapter} · Action ${currentActionIndex}`;
   // The whole chapter is listed, not just the action being played, so the reader can scroll
   // back and forth through it at their own pace while the slider keeps its place.
   const chapterRows=volumeActions().map((item,index)=>({event:item,index:index+1})).filter(entry=>entry.event.chapter===event.chapter);
@@ -1669,6 +1749,7 @@ function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),
 // chapter each step landed in, and — for a chain — the quests inside it, each with its own
 // rewards. A settled quest drops out of the active list rather than crowding it.
 const expandedQuests=new Set(),openQuestChains=new Set();
+const QUEST_PAGE=10;
 let questSettledOpen=false;
 function questProgressTone(run){return run.status==="failed"?"failed":run.status==="abandoned"?"abandoned":run.status==="complete"?"complete":run.progress>=67?"high":run.progress>=34?"middle":"low";}
 function questCardHtml(run,derived,children,depth){
@@ -1714,14 +1795,21 @@ function renderQuests(){
     children=new Map();
   parentOf.forEach((parent,child)=>{if(!children.has(parent))children.set(parent,[]);children.get(parent).push(runs.get(child));});
   const roots=derived.quests.filter(run=>!parentOf.has(run.quest)),
-    active=roots.filter(run=>run.status==="active"),settled=roots.filter(run=>run.status!=="active");
+    active=roots.filter(run=>run.status==="active"),
+    // A long story settles hundreds of quests. They are kept, but they are not all built: the
+    // most recently settled come first and the rest arrive a page at a time, if ever.
+    settled=roots.filter(run=>run.status!=="active").sort((a,b)=>(b.to||0)-(a.to||0)),
+    activeShown=active.slice(0,QUEST_PAGE+questPageActive),settledShown=questSettledOpen?settled.slice(0,QUEST_PAGE+questPageSettled):[],
+    activeRest=active.length-activeShown.length,settledRest=settled.length-settledShown.length;
   count.textContent=active.length?`${active.length} active`:derived.quests.length?"none active":"";
   if(!derived.quests.length){box.innerHTML='<p class="quests-empty">No quest has been issued yet. Quests appear here as the chapters reveal them.</p>';return;}
-  box.innerHTML=`${active.length?`<div class="quest-group">${active.map(run=>questCardHtml(run,derived,children,0)).join("")}</div>`:'<p class="quests-empty">Nothing is running right now.</p>'}
-    ${settled.length?`<button class="quest-settled-toggle" type="button" id="quest-settled-toggle" aria-expanded="${questSettledOpen}">${questSettledOpen?"▾":"▸"} ${settled.length} settled</button>${questSettledOpen?`<div class="quest-group settled">${settled.map(run=>questCardHtml(run,derived,children,0)).join("")}</div>`:""}`:""}`;
+  box.innerHTML=`${active.length?`<div class="quest-group">${activeShown.map(run=>questCardHtml(run,derived,children,0)).join("")}</div>${activeRest>0?`<div class="quest-page-more"><button type="button" id="more-active-quests">Show ${Math.min(activeRest,QUEST_PAGE)} more active · ${activeRest} left</button></div>`:""}`:'<p class="quests-empty">Nothing is running right now.</p>'}
+    ${settled.length?`<button class="quest-settled-toggle" type="button" id="quest-settled-toggle" aria-expanded="${questSettledOpen}">${questSettledOpen?"▾":"▸"} ${settled.length} settled</button>${questSettledOpen?`<div class="quest-group settled">${settledShown.map(run=>questCardHtml(run,derived,children,0)).join("")}</div>${settledRest>0?`<div class="quest-page-more"><button type="button" id="more-settled-quests">Show ${Math.min(settledRest,QUEST_PAGE)} older · ${settledRest} left</button></div>`:""}`:""}`:""}`;
   box.querySelectorAll("[data-quest-toggle]").forEach(button=>button.addEventListener("click",event=>{event.stopPropagation();const id=button.dataset.questToggle;if(expandedQuests.has(id))expandedQuests.delete(id);else expandedQuests.add(id);renderQuests();}));
   box.querySelectorAll("[data-quest-chain]").forEach(button=>button.addEventListener("click",event=>{event.stopPropagation();const id=button.dataset.questChain;if(openQuestChains.has(id))openQuestChains.delete(id);else openQuestChains.add(id);renderQuests();}));
-  $("#quest-settled-toggle")?.addEventListener("click",()=>{questSettledOpen=!questSettledOpen;renderQuests();});
+  $("#quest-settled-toggle")?.addEventListener("click",()=>{questSettledOpen=!questSettledOpen;questPageSettled=0;renderQuests();});
+  $("#more-active-quests")?.addEventListener("click",()=>{questPageActive+=QUEST_PAGE;renderQuests();});
+  $("#more-settled-quests")?.addEventListener("click",()=>{questPageSettled+=QUEST_PAGE;renderQuests();});
 }
 
 function renderAll(){configureTimeline();renderGraph();renderSummary();renderEvents();renderQuests();renderAdmin();updateSuggestions();cacheActiveVolume();}
@@ -2223,8 +2311,8 @@ graph.addEventListener("pointerleave",hideEdgeTip);
 // slider moving under them. It resumes only if it was actually playing when they arrived.
 const eventsCard=$("#events-list")?.closest(".events-card");
 if(eventsCard){
-  const hold=()=>{if(eventScrollHold)return;eventScrollHold=true;autoplayHeldByHover=Boolean(chapterAutoplayTimer);cancelChapterSequence();eventsCard.classList.add("events-holding");$("#events-hold").hidden=!autoplayHeldByHover;};
-  const release=()=>{if(!eventScrollHold)return;eventScrollHold=false;eventsCard.classList.remove("events-holding");$("#events-hold").hidden=true;if(autoplayHeldByHover){autoplayHeldByHover=false;scheduleChapterSequence();}};
+  const hold=()=>{if(eventScrollHold)return;eventScrollHold=true;autoplayHeldByHover=Boolean(chapterAutoplayTimer);cancelChapterSequence();eventsCard.classList.add("events-holding");$("#events-hold").hidden=!autoplayHeldByHover;renderTimelineMarkers();};
+  const release=()=>{if(!eventScrollHold)return;eventScrollHold=false;eventsCard.classList.remove("events-holding");$("#events-hold").hidden=true;configureTimeline();if(autoplayHeldByHover){autoplayHeldByHover=false;scheduleChapterSequence();}};
   eventsCard.addEventListener("pointerenter",hold);
   eventsCard.addEventListener("pointerleave",release);
   eventsCard.addEventListener("focusin",hold);

@@ -60,6 +60,13 @@ input[type="range"] { padding: 0; accent-color: var(--blue); }
 .main-timeline-marks.tight-marks .main-timeline-mark.multi-event-mark:hover{box-shadow:0 0 0 2px #c084fc,0 0 8px rgba(192,132,252,.6)}
 .main-timeline-mark.expanded-event-mark{width:12px;height:12px;box-shadow:0 0 0 2px #7dd3fc,0 0 12px rgba(125,211,252,.58)}
 .main-timeline-mark.selectable{pointer-events:auto;padding:0;appearance:none;cursor:pointer}
+/* A turning point is a diamond, so a held bar never reads as the row of chapters it replaced. */
+.main-timeline-mark.milestone-mark{border-radius:2px;transform:translate(-50%,-50%) rotate(45deg);border-width:1px;box-shadow:0 0 0 1px rgba(9,16,28,.9),0 0 8px rgba(255,212,121,.35)}
+.main-timeline-mark.milestone-mark:hover{width:13px;height:13px;box-shadow:0 0 0 2px #ffd479,0 0 14px rgba(255,212,121,.7)}
+.main-timeline-marks.tight-marks .main-timeline-mark.milestone-mark{border:0;box-shadow:0 0 0 1px rgba(9,16,28,.9)}
+.main-timeline-mark.milestone-bin{border-radius:2px;transform:translate(-50%,-100%);box-shadow:none}
+/* The chapter being read stands above the density bars it sits among. */
+.main-timeline-mark.here-mark{width:9px;height:9px;border-width:2px;box-shadow:0 0 0 2px #c084fc,0 0 10px rgba(192,132,252,.6);z-index:2}
 .main-timeline-mark.selectable:hover{width:15px;height:15px;box-shadow:0 0 0 3px #d9fffb,0 0 16px rgba(125,211,252,.8)}
 /* A binned tick is a bar, not a dot: it reads as density along the volume rather than as one
    chapter, and its height is how much happens in that stretch. */
@@ -820,3 +827,12 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .quest-updates li.update-failed .quest-update-progress { color: #ef8b92; }
 .quest-children { position: relative; margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 .quest-settled-toggle { align-self: flex-start; border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--muted); font: inherit; font-size: 11.5px; padding: 3px 9px; cursor: pointer; }
+
+/* A long connection history is read chapter by chapter, so the chapters are headed. */
+.events-list .event-chapter-heading { list-style: none; margin: 10px 0 4px -20px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 0 3px; border-bottom: 1px solid var(--border); font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #9fb2cc; }
+.events-list .event-chapter-heading:first-of-type { margin-top: 2px; }
+.events-list .event-chapter-heading small { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.events-list .event-page-more { list-style: none; margin: 9px 0 2px -20px; }
+.events-list .event-page-more button, .quest-page-more button { width: 100%; border: 1px dashed var(--border); border-radius: 9px; background: none; color: var(--muted); font: inherit; font-size: 12px; padding: 5px 8px; cursor: pointer; }
+.events-list .event-page-more button:hover, .quest-page-more button:hover { color: var(--text); border-color: var(--text); border-style: solid; }
+.quest-page-more { margin-top: 2px; }

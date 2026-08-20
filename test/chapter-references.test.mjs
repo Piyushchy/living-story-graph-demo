@@ -987,7 +987,8 @@ test("a quest is a record with a run of its own: issued, inched forward chapter 
   assert.match(derived, /run\.status=outcome==="fail"\?"failed":outcome==="abandon"\?"abandoned":"complete"/);
   assert.match(derived, /if\(!run\.explicitProgress&&kids\.length\)run\.progress=Math\.round\(total\/kids\.length\)/, "a chain with no figure of its own reads as how far through its parts it is");
   assert.match(derived, /if\(questRuns\.has\(link\.child\)&&!questRuns\.has\(link\.parent\)\)questRun\(link\.parent\)/, "and a larger quest whose first part is issued still gets a header");
-  assert.match(functionBody("renderQuests"), /active=roots\.filter\(run=>run\.status==="active"\),settled=roots\.filter\(run=>run\.status!=="active"\)/, "a settled quest drops out of the active list rather than crowding it");
+  assert.match(functionBody("renderQuests"), /active=roots\.filter\(run=>run\.status==="active"\)/, "a settled quest drops out of the active list rather than crowding it");
+  assert.match(functionBody("renderQuests"), /settled=roots\.filter\(run=>run\.status!=="active"\)\.sort\(\(a,b\)=>\(b\.to\|\|0\)-\(a\.to\|\|0\)\)/, "most recently settled first");
   assert.match(functionBody("questCardHtml"), /style="--quest-progress:\$\{run\.progress\}%"/, "the card is filled by how far along the quest is");
   assert.match(functionBody("questCardHtml"), /data-quest-chain="\$\{escapeHtml\(run\.quest\)\}"/, "and a larger quest opens and closes to show its parts");
   assert.match(styleSource, /\.quest-fill \{ position: absolute; inset: 0 auto 0 0; width: var\(--quest-progress,0%\)/);
@@ -1012,6 +1013,44 @@ test("every action that offers a second identity or a free-text value actually k
   assert.match(source, /if\(\["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge","quest_part","quest_contribution","quest_issue"\]\.includes\(type\)\|\|\(type==="note"&&target\)\)record\.target=target\?\.id;/);
   assert.match(source, /"residency","system_host","system_location","system_end","quest_end","quest_contribution"\]\.includes\(type\)&&value\)record\.value=/);
   assert.match(source, /showsSystemValue=\["system_host","system_location","system_end"\]\.includes\(type\)/, "and a destroyed system can be given its reason, which the sample always had but the form never offered");
+});
+
+test("a story that settles hundreds of quests does not build hundreds of cards", () => {
+  const body = functionBody("renderQuests");
+  assert.match(source, /const QUEST_PAGE=10;/);
+  assert.match(body, /activeShown=active\.slice\(0,QUEST_PAGE\+questPageActive\),settledShown=questSettledOpen\?settled\.slice\(0,QUEST_PAGE\+questPageSettled\):\[\]/, "settled cards are not even built until the group is opened");
+  assert.match(body, /id="more-settled-quests">Show \$\{Math\.min\(settledRest,QUEST_PAGE\)\} older · \$\{settledRest\} left/, "and the rest arrive a page at a time, with the count in plain sight");
+  assert.match(body, /questPageSettled=0;renderQuests\(\)/, "closing the group forgets how far it was paged");
+});
+
+test("one character's connection history is headed by chapter and paged, since a long story gives them hundreds", () => {
+  const body = functionBody("renderEvents");
+  assert.match(source, /const SELECTION_EVENT_PAGE=30;/);
+  assert.match(body, /if\(lastEventSelection!==selectedId\)\{lastEventSelection=selectedId;selectionEventPage=SELECTION_EVENT_PAGE;\}/, "paging through one character does not carry to the next");
+  assert.match(body, /newestFirst=actions\.slice\(\)\.reverse\(\),shown=newestFirst\.slice\(0,selectionEventPage\)/);
+  assert.match(body, /rows\.push\(`<li class="event-chapter-heading"><span>Chapter \$\{heading\}<\/span><small>\$\{count\} action/);
+  assert.match(body, /id="more-connected-events">Show \$\{Math\.min\(rest,SELECTION_EVENT_PAGE\)\} earlier/);
+});
+
+test("while the chapter list is held still, the bar shows the selected person's turning points instead of the chapters", () => {
+  const body = functionBody("renderTimelineMarkers");
+  assert.match(source, /const MAJOR_EVENT_TYPES = new Set\(\["appearance","corpse_appearance","cultivation","status","display_name","identity_parent","relationship","membership","system_host","system_rank","quest_end"\]\);/);
+  assert.match(body, /else if\(eventScrollHold&&selectedId&&chapterGroups\.length\)\{/);
+  assert.match(body, /filter\(entry=>MAJOR_EVENT_TYPES\.has\(entry\.event\.type\)&&eventInvolves\(entry\.event,selectedId\)\)/, "only that person's, and only the ones that turn something");
+  assert.match(body, /if\(!byChapter\.has\(entry\.event\.chapter\)\)byChapter\.set/, "a chapter where four things turned is still one place on the bar");
+  assert.match(body, /const bins=binTimelineUnits\(units,fit\.budget\)/, "and a long story's turning points bin like anything else rather than piling up");
+  assert.match(body, /\$\("#event-position"\)\.textContent=`\$\{stateName\(currentDerived\(\),selectedId\)\|\|chosen\?\.name\|\|"Selected"\} · \$\{milestones\.length\} turning point/);
+  assert.match(source, /eventsCard\.classList\.add\("events-holding"\);\$\("#events-hold"\)\.hidden=!autoplayHeldByHover;renderTimelineMarkers\(\);/, "the bar changes as the hold begins");
+  assert.match(source, /eventsCard\.classList\.remove\("events-holding"\);\$\("#events-hold"\)\.hidden=true;configureTimeline\(\);/, "and changes back when it ends");
+  assert.match(styleSource, /\.main-timeline-mark\.milestone-mark\{border-radius:2px;transform:translate\(-50%,-50%\) rotate\(45deg\)/, "a diamond, so a held bar never reads as the chapters it replaced");
+});
+
+test("only the chapter being played offers to open its events, since nearly every chapter holds several", () => {
+  const body = functionBody("renderTimelineMarkers");
+  assert.match(body, /multi=group\.entries\.length>1&&group\.chapter===currentChapter/);
+  assert.match(body, /const hereIndex=groups\.findIndex\(group=>group\.chapter===currentChapter\),here=groups\[hereIndex\];/, "and it keeps that mark even among the density bars, so it can be opened however long the volume runs");
+  assert.match(body, /class="main-timeline-mark multi-event-mark expandable here-mark"/);
+  assert.match(functionBody("binTimelineUnits"), /const perBin=Math\.ceil\(units\.length\/Math\.max\(1,budget\)\)/, "one binner serves both the chapters and the turning points");
 });
 
 test("a quest's reward is usually only named once it is finished, and it is scaled to how the host performed", () => {
