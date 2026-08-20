@@ -991,8 +991,8 @@ test("a quest is a record with a run of its own: issued, inched forward chapter 
 
 test("a quest carries the terms the story states — and any of them may be missing", () => {
   const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
-  assert.match(sample, /id: "q-hearth", kind: "quest"[^}]*questBadge: "World"[^}]*timeLimit:[^}]*achievements:[^}]*failure:/, "one quest states most of its terms up front");
-  assert.match(sample, /id: "q-ledger", kind: "quest", name: "Balance the Winter Ledger", intro: 30, timeLimit: "Before the spring audit", description:/, "and another states almost none");
+  assert.match(sample, /id: "q-hearth", kind: "quest", issuer: "inn-system"[^}]*questBadge: "World"[^}]*timeLimit:[^}]*achievements:[^}]*failure:/, "one quest states most of its terms up front");
+  assert.match(sample, /id: "q-ledger", kind: "quest", issuer: "inn-system", name: "Balance the Winter Ledger", intro: 30, timeLimit: "Before the spring audit", description:/, "and another states almost none");
   assert.match(sample, /type: "quest_part", source: "q-stock", target: "q-hearth"/);
   assert.match(sample, /type: "quest_progress", source: "q-winter", progress: 72/);
   assert.match(sample, /type: "quest_end", source: "q-envoy", action: "fail"/);
@@ -1041,6 +1041,23 @@ test("the two-stage mark sizing still governs one person's turning points", () =
   assert.match(layoutBody, /width=\$\("#timeline-marks"\)\?\.clientWidth\|\|520,per=count\?width\/count:width/, "how much room each mark gets is a question about the track's real width");
   assert.match(layoutBody, /if\(per>=7\)return \{mode:"dots",size:Math\.max\(5,Math\.min\(8,per-5\)\)\};/, "marks shrink before they are given up");
   assert.match(functionBody("binTimelineUnits"), /const perBin=Math\.ceil\(units\.length\/Math\.max\(1,budget\)\)/);
+});
+
+test("a quest that is part of a larger one is still findable — it was being hidden inside it", () => {
+  const body = functionBody("questCardHtml");
+  assert.match(source, /const expandedQuests=new Set\(\),foldedQuestChains=new Set\(\);/);
+  assert.match(body, /partsOpen=!foldedQuestChains\.has\(run\.quest\)/, "parts show by default; folding one away is the deliberate act");
+  assert.match(functionBody("renderQuests"), /if\(foldedQuestChains\.has\(id\)\)foldedQuestChains\.delete\(id\);else foldedQuestChains\.add\(id\)/);
+});
+
+test("a quest's actions belong to whoever issued it, so the system that hands them out carries them in its own history", () => {
+  assert.match(functionBody("eventInvolves"), /return String\(event\.type\)\.startsWith\("quest_"\) && entity\(event\.source\)\?\.issuer === id;/);
+  assert.match(source, /<label class="field" id="entity-quest-issuer-field" hidden><span>Issued by \(optional\)<\/span>/);
+  assert.match(source, /issuer:kind==="quest"\?\(resolveEntity\(String\(form\.get\("issuer"\)\|\|""\)\)\?\.id\|\|undefined\):undefined/);
+  assert.match(functionBody("questCardHtml"), /item\.issuer\?\{label:"Issued by",value:stateName\(derived,item\.issuer\)/, "and the card says who it came from");
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  assert.match(sample, /id: "q-anomaly", kind: "quest", issuer: "warden-system"/, "the demo has two systems handing out different quests");
+  assert.match(source, /migrated\.schemaVersion=15;/, "stored demos pick the issuers up");
 });
 
 test("a quest's reward is usually only named once it is finished, and it is scaled to how the host performed", () => {
