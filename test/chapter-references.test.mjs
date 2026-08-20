@@ -671,9 +671,14 @@ test("an action that merely names a place — a meeting, a note — still draws 
 test("the view eases into a new framing instead of jumping, and a reader's own zoom or pan drops the tween immediately", () => {
   assert.match(functionBody("glideViewTo"), /viewTween=\{from:\{x:view\.x,y:view\.y,scale:view\.scale\},to:target,start:performance\.now\(\),duration\}/);
   assert.match(functionBody("stepViewTween"), /eased=progress<\.5\?4\*progress\*\*3:1-\(-2\*progress\+2\)\*\*3\/2/);
-  assert.match(functionBody("fitGraphToContent"), /if\(Math\.abs\(target\.scale-view\.scale\)<\.07&&Math\.hypot\(target\.x-view\.x,target\.y-view\.y\)<46\)return;/, "and a framing that has not really outgrown the frame is left alone rather than re-zoomed");
-  assert.match(functionBody("fitGraphToCount"), /const signature=`\$\{activeVolume\}`;/, "the seeded scale is guessed once per volume, not re-guessed on every action");
-  assert.match(functionBody("scheduleAutoFit"), /autoFitTimers=\[1100\]\.map/, "and one settling refit, not two that fight each other");
+  const fit = functionBody("fitGraphToContent");
+  // Pulling out and easing back in answer to different thresholds. One shared threshold let the
+  // view give room and take it straight back, over and over.
+  assert.match(fit, /needsRoom=target\.scale<view\.scale\*\.97/, "the moment the content needs room, it gets it");
+  assert.match(fit, /tooMuchRoom=target\.scale>view\.scale\*1\.5/, "but it only closes back in when there is a great deal of empty space");
+  assert.match(fit, /if\(now-lastContentFit<900\)return;/, "and a busy chapter cannot refit several times over");
+  assert.match(fit, /glideViewTo\(needsRoom\|\|tooMuchRoom\?target:\{\.\.\.target,scale:view\.scale\}\)/, "a drifted framing is recentred without touching the scale as well");
+  assert.match(functionBody("fitGraphToCount"), /scheduleAutoFit\(\);\s*const signature=`\$\{activeVolume\}`;/, "the real fit runs after every render; only the crude pre-simulation guess is once per volume");
   assert.match(source, /viewPinnedByUser = true; viewTween = null;/);
   assert.match(source, /if\(!panStart\)return;viewPinnedByUser=true;viewTween=null;/);
   assert.match(functionBody("tickGraph"), /stepViewTween\(\);/);

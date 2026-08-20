@@ -210,7 +210,7 @@ let openProfileId = null;
 let locationPovId = null;
 let expandedLocations = new Set(), expandedSystems = new Set();
 let lastLocationView = null, lastSystemView = null;
-let collapsingLocationId = null, locationCollapseTimer = null;
+let collapsingLocationId = null, locationCollapseTimer = null, lastContentFit = 0;
 // Ghosts of nodes on their way into whatever took them in. They are driven by the tick rather
 // than by a css transition, because the thing they are travelling to is itself still moving.
 let departingGhosts = [];
@@ -1232,11 +1232,16 @@ function zoomBy(factor, atX = 360, atY = 260) {
 // Seeded once per volume, not once per node. Re-guessing a scale from the node count on every
 // action fought the real fit that follows a moment later, and the graph was seen lurching in and
 // out on every step.
-function fitGraphToCount(count,force=false){const signature=`${activeVolume}`;if(!force&&signature===lastAutoFitSignature)return;lastAutoFitSignature=signature;const scale=Math.max(.38,Math.min(1,Math.sqrt(18/Math.max(18,count))));glideViewTo({scale,x:360*(1-scale),y:260*(1-scale)});viewPinnedByUser=false;scheduleAutoFit();}
+function fitGraphToCount(count,force=false){
+  // The real fit, against the settled layout, gets its chance after every render. What happens
+  // only once per volume is the crude guess below, made before the simulation has run at all —
+  // re-guessing that on every action was what set the view lurching.
+  scheduleAutoFit();
+  const signature=`${activeVolume}`;if(!force&&signature===lastAutoFitSignature)return;lastAutoFitSignature=signature;const scale=Math.max(.38,Math.min(1,Math.sqrt(18/Math.max(18,count))));glideViewTo({scale,x:360*(1-scale),y:260*(1-scale)});viewPinnedByUser=false;}
 // The seeded scale above is a guess made before the simulation has run. Once the layout
 // settles, fit the real bounding box to the canvas so the graph fills the space instead of
 // huddling in the middle — and so a big graph zooms out far enough for the declutter to work.
-function scheduleAutoFit(){autoFitTimers.forEach(clearTimeout);autoFitTimers=[1100].map(delay=>setTimeout(()=>{if(!viewPinnedByUser&&!physics.dragId)fitGraphToContent();},delay));}
+function scheduleAutoFit(){autoFitTimers.forEach(clearTimeout);autoFitTimers=[850,1900].map(delay=>setTimeout(()=>{if(!viewPinnedByUser&&!physics.dragId)fitGraphToContent();},delay));}
 function fitGraphToContent(){
   const entries=[...physics.pos.entries()].filter(([id])=>nodeEls.has(id));
   if(entries.length<2)return;
@@ -1246,10 +1251,19 @@ function fitGraphToContent(){
   const width=Math.max(1,maxX-minX),height=Math.max(1,maxY-minY),padding=54,
     scale=Math.max(.3,Math.min(1.3,Math.min((720-padding*2)/width,(520-padding*2)/height))),
     target={scale,x:360-(minX+maxX)/2*scale,y:260-(minY+maxY)/2*scale};
-  // Only refit when the graph has really outgrown its frame. A tight threshold meant every
-  // settling nudge re-zoomed, which reads as the graph breathing in and out on its own.
-  if(Math.abs(target.scale-view.scale)<.07&&Math.hypot(target.x-view.x,target.y-view.y)<46)return;
-  glideViewTo(target);updateLabelVisibility();
+  // The graph must still make room as the story grows — but a single threshold let it pull out
+  // and straight back in, over and over. Pulling out and easing in therefore answer to different
+  // thresholds: the moment the content needs more room the view gives it, while it only closes
+  // back in once there is a great deal of empty space, which is what stops the two chasing each
+  // other. A short cooldown keeps a busy chapter from refitting several times over.
+  const now=performance.now(),needsRoom=target.scale<view.scale*.97,
+    tooMuchRoom=target.scale>view.scale*1.5,
+    offCentre=Math.hypot(target.x-view.x,target.y-view.y)>120;
+  if(now-lastContentFit<900)return;
+  if(!needsRoom&&!tooMuchRoom&&!offCentre)return;
+  // When only the framing drifted, keep the scale rather than nudging it as well.
+  lastContentFit=now;
+  glideViewTo(needsRoom||tooMuchRoom?target:{...target,scale:view.scale});updateLabelVisibility();
 }
 // Follows the anchor as it settles, so the ghost arrives where the parent actually is rather
 // than where it stood when the journey began.
