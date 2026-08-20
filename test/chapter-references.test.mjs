@@ -955,6 +955,18 @@ test("neither a number nor a grade is compulsory: a system can start without one
   assert.match(source, /migrated\.schemaVersion=12;/, "and readers already holding the demo are brought along");
 });
 
+test("a volume of hundreds of chapters does not put hundreds of dots on the slider — they are gathered into a density profile", () => {
+  const body = functionBody("renderTimelineMarkers");
+  assert.match(functionBody("timelineMarkBudget"), /Math\.max\(12,Math\.min\(64,Math\.floor\(\(width\|\|520\)\/16\)\)\)/, "how many marks fit is a question about the track's real width");
+  assert.match(body, /const marks=\[\],chapterGroups=volumeChapterGroups\(\);/, "and the grouping is worked out once, not once per branch");
+  assert.match(body, /else if\(chapterGroups\.length>timelineMarkBudget\(\)\)\{/, "only past what the track can show does anything change");
+  assert.match(body, /perBin=Math\.ceil\(groups\.length\/timelineMarkBudget\(\)\)/);
+  assert.match(body, /weight=Math\.sqrt\(bin\.events\.length\/busiest\)/, "square-rooted so the middle of the range still separates");
+  assert.match(body, /title="\$\{span\} · \$\{bin\.events\.length\} event\$\{bin\.events\.length===1\?"":"s"\} across \$\{bin\.chapters\} chapter/, "a bin says which chapters it covers and how much is in them");
+  assert.match(body, /data-event-action="\$\{bin\.index\}"/, "and clicking it goes to the first chapter in that stretch");
+  assert.match(styleSource, /\.main-timeline-mark\.binned-mark\{width:3px;height:calc\(4px \+ 16px \* var\(--mark-weight,\.5\)\);.*transform:translate\(-50%,-100%\)/, "a bar standing on the rail reads as density; a floating dot does not");
+});
+
 test("a quest is a record with a run of its own: issued, inched forward chapter by chapter, and settled", () => {
   assert.match(source, /<option value="quest_issue">Quest is issued<\/option><option value="quest_update">Quest update, hint, remark, or notification<\/option><option value="quest_progress">Quest progress changes<\/option><option value="quest_end">Quest completed, failed, or abandoned<\/option><option value="quest_part">Quest is part of a larger quest<\/option><option value="quest_contribution">Quest contribution and share of the reward<\/option>/);
   assert.match(source, /<option value="quest">Quest<\/option>/, "and a quest is its own kind of identity, with its own terms");

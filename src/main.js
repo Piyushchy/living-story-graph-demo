@@ -956,10 +956,30 @@ data.entities.forEach(item=>{const shown=stateName(d,item.id);if(knownIds.has(it
 function eventMarkerFill(events){const colors=[...new Set(events.map(event=>EVENT_TYPE_COLORS[event.type]||"#7f8da3"))];if(colors.length===1)return colors[0];const size=100/colors.length;return `conic-gradient(${colors.map((color,index)=>`${color} ${index*size}% ${(index+1)*size}%`).join(",")})`;}
 function volumeChapterGroups(){const groups=[],byChapter=new Map();volumeActions().forEach((event,index)=>{if(!byChapter.has(event.chapter)){const group={chapter:event.chapter,entries:[]};byChapter.set(event.chapter,group);groups.push(group);}byChapter.get(event.chapter).entries.push({event,index:index+1});});return groups;}
 function chapterEventEntries(chapter){return volumeChapterGroups().find(group=>group.chapter===chapter)?.entries||[];}
+// One dot per chapter stops being readable — and stops being cheap to draw — the moment a volume
+// runs to hundreds of chapters. Past what the track can physically show, neighbouring chapters
+// are gathered into a single tick: its height says how busy that stretch is, its colour mixes
+// the kinds of action inside it, and clicking it drops the reader at the first chapter in it.
+function timelineMarkBudget(){const width=$("#timeline-marks")?.clientWidth||0;return Math.max(12,Math.min(64,Math.floor((width||520)/16)));}
 function renderTimelineMarkers(){
-  const marks=[];
+  const marks=[],chapterGroups=volumeChapterGroups();
   if(expandedChapter!==null){const entries=chapterEventEntries(expandedChapter),denominator=entries.length+1;marks.push(`<span class="expanded-boundary-mark previous-boundary" style="left:0" title="Drag here to close and go to the previous chapter">‹</span>`);entries.forEach((entry,index)=>{marks.push(`<button type="button" class="main-timeline-mark expanded-event-mark selectable" style="left:${(index+1)/denominator*100}%;--marker-fill:${EVENT_TYPE_COLORS[entry.event.type]||"#7f8da3"}" title="Event ${index+1} · ${escapeHtml(entry.event.type.replaceAll("_"," "))}" data-event-action="${entry.index}" aria-label="Show event ${index+1} of chapter ${expandedChapter}"></button>`);});marks.push(`<span class="expanded-boundary-mark next-boundary" style="left:100%" title="Drag here to close and go to the next chapter">›</span>`);}
-  else{const groups=volumeChapterGroups();groups.forEach((group,index)=>{const position=groups.length?(index+1)/groups.length*100:0,multi=group.entries.length>1,tag=multi?"button":"span";marks.push(`<${tag}${multi?' type="button"':""} class="main-timeline-mark${multi?" multi-event-mark expandable":""}" style="left:${position}%;--marker-fill:${eventMarkerFill(group.entries.map(entry=>entry.event))}" title="Chapter ${group.chapter}${multi?` · ${group.entries.length} events · click to expand`:""}"${multi?` data-expand-chapter="${group.chapter}" aria-label="Expand chapter ${group.chapter} events"`:""}></${tag}>`);});}
+  else if(chapterGroups.length>timelineMarkBudget()){
+    const groups=chapterGroups,perBin=Math.ceil(groups.length/timelineMarkBudget()),bins=[];
+    for(let start=0;start<groups.length;start+=perBin){
+      const slice=groups.slice(start,start+perBin);
+      bins.push({start,end:start+slice.length-1,from:slice[0].chapter,to:slice.at(-1).chapter,chapters:slice.length,events:slice.flatMap(group=>group.entries.map(entry=>entry.event)),index:slice[0].entries[0].index});
+    }
+    // Square-rooted so the middle of the range separates: with one runaway chapter, a linear
+    // scale flattens everything else into the same stub.
+    const busiest=Math.max(1,...bins.map(bin=>bin.events.length));
+    bins.forEach(bin=>{
+      const position=((bin.start+bin.end)/2+1)/groups.length*100,weight=Math.sqrt(bin.events.length/busiest),
+        span=bin.from===bin.to?`Chapter ${bin.from}`:`Chapters ${bin.from}–${bin.to}`;
+      marks.push(`<button type="button" class="main-timeline-mark binned-mark selectable" style="left:${position}%;--marker-fill:${eventMarkerFill(bin.events)};--mark-weight:${weight.toFixed(2)}" title="${span} · ${bin.events.length} event${bin.events.length===1?"":"s"} across ${bin.chapters} chapter${bin.chapters===1?"":"s"} · click to go there" data-event-action="${bin.index}" aria-label="Go to ${span}"></button>`);
+    });
+  }
+  else{const groups=chapterGroups;groups.forEach((group,index)=>{const position=groups.length?(index+1)/groups.length*100:0,multi=group.entries.length>1,tag=multi?"button":"span";marks.push(`<${tag}${multi?' type="button"':""} class="main-timeline-mark${multi?" multi-event-mark expandable":""}" style="left:${position}%;--marker-fill:${eventMarkerFill(group.entries.map(entry=>entry.event))}" title="Chapter ${group.chapter}${multi?` · ${group.entries.length} events · click to expand`:""}"${multi?` data-expand-chapter="${group.chapter}" aria-label="Expand chapter ${group.chapter} events"`:""}></${tag}>`);});}
   $("#timeline-marks").innerHTML=marks.join("");document.querySelectorAll("[data-expand-chapter]").forEach(marker=>marker.onclick=event=>{event.preventDefault();event.stopPropagation();expandChapterEvents(Number(marker.dataset.expandChapter));});document.querySelectorAll("[data-event-action]").forEach(marker=>marker.onclick=event=>{event.preventDefault();event.stopPropagation();cancelChapterSequence();currentActionIndex=Number(marker.dataset.eventAction);currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();});
 }
 function configureTimeline() {
@@ -2152,6 +2172,9 @@ function toast(message){const el=$("#toast");el.textContent=message;el.classList
 
 function positionSliderOnboarding(){const onboarding=$("#slider-onboarding"),card=onboarding?.parentElement;if(!onboarding||onboarding.hidden||!card)return;const sliderRect=timeline.getBoundingClientRect(),cardRect=card.getBoundingClientRect(),x=Math.max(72,Math.min(cardRect.width-72,sliderRect.left+sliderRect.width/2-cardRect.left));onboarding.style.setProperty("--slider-x",`${x}px`);}
 window.addEventListener("resize",positionSliderOnboarding);
+// How many marks fit is a question about the track's width, so a resize can change the answer.
+let timelineMarkResize=null;
+window.addEventListener("resize",()=>{clearTimeout(timelineMarkResize);timelineMarkResize=setTimeout(renderTimelineMarkers,120);});
 
 function syncChapterRefToggles(on){document.body.classList.toggle("show-chapter-refs",on);document.querySelectorAll("[data-chapter-ref-toggle]").forEach(button=>{button.classList.toggle("active",on);button.setAttribute("aria-pressed",String(on));});}
 function dismissChapterRefHint(){const hint=$("#chapter-ref-hint");if(hint)hint.hidden=true;localStorage.setItem(CHAPTER_REF_HINT_SEEN_KEY,"1");}
