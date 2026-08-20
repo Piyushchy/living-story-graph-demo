@@ -46,18 +46,11 @@ input[type="range"] { padding: 0; accent-color: var(--blue); }
 .main-range-wrap #timeline { position: relative; z-index: 2; background: transparent; }
 .main-timeline-marks { position: absolute; left: 9px; right: 9px; top: 50%; z-index: 3; pointer-events: none; }
 .main-timeline-mark { width: var(--mark-size,8px); height: var(--mark-size,8px); position: absolute; transform: translate(-50%,-50%); border: 2px solid var(--panel); border-radius: 50%; background: var(--marker-fill,var(--violet)); box-shadow: 0 0 0 1px #8190a6; }
-/* Nearly every chapter carries several events, so a chapter that does is the ordinary case and
-   cannot be shouted about — it keeps the same size as any other and is marked by a quiet ring.
-   That it can be opened is said by the cursor and by hover, not by a permanent glow. */
-.main-timeline-mark.multi-event-mark{border-color:#281a3e;box-shadow:0 0 0 1px rgba(192,132,252,.85)}
-.main-timeline-mark.multi-event-mark:hover{box-shadow:0 0 0 2px #c084fc,0 0 10px rgba(192,132,252,.55)}
 .main-timeline-mark.expandable{pointer-events:auto;padding:0;appearance:none;cursor:zoom-in}
 /* Once the dots are small, a rim is most of the dot. They lose their borders entirely and are
    left as pure colour, separated by the gap alone — and the multi-event ring goes with them,
    since at that size it drowns the very thing it was ringing. */
 .main-timeline-marks.tight-marks .main-timeline-mark{border:0;box-shadow:none}
-.main-timeline-marks.tight-marks .main-timeline-mark.multi-event-mark{box-shadow:none}
-.main-timeline-marks.tight-marks .main-timeline-mark.multi-event-mark:hover{box-shadow:0 0 0 2px #c084fc,0 0 8px rgba(192,132,252,.6)}
 .main-timeline-mark.expanded-event-mark{width:12px;height:12px;box-shadow:0 0 0 2px #7dd3fc,0 0 12px rgba(125,211,252,.58)}
 .main-timeline-mark.selectable{pointer-events:auto;padding:0;appearance:none;cursor:pointer}
 /* A turning point is a diamond, so a held bar never reads as the row of chapters it replaced. */
@@ -65,8 +58,10 @@ input[type="range"] { padding: 0; accent-color: var(--blue); }
 .main-timeline-mark.milestone-mark:hover{width:13px;height:13px;box-shadow:0 0 0 2px #ffd479,0 0 14px rgba(255,212,121,.7)}
 .main-timeline-marks.tight-marks .main-timeline-mark.milestone-mark{border:0;box-shadow:0 0 0 1px rgba(9,16,28,.9)}
 .main-timeline-mark.milestone-bin{border-radius:2px;transform:translate(-50%,-100%);box-shadow:none}
-/* The chapter being read stands above the density bars it sits among. */
-.main-timeline-mark.here-mark{width:9px;height:9px;border-width:2px;box-shadow:0 0 0 2px #c084fc,0 0 10px rgba(192,132,252,.6);z-index:2}
+/* Where the reader is. It is the one mark that is always there, so it is the loudest. */
+.main-timeline-mark.here-mark{width:11px;height:11px;border-width:2px;border-color:#281a3e;box-shadow:0 0 0 2px #c084fc,0 0 11px rgba(192,132,252,.65);z-index:2}
+.main-timeline-mark.here-mark.expandable:hover{width:15px;height:15px;box-shadow:0 0 0 3px #d9c2ff,0 0 16px rgba(192,132,252,.85)}
+.main-timeline-marks.tight-marks .main-timeline-mark.here-mark{width:11px;height:11px;border:2px solid #281a3e;box-shadow:0 0 0 2px #c084fc,0 0 11px rgba(192,132,252,.65)}
 .main-timeline-mark.selectable:hover{width:15px;height:15px;box-shadow:0 0 0 3px #d9fffb,0 0 16px rgba(125,211,252,.8)}
 /* A binned tick is a bar, not a dot: it reads as density along the volume rather than as one
    chapter, and its height is how much happens in that stretch. */

@@ -997,68 +997,54 @@ function timelineMarkLayout(count){
   return {mode:"bins",budget:Math.max(12,Math.min(64,Math.floor(width/13)))};
 }
 function renderTimelineMarkers(){
-  const marks=[],chapterGroups=volumeChapterGroups(),layout=timelineMarkLayout(chapterGroups.length),track=$("#timeline-marks");
-  track.style.setProperty("--mark-size",`${layout.size||8}px`);
-  track.classList.toggle("tight-marks",(layout.size||8)<7);
-  // Below seven pixels a pie is a smudge, so a crowded chapter shows what it mostly was.
-  const sliceLimit=(layout.size||8)<7?1:MARKER_SLICE_LIMIT;
+  const marks=[],chapterGroups=volumeChapterGroups(),track=$("#timeline-marks");
+  track.classList.remove("tight-marks");track.style.removeProperty("--mark-size");
   if(expandedChapter!==null){const entries=chapterEventEntries(expandedChapter),denominator=entries.length+1;marks.push(`<span class="expanded-boundary-mark previous-boundary" style="left:0" title="Drag here to close and go to the previous chapter">‹</span>`);entries.forEach((entry,index)=>{marks.push(`<button type="button" class="main-timeline-mark expanded-event-mark selectable" style="left:${(index+1)/denominator*100}%;--marker-fill:${EVENT_TYPE_COLORS[entry.event.type]||"#7f8da3"}" title="Event ${index+1} · ${escapeHtml(entry.event.type.replaceAll("_"," "))}" data-event-action="${entry.index}" aria-label="Show event ${index+1} of chapter ${expandedChapter}"></button>`);});marks.push(`<span class="expanded-boundary-mark next-boundary" style="left:100%" title="Drag here to close and go to the next chapter">›</span>`);}
-  // Holding the chapter list still is a reading posture, not a scrubbing one: while it is held,
-  // the bar stops being a list of chapters and becomes the selected person's turning points.
-  else if(eventScrollHold&&selectedId&&chapterGroups.length){
-    const chosen=entity(selectedId),
-      milestones=volumeActions().slice(0,currentActionIndex).map((event,index)=>({event,index:index+1}))
-        .filter(entry=>MAJOR_EVENT_TYPES.has(entry.event.type)&&eventInvolves(entry.event,selectedId)),
-      // A chapter where four things turned is still one place on the bar, so they merge before
-      // anything else is decided.
-      byChapter=new Map(),chapterAt=new Map(chapterGroups.map((group,index)=>[group.chapter,index]));
-    milestones.forEach(entry=>{
-      if(!chapterAt.has(entry.event.chapter))return;
-      if(!byChapter.has(entry.event.chapter))byChapter.set(entry.event.chapter,{from:entry.event.chapter,to:entry.event.chapter,at:chapterAt.get(entry.event.chapter),events:[],index:entry.index});
-      byChapter.get(entry.event.chapter).events.push(entry.event);
-    });
-    const units=[...byChapter.values()],fit=timelineMarkLayout(units.length),
-      place=at=>(at+1)/chapterGroups.length*100;
-    if(fit.mode==="dots"){
-      track.style.setProperty("--mark-size",`${fit.size}px`);
-      track.classList.toggle("tight-marks",fit.size<7);
-      units.forEach(unit=>{
-        const kinds=[...new Set(unit.events.map(event=>String(event.type).replaceAll("_"," ")))].join(", ");
-        marks.push(`<button type="button" class="main-timeline-mark milestone-mark selectable" style="left:${place(unit.at)}%;--marker-fill:${eventMarkerFill(unit.events,fit.size<7?1:MARKER_SLICE_LIMIT)}" title="Chapter ${unit.from} · ${escapeHtml(kinds)}" data-event-action="${unit.index}" aria-label="Go to chapter ${unit.from}"></button>`);
+  else{
+    // The bar is not a list of chapters. Nearly every chapter carries several events, so marking
+    // them all says nothing and crowds everything. What is marked is where the reader is — which
+    // opens into that chapter's events — and, when someone is selected, that one's turning points
+    // and nobody else's.
+    if(selectedId&&chapterGroups.length){
+      const chosen=entity(selectedId),
+        milestones=volumeActions().slice(0,currentActionIndex).map((event,index)=>({event,index:index+1}))
+          .filter(entry=>MAJOR_EVENT_TYPES.has(entry.event.type)&&eventInvolves(entry.event,selectedId)),
+        // A chapter where four things turned is still one place on the bar.
+        byChapter=new Map(),chapterAt=new Map(chapterGroups.map((group,index)=>[group.chapter,index]));
+      milestones.forEach(entry=>{
+        if(!chapterAt.has(entry.event.chapter))return;
+        if(!byChapter.has(entry.event.chapter))byChapter.set(entry.event.chapter,{from:entry.event.chapter,to:entry.event.chapter,at:chapterAt.get(entry.event.chapter),events:[],index:entry.index});
+        byChapter.get(entry.event.chapter).events.push(entry.event);
       });
-    }else{
-      track.classList.remove("tight-marks");
-      const bins=binTimelineUnits(units,fit.budget),busiest=Math.max(1,...bins.map(bin=>bin.events.length));
-      bins.forEach(bin=>{
-        const span=bin.from===bin.to?`Chapter ${bin.from}`:`Chapters ${bin.from}–${bin.to}`;
-        marks.push(`<button type="button" class="main-timeline-mark binned-mark milestone-bin selectable" style="left:${place((units[bin.start].at+units[bin.end].at)/2)}%;--marker-fill:${eventMarkerFill(bin.events)};--mark-weight:${Math.sqrt(bin.events.length/busiest).toFixed(2)}" title="${span} · ${bin.events.length} turning point${bin.events.length===1?"":"s"} · click to go there" data-event-action="${bin.index}" aria-label="Go to ${span}"></button>`);
-      });
+      const units=[...byChapter.values()],fit=timelineMarkLayout(units.length),
+        place=at=>(at+1)/chapterGroups.length*100;
+      if(fit.mode==="dots"){
+        track.style.setProperty("--mark-size",`${fit.size}px`);
+        track.classList.toggle("tight-marks",fit.size<7);
+        units.forEach(unit=>{
+          const kinds=[...new Set(unit.events.map(event=>String(event.type).replaceAll("_"," ")))].join(", ");
+          marks.push(`<button type="button" class="main-timeline-mark milestone-mark selectable" style="left:${place(unit.at)}%;--marker-fill:${eventMarkerFill(unit.events,fit.size<7?1:MARKER_SLICE_LIMIT)}" title="Chapter ${unit.from} · ${escapeHtml(kinds)}" data-event-action="${unit.index}" aria-label="Go to chapter ${unit.from}"></button>`);
+        });
+      }else{
+        // Even one person can turn more often than the track can hold, so their marks gather the
+        // same way anything else would.
+        const bins=binTimelineUnits(units,fit.budget),busiest=Math.max(1,...bins.map(bin=>bin.events.length));
+        bins.forEach(bin=>{
+          const span=bin.from===bin.to?`Chapter ${bin.from}`:`Chapters ${bin.from}–${bin.to}`;
+          marks.push(`<button type="button" class="main-timeline-mark binned-mark milestone-bin selectable" style="left:${place((units[bin.start].at+units[bin.end].at)/2)}%;--marker-fill:${eventMarkerFill(bin.events)};--mark-weight:${Math.sqrt(bin.events.length/busiest).toFixed(2)}" title="${span} · ${bin.events.length} turning point${bin.events.length===1?"":"s"} · click to go there" data-event-action="${bin.index}" aria-label="Go to ${span}"></button>`);
+        });
+      }
+      $("#event-position").textContent=`${stateName(currentDerived(),selectedId)||chosen?.name||"Selected"} · ${milestones.length} turning point${milestones.length===1?"":"s"}`;
     }
-    $("#event-position").textContent=`${stateName(currentDerived(),selectedId)||chosen?.name||"Selected"} · ${milestones.length} turning point${milestones.length===1?"":"s"}`;
-  }
-  else if(layout.mode==="bins"){
-    const groups=chapterGroups,perBin=Math.ceil(groups.length/layout.budget),bins=[];
-    for(let start=0;start<groups.length;start+=perBin){
-      const slice=groups.slice(start,start+perBin);
-      bins.push({start,end:start+slice.length-1,from:slice[0].chapter,to:slice.at(-1).chapter,chapters:slice.length,events:slice.flatMap(group=>group.entries.map(entry=>entry.event)),index:slice[0].entries[0].index});
+    // Where the reader is, always, on top of anything else.
+    const hereIndex=chapterGroups.findIndex(group=>group.chapter===currentChapter),here=chapterGroups[hereIndex];
+    if(here){
+      const position=(hereIndex+1)/chapterGroups.length*100,several=here.entries.length>1;
+      marks.push(several
+        ?`<button type="button" class="main-timeline-mark here-mark expandable" style="left:${position}%;--marker-fill:${eventMarkerFill(here.entries.map(entry=>entry.event))}" title="Chapter ${here.chapter} · ${here.entries.length} events · click to expand" data-expand-chapter="${here.chapter}" aria-label="Expand chapter ${here.chapter} events"></button>`
+        :`<span class="main-timeline-mark here-mark" style="left:${position}%;--marker-fill:${eventMarkerFill(here.entries.map(entry=>entry.event))}" title="Chapter ${here.chapter}"></span>`);
     }
-    // Square-rooted so the middle of the range separates: with one runaway chapter, a linear
-    // scale flattens everything else into the same stub.
-    const busiest=Math.max(1,...bins.map(bin=>bin.events.length));
-    bins.forEach(bin=>{
-      const position=((bin.start+bin.end)/2+1)/groups.length*100,weight=Math.sqrt(bin.events.length/busiest),
-        span=bin.from===bin.to?`Chapter ${bin.from}`:`Chapters ${bin.from}–${bin.to}`;
-      marks.push(`<button type="button" class="main-timeline-mark binned-mark selectable" style="left:${position}%;--marker-fill:${eventMarkerFill(bin.events)};--mark-weight:${weight.toFixed(2)}" title="${span} · ${bin.events.length} event${bin.events.length===1?"":"s"} across ${bin.chapters} chapter${bin.chapters===1?"":"s"} · click to go there" data-event-action="${bin.index}" aria-label="Go to ${span}"></button>`);
-    });
-    // The chapter being read keeps its own mark on top of the bars, so it can still be opened
-    // however long the volume runs.
-    const hereIndex=groups.findIndex(group=>group.chapter===currentChapter),here=groups[hereIndex];
-    if(here&&here.entries.length>1)
-      marks.push(`<button type="button" class="main-timeline-mark multi-event-mark expandable here-mark" style="left:${(hereIndex+1)/groups.length*100}%;--marker-fill:${eventMarkerFill(here.entries.map(entry=>entry.event))}" title="Chapter ${here.chapter} · ${here.entries.length} events · click to expand" data-expand-chapter="${here.chapter}" aria-label="Expand chapter ${here.chapter} events"></button>`);
   }
-  // Nearly every chapter holds several events, so offering to open all of them at once says
-  // nothing. Only the chapter being played offers it — the one the reader is actually in.
-  else{const groups=chapterGroups;groups.forEach((group,index)=>{const position=groups.length?(index+1)/groups.length*100:0,multi=group.entries.length>1&&group.chapter===currentChapter,tag=multi?"button":"span";marks.push(`<${tag}${multi?' type="button"':""} class="main-timeline-mark${multi?" multi-event-mark expandable":""}" style="left:${position}%;--marker-fill:${eventMarkerFill(group.entries.map(entry=>entry.event),sliceLimit)}" title="Chapter ${group.chapter}${multi?` · ${group.entries.length} events · click to expand`:""}"${multi?` data-expand-chapter="${group.chapter}" aria-label="Expand chapter ${group.chapter} events"`:""}></${tag}>`);});}
   $("#timeline-marks").innerHTML=marks.join("");document.querySelectorAll("[data-expand-chapter]").forEach(marker=>marker.onclick=event=>{event.preventDefault();event.stopPropagation();expandChapterEvents(Number(marker.dataset.expandChapter));});document.querySelectorAll("[data-event-action]").forEach(marker=>marker.onclick=event=>{event.preventDefault();event.stopPropagation();cancelChapterSequence();currentActionIndex=Number(marker.dataset.eventAction);currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();});
 }
 function configureTimeline() {
@@ -2311,8 +2297,8 @@ graph.addEventListener("pointerleave",hideEdgeTip);
 // slider moving under them. It resumes only if it was actually playing when they arrived.
 const eventsCard=$("#events-list")?.closest(".events-card");
 if(eventsCard){
-  const hold=()=>{if(eventScrollHold)return;eventScrollHold=true;autoplayHeldByHover=Boolean(chapterAutoplayTimer);cancelChapterSequence();eventsCard.classList.add("events-holding");$("#events-hold").hidden=!autoplayHeldByHover;renderTimelineMarkers();};
-  const release=()=>{if(!eventScrollHold)return;eventScrollHold=false;eventsCard.classList.remove("events-holding");$("#events-hold").hidden=true;configureTimeline();if(autoplayHeldByHover){autoplayHeldByHover=false;scheduleChapterSequence();}};
+  const hold=()=>{if(eventScrollHold)return;eventScrollHold=true;autoplayHeldByHover=Boolean(chapterAutoplayTimer);cancelChapterSequence();eventsCard.classList.add("events-holding");$("#events-hold").hidden=!autoplayHeldByHover;};
+  const release=()=>{if(!eventScrollHold)return;eventScrollHold=false;eventsCard.classList.remove("events-holding");$("#events-hold").hidden=true;if(autoplayHeldByHover){autoplayHeldByHover=false;scheduleChapterSequence();}};
   eventsCard.addEventListener("pointerenter",hold);
   eventsCard.addEventListener("pointerleave",release);
   eventsCard.addEventListener("focusin",hold);

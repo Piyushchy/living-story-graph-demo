@@ -955,28 +955,21 @@ test("neither a number nor a grade is compulsory: a system can start without one
   assert.match(source, /migrated\.schemaVersion=12;/, "and readers already holding the demo are brought along");
 });
 
-test("a chapter carrying several events is the ordinary case, so it is neither enlarged nor turned into a pie of mud", () => {
+test("a marker holding several kinds of event shows the commonest few rather than a pie of mud", () => {
   assert.match(source, /const MARKER_SLICE_LIMIT = 3;/);
   assert.match(functionBody("eventMarkerFill"), /\[\.\.\.tally\]\.sort\(\(a,b\)=>b\[1\]-a\[1\]\)\.slice\(0,Math\.max\(1,limit\)\)/, "the commonest kinds win; the rest are not drawn");
-  assert.match(functionBody("renderTimelineMarkers"), /const sliceLimit=\(layout\.size\|\|8\)<7\?1:MARKER_SLICE_LIMIT;/, "and below seven pixels a chapter shows what it mostly was, not a smudge of everything");
-  assert.match(styleSource, /\.main-timeline-marks\.tight-marks \.main-timeline-mark\{border:0;box-shadow:none\}/, "a small dot is all colour, with no rim eating it");
-  assert.match(styleSource, /\.main-timeline-mark\.multi-event-mark\{border-color:#281a3e;box-shadow:0 0 0 1px rgba\(192,132,252,\.85\)\}/, "same size as any other mark, marked only by a quiet ring");
-  assert.match(styleSource, /\.main-timeline-mark\.multi-event-mark:hover\{box-shadow:0 0 0 2px #c084fc/, "and it says it can be opened on hover, not permanently");
+  assert.match(functionBody("renderTimelineMarkers"), /eventMarkerFill\(unit\.events,fit\.size<7\?1:MARKER_SLICE_LIMIT\)/, "and below seven pixels a marker shows what it mostly was, not a smudge of everything");
+  assert.match(styleSource, /\.main-timeline-marks\.tight-marks \.main-timeline-mark\{border:0;box-shadow:none\}/, "a small mark is all colour, with no rim eating it");
 });
 
-test("a volume of hundreds of chapters does not put hundreds of dots on the slider — they are gathered into a density profile", () => {
+test("the bar is not a list of chapters — it carries where the reader is, and nothing else unless someone is selected", () => {
   const body = functionBody("renderTimelineMarkers");
-  const layoutBody = functionBody("timelineMarkLayout");
-  assert.match(layoutBody, /width=\$\("#timeline-marks"\)\?\.clientWidth\|\|520,per=count\?width\/count:width/, "how much room each mark gets is a question about the track's real width");
-  assert.match(layoutBody, /if\(per>=7\)return \{mode:"dots",size:Math\.max\(5,Math\.min\(8,per-5\)\)\};/, "dots shrink before they are given up, so an ordinary volume keeps every chapter aimable");
-  assert.match(layoutBody, /return \{mode:"bins",budget:Math\.max\(12,Math\.min\(64,Math\.floor\(width\/13\)\)\)\};/);
-  assert.match(body, /const marks=\[\],chapterGroups=volumeChapterGroups\(\),layout=timelineMarkLayout\(chapterGroups\.length\),track=\$\("#timeline-marks"\);/, "and the grouping is worked out once, not once per branch");
-  assert.match(body, /else if\(layout\.mode==="bins"\)\{/, "only past what the track can show does anything change");
-  assert.match(body, /perBin=Math\.ceil\(groups\.length\/layout\.budget\)/);
-  assert.match(body, /weight=Math\.sqrt\(bin\.events\.length\/busiest\)/, "square-rooted so the middle of the range still separates");
-  assert.match(body, /title="\$\{span\} · \$\{bin\.events\.length\} event\$\{bin\.events\.length===1\?"":"s"\} across \$\{bin\.chapters\} chapter/, "a bin says which chapters it covers and how much is in them");
-  assert.match(body, /data-event-action="\$\{bin\.index\}"/, "and clicking it goes to the first chapter in that stretch");
-  assert.match(styleSource, /\.main-timeline-mark\.binned-mark\{width:3px;height:calc\(4px \+ 16px \* var\(--mark-weight,\.5\)\);.*transform:translate\(-50%,-100%\)/, "a bar standing on the rail reads as density; a floating dot does not");
+  assert.doesNotMatch(body, /chapterGroups\.forEach/, "no mark per chapter, however few or many there are");
+  assert.doesNotMatch(body, /groups\.forEach\(\(group,index\)=>/, "and no density profile standing in for them either");
+  assert.match(body, /const hereIndex=chapterGroups\.findIndex\(group=>group\.chapter===currentChapter\),here=chapterGroups\[hereIndex\];/);
+  assert.match(body, /class="main-timeline-mark here-mark expandable"[^`]*data-expand-chapter="\$\{here\.chapter\}"/, "where the reader is opens into that chapter's events");
+  assert.match(body, /several=here\.entries\.length>1;/, "and it is only openable when the chapter actually holds several");
+  assert.match(styleSource, /\.main-timeline-mark\.here-mark\{width:11px;height:11px/, "it is the one mark always present, so it is the loudest");
 });
 
 test("a quest is a record with a run of its own: issued, inched forward chapter by chapter, and settled", () => {
@@ -1032,25 +1025,22 @@ test("one character's connection history is headed by chapter and paged, since a
   assert.match(body, /id="more-connected-events">Show \$\{Math\.min\(rest,SELECTION_EVENT_PAGE\)\} earlier/);
 });
 
-test("while the chapter list is held still, the bar shows the selected person's turning points instead of the chapters", () => {
+test("selecting someone fills the bar with that one's turning points and nobody else's", () => {
   const body = functionBody("renderTimelineMarkers");
   assert.match(source, /const MAJOR_EVENT_TYPES = new Set\(\["appearance","corpse_appearance","cultivation","status","display_name","identity_parent","relationship","membership","system_host","system_rank","quest_end"\]\);/);
-  assert.match(body, /else if\(eventScrollHold&&selectedId&&chapterGroups\.length\)\{/);
+  assert.match(body, /if\(selectedId&&chapterGroups\.length\)\{/);
   assert.match(body, /filter\(entry=>MAJOR_EVENT_TYPES\.has\(entry\.event\.type\)&&eventInvolves\(entry\.event,selectedId\)\)/, "only that person's, and only the ones that turn something");
   assert.match(body, /if\(!byChapter\.has\(entry\.event\.chapter\)\)byChapter\.set/, "a chapter where four things turned is still one place on the bar");
-  assert.match(body, /const bins=binTimelineUnits\(units,fit\.budget\)/, "and a long story's turning points bin like anything else rather than piling up");
+  assert.match(body, /const bins=binTimelineUnits\(units,fit\.budget\)/, "and one person can still turn more often than the track can hold");
   assert.match(body, /\$\("#event-position"\)\.textContent=`\$\{stateName\(currentDerived\(\),selectedId\)\|\|chosen\?\.name\|\|"Selected"\} · \$\{milestones\.length\} turning point/);
-  assert.match(source, /eventsCard\.classList\.add\("events-holding"\);\$\("#events-hold"\)\.hidden=!autoplayHeldByHover;renderTimelineMarkers\(\);/, "the bar changes as the hold begins");
-  assert.match(source, /eventsCard\.classList\.remove\("events-holding"\);\$\("#events-hold"\)\.hidden=true;configureTimeline\(\);/, "and changes back when it ends");
-  assert.match(styleSource, /\.main-timeline-mark\.milestone-mark\{border-radius:2px;transform:translate\(-50%,-50%\) rotate\(45deg\)/, "a diamond, so a held bar never reads as the chapters it replaced");
+  assert.match(styleSource, /\.main-timeline-mark\.milestone-mark\{border-radius:2px;transform:translate\(-50%,-50%\) rotate\(45deg\)/, "a diamond, so it never reads as a chapter");
 });
 
-test("only the chapter being played offers to open its events, since nearly every chapter holds several", () => {
-  const body = functionBody("renderTimelineMarkers");
-  assert.match(body, /multi=group\.entries\.length>1&&group\.chapter===currentChapter/);
-  assert.match(body, /const hereIndex=groups\.findIndex\(group=>group\.chapter===currentChapter\),here=groups\[hereIndex\];/, "and it keeps that mark even among the density bars, so it can be opened however long the volume runs");
-  assert.match(body, /class="main-timeline-mark multi-event-mark expandable here-mark"/);
-  assert.match(functionBody("binTimelineUnits"), /const perBin=Math\.ceil\(units\.length\/Math\.max\(1,budget\)\)/, "one binner serves both the chapters and the turning points");
+test("the two-stage mark sizing still governs one person's turning points", () => {
+  const layoutBody = functionBody("timelineMarkLayout");
+  assert.match(layoutBody, /width=\$\("#timeline-marks"\)\?\.clientWidth\|\|520,per=count\?width\/count:width/, "how much room each mark gets is a question about the track's real width");
+  assert.match(layoutBody, /if\(per>=7\)return \{mode:"dots",size:Math\.max\(5,Math\.min\(8,per-5\)\)\};/, "marks shrink before they are given up");
+  assert.match(functionBody("binTimelineUnits"), /const perBin=Math\.ceil\(units\.length\/Math\.max\(1,budget\)\)/);
 });
 
 test("a quest's reward is usually only named once it is finished, and it is scaled to how the host performed", () => {
