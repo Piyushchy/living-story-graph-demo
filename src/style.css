@@ -45,12 +45,28 @@ input[type="range"] { padding: 0; accent-color: var(--blue); }
 .main-range-wrap { min-width: 0; height: 36px; position: relative; display: grid; align-items: center; }
 .main-range-wrap #timeline { position: relative; z-index: 2; background: transparent; }
 .main-timeline-marks { position: absolute; left: 9px; right: 9px; top: 50%; z-index: 3; pointer-events: none; }
-.main-timeline-mark { width: 8px; height: 8px; position: absolute; transform: translate(-50%,-50%); border: 2px solid var(--panel); border-radius: 50%; background: var(--marker-fill,var(--violet)); box-shadow: 0 0 0 1px #8190a6; }
-.main-timeline-mark.multi-event-mark{width:11px;height:11px;border-color:#281a3e;box-shadow:0 0 0 2px #c084fc,0 0 10px rgba(192,132,252,.5)}
+.main-timeline-mark { width: var(--mark-size,8px); height: var(--mark-size,8px); position: absolute; transform: translate(-50%,-50%); border: 2px solid var(--panel); border-radius: 50%; background: var(--marker-fill,var(--violet)); box-shadow: 0 0 0 1px #8190a6; }
 .main-timeline-mark.expandable{pointer-events:auto;padding:0;appearance:none;cursor:zoom-in}
+/* Once the dots are small, a rim is most of the dot. They lose their borders entirely and are
+   left as pure colour, separated by the gap alone — and the multi-event ring goes with them,
+   since at that size it drowns the very thing it was ringing. */
+.main-timeline-marks.tight-marks .main-timeline-mark{border:0;box-shadow:none}
 .main-timeline-mark.expanded-event-mark{width:12px;height:12px;box-shadow:0 0 0 2px #7dd3fc,0 0 12px rgba(125,211,252,.58)}
 .main-timeline-mark.selectable{pointer-events:auto;padding:0;appearance:none;cursor:pointer}
+/* A turning point is a diamond, so a held bar never reads as the row of chapters it replaced. */
+.main-timeline-mark.milestone-mark{border-radius:2px;transform:translate(-50%,-50%) rotate(45deg);border-width:1px;box-shadow:0 0 0 1px rgba(9,16,28,.9),0 0 8px rgba(255,212,121,.35)}
+.main-timeline-mark.milestone-mark:hover{width:13px;height:13px;box-shadow:0 0 0 2px #ffd479,0 0 14px rgba(255,212,121,.7)}
+.main-timeline-marks.tight-marks .main-timeline-mark.milestone-mark{border:0;box-shadow:0 0 0 1px rgba(9,16,28,.9)}
+.main-timeline-mark.milestone-bin{border-radius:2px;transform:translate(-50%,-100%);box-shadow:none}
+/* Where the reader is. It is the one mark that is always there, so it is the loudest. */
+.main-timeline-mark.here-mark{width:11px;height:11px;border-width:2px;border-color:#281a3e;box-shadow:0 0 0 2px #c084fc,0 0 11px rgba(192,132,252,.65);z-index:2}
+.main-timeline-mark.here-mark.expandable:hover{width:15px;height:15px;box-shadow:0 0 0 3px #d9c2ff,0 0 16px rgba(192,132,252,.85)}
+.main-timeline-marks.tight-marks .main-timeline-mark.here-mark{width:11px;height:11px;border:2px solid #281a3e;box-shadow:0 0 0 2px #c084fc,0 0 11px rgba(192,132,252,.65)}
 .main-timeline-mark.selectable:hover{width:15px;height:15px;box-shadow:0 0 0 3px #d9fffb,0 0 16px rgba(125,211,252,.8)}
+/* A binned tick is a bar, not a dot: it reads as density along the volume rather than as one
+   chapter, and its height is how much happens in that stretch. */
+.main-timeline-mark.binned-mark{width:3px;height:calc(4px + 16px * var(--mark-weight,.5));border-radius:2px;border:0;transform:translate(-50%,-100%);opacity:calc(.42 + .58 * var(--mark-weight,.5));box-shadow:none}
+.main-timeline-mark.binned-mark:hover{width:6px;opacity:1;box-shadow:0 0 0 1px #d9fffb,0 0 12px rgba(125,211,252,.75)}
 .expanded-boundary-mark{position:absolute;top:0;transform:translate(-50%,-50%);color:#7dd3fc;font-size:18px;font-weight:850;line-height:1;text-shadow:0 0 9px rgba(125,211,252,.8)}
 .timeline-field.multi-event-chapter input[type="range"]{accent-color:#c084fc}
 .timeline-field.multi-event-chapter .chapter-label{color:#d8c3ff}
@@ -782,7 +798,14 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .quest-chips { display: flex; flex-wrap: wrap; gap: 5px; font-size: 11px; }
 .quest-chips > * { border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; color: var(--muted); }
 .quest-badge { border-color: rgba(255,212,121,.6) !important; color: #ffd479 !important; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
-.quest-rank { border-color: rgba(185,140,255,.6) !important; color: #d9c2ff !important; }
+.quest-rank { border-color: rgba(185,140,255,.6) !important; color: #d9c2ff !important; font-weight: 700; font-variant-numeric: tabular-nums; }
+.quest-joint { border-color: rgba(34,199,184,.6) !important; color: #7fe6dc !important; }
+.quest-shares dt { color: #7fe6dc; }
+.quest-updates li.note-hint .quest-update-text { color: #9fd8ff; }
+.quest-updates li.note-remark .quest-update-text { font-style: italic; }
+.quest-updates li.note-notification .quest-update-text { color: #ffd479; }
+.quest-updates li.note-objective .quest-update-text { color: #c6b0ff; }
+.quest-update-text em { font-style: normal; font-weight: 700; opacity: .85; }
 .quest-chain-toggle { align-self: flex-start; margin-top: 1px; border: 1px solid var(--border); border-radius: 8px; background: rgba(9,14,26,.6); color: var(--muted); font: inherit; font-size: 11.5px; padding: 2px 8px; cursor: pointer; }
 .quest-chain-toggle:hover, .quest-settled-toggle:hover { color: var(--text); border-color: var(--text); }
 .quest-latest { position: relative; margin: 5px 0 0; font-size: 12px; color: var(--muted); }
@@ -799,3 +822,12 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .quest-updates li.update-failed .quest-update-progress { color: #ef8b92; }
 .quest-children { position: relative; margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 .quest-settled-toggle { align-self: flex-start; border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--muted); font: inherit; font-size: 11.5px; padding: 3px 9px; cursor: pointer; }
+
+/* A long connection history is read chapter by chapter, so the chapters are headed. */
+.events-list .event-chapter-heading { list-style: none; margin: 10px 0 4px -20px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 0 3px; border-bottom: 1px solid var(--border); font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #9fb2cc; }
+.events-list .event-chapter-heading:first-of-type { margin-top: 2px; }
+.events-list .event-chapter-heading small { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.events-list .event-page-more { list-style: none; margin: 9px 0 2px -20px; }
+.events-list .event-page-more button, .quest-page-more button { width: 100%; border: 1px dashed var(--border); border-radius: 9px; background: none; color: var(--muted); font: inherit; font-size: 12px; padding: 5px 8px; cursor: pointer; }
+.events-list .event-page-more button:hover, .quest-page-more button:hover { color: var(--text); border-color: var(--text); border-style: solid; }
+.quest-page-more { margin-top: 2px; }
