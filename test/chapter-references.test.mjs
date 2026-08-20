@@ -645,7 +645,8 @@ test("a place a character is standing in keeps the line while it is popped out, 
   assert.ok(body.indexOf("syncPodTransitions(locView") < body.indexOf("const straightEdge="), "and the transition is decided before any link is drawn, or the line snaps home a render early");
   assert.match(body, /const edgeLocationId=id=>entity\(id\)\?\.kind!=="location"\?id:\(podSet\.has\(id\)\?id:\(locView\.anchorOf\.get\(id\)\|\|id\)\)/);
   assert.match(body, /const aPos=pointFor\(a\),bPos=pointFor\(b\)/, "edges resolve pod positions as well as physics positions");
-  assert.match(functionBody("renderLocationPods"), /reach=distance\*\(retiring\?1-progress\*\*3:1-\(1-progress\)\*\*3\)/, "the travel is driven in JS so an attached line moves with it");
+  assert.match(functionBody("renderLocationPods"), /eased=retiring\?1-progress\*\*3:1-\(1-progress\)\*\*3/, "the travel is driven in JS so an attached line moves with it");
+  assert.match(functionBody("renderLocationPods"), /origin=origins\.get\(id\)\|\|base,\s*x=origin\.x\+\(target\.x-origin\.x\)\*eased/, "and a pod standing in for a node just folded away sets off from where that node stood");
   assert.match(functionBody("pointFor"), /return physics\.pos\.get\(id\)\|\|physics\.podPos\.get\(id\)\|\|physics\.hubPos\.get\(id\)\|\|null;/);
 });
 
@@ -658,7 +659,9 @@ test("an action that merely names a place — a meeting, a note — still draws 
 test("the view eases into a new framing instead of jumping, and a reader's own zoom or pan drops the tween immediately", () => {
   assert.match(functionBody("glideViewTo"), /viewTween=\{from:\{x:view\.x,y:view\.y,scale:view\.scale\},to:target,start:performance\.now\(\),duration\}/);
   assert.match(functionBody("stepViewTween"), /eased=progress<\.5\?4\*progress\*\*3:1-\(-2\*progress\+2\)\*\*3\/2/);
-  assert.match(functionBody("fitGraphToContent"), /if\(Math\.abs\(target\.scale-view\.scale\)<\.015&&Math\.hypot\(target\.x-view\.x,target\.y-view\.y\)<12\)return;/, "and a framing that barely moved is left alone rather than animated");
+  assert.match(functionBody("fitGraphToContent"), /if\(Math\.abs\(target\.scale-view\.scale\)<\.07&&Math\.hypot\(target\.x-view\.x,target\.y-view\.y\)<46\)return;/, "and a framing that has not really outgrown the frame is left alone rather than re-zoomed");
+  assert.match(functionBody("fitGraphToCount"), /const signature=`\$\{activeVolume\}`;/, "the seeded scale is guessed once per volume, not re-guessed on every action");
+  assert.match(functionBody("scheduleAutoFit"), /autoFitTimers=\[1100\]\.map/, "and one settling refit, not two that fight each other");
   assert.match(source, /viewPinnedByUser = true; viewTween = null;/);
   assert.match(source, /if\(!panStart\)return;viewPinnedByUser=true;viewTween=null;/);
   assert.match(functionBody("tickGraph"), /stepViewTween\(\);/);
@@ -974,14 +977,17 @@ test("the bar is not a list of chapters — it carries where the reader is, and 
 
 test("a node folded into something else is seen going there, rather than blinking out where it stood", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /const departing=\[\];/);
+  assert.match(body, /const podsComing=new Set\(eventPodIds\(locView,currentEvent\)\),departing=\[\];/);
   assert.match(body, /into=kind==="location"\?locView\.anchorOf\.get\(id\)\s*:kind==="system"\?\(sysView\.anchorOf\.get\(id\)\|\|systemSatellites\.find\(item=>item\.id===id\)\?\.anchor\)/, "a place goes to the parent that took it in; a system to whatever swallowed or succeeded it");
-  assert.match(body, /if\(into&&into!==id&&renderIds\.has\(into\)\)departing\.push\(\{id,kind,from:\{\.\.\.physics\.pos\.get\(id\)\},into/, "captured before the position is forgotten, and only when there is somewhere to go");
+  assert.match(body, /if\(into&&into!==id&&renderIds\.has\(into\)\)\{/, "only when there is somewhere to go");
+  assert.match(body, /else departing\.push\(\{id,kind,from:\{\.\.\.physics\.pos\.get\(id\)\},into/, "captured before the position is forgotten");
   assert.match(body, /ghost\.style\.transform=`translate\(\$\{item\.from\.x\}px,\$\{item\.from\.y\}px\)`;/, "it starts where the node last stood");
-  assert.match(body, /ghost\.style\.transform=`translate\(\$\{now\.x\}px,\$\{now\.y\}px\) scale\(\.28\)`;/, "and travels in, shrinking as it arrives");
-  assert.match(body, /ghost\.addEventListener\("transitionend",event=>\{if\(event\.propertyName==="opacity"\)ghost\.remove\(\);\}\)/, "and does not linger once it is gone");
+  assert.match(body, /if\(kind==="location"&&podsComing\.has\(id\)\)podOrigins\.set\(id,\{\.\.\.physics\.pos\.get\(id\)\}\);/, "a place about to become a pod hands its journey to the pod, so it does not fly in and straight back out");
   assert.match(body, /viewportGroup\.append\(edgeLayer,departLayer,nodeLayer/, "it travels under the nodes, so the parent covers it as it arrives");
-  assert.match(styleSource, /\.node-departing \{ transition: transform \.62s cubic-bezier\(\.33,0,\.2,1\), opacity \.62s ease;/);
+  const step = functionBody("stepDepartingGhosts");
+  assert.match(step, /const target=physics\.pos\.get\(ghost\.into\)/, "driven by the tick, so it follows the parent as that settles instead of landing where it used to be");
+  assert.match(step, /if\(!target\|\|progress>=1\)\{ghost\.el\.remove\(\);return false;\}/, "and does not linger once it is gone");
+  assert.match(body, /radius=item\.kind==="system"\?systemGlyphRadius\(state\):locationGlyphRadius\(item\.id,locView\)/, "the ghost is the node's own glyph, not a stand-in");
 });
 
 test("a place known only to be inside a realm can later be placed exactly, without confusing the hierarchy", () => {

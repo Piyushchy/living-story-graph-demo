@@ -211,8 +211,15 @@ let locationPovId = null;
 let expandedLocations = new Set(), expandedSystems = new Set();
 let lastLocationView = null, lastSystemView = null;
 let collapsingLocationId = null, locationCollapseTimer = null;
+// Ghosts of nodes on their way into whatever took them in. They are driven by the tick rather
+// than by a css transition, because the thing they are travelling to is itself still moving.
+let departingGhosts = [];
 let emergingLocations = new Set(), emergeTimer = null;
 let activePodIds = [], activePodKey = "", retiringPodIds = [], podRetireTimer = null;
+// Where a pod should start its journey from, when the place already had a node of its own a
+// moment ago. Without this the node flies into its new parent while its pod flies back out of
+// that same parent, and the reader sees the place going two ways at once.
+let podOrigins = new Map();
 let currentChapter = 1;
 let currentActionIndex = 0;
 let chapterAutoplayTimer=null,expandedChapter=null;
@@ -1195,11 +1202,14 @@ function zoomBy(factor, atX = 360, atY = 260) {
   view.x = atX - contentX * view.scale; view.y = atY - contentY * view.scale;
   applyViewTransform();
 }
-function fitGraphToCount(count,force=false){const signature=`${activeVolume}:${count}`;if(!force&&signature===lastAutoFitSignature)return;lastAutoFitSignature=signature;const scale=Math.max(.38,Math.min(1,Math.sqrt(18/Math.max(18,count))));glideViewTo({scale,x:360*(1-scale),y:260*(1-scale)});viewPinnedByUser=false;scheduleAutoFit();}
+// Seeded once per volume, not once per node. Re-guessing a scale from the node count on every
+// action fought the real fit that follows a moment later, and the graph was seen lurching in and
+// out on every step.
+function fitGraphToCount(count,force=false){const signature=`${activeVolume}`;if(!force&&signature===lastAutoFitSignature)return;lastAutoFitSignature=signature;const scale=Math.max(.38,Math.min(1,Math.sqrt(18/Math.max(18,count))));glideViewTo({scale,x:360*(1-scale),y:260*(1-scale)});viewPinnedByUser=false;scheduleAutoFit();}
 // The seeded scale above is a guess made before the simulation has run. Once the layout
 // settles, fit the real bounding box to the canvas so the graph fills the space instead of
 // huddling in the middle — and so a big graph zooms out far enough for the declutter to work.
-function scheduleAutoFit(){autoFitTimers.forEach(clearTimeout);autoFitTimers=[550,1500].map(delay=>setTimeout(()=>{if(!viewPinnedByUser&&!physics.dragId)fitGraphToContent();},delay));}
+function scheduleAutoFit(){autoFitTimers.forEach(clearTimeout);autoFitTimers=[1100].map(delay=>setTimeout(()=>{if(!viewPinnedByUser&&!physics.dragId)fitGraphToContent();},delay));}
 function fitGraphToContent(){
   const entries=[...physics.pos.entries()].filter(([id])=>nodeEls.has(id));
   if(entries.length<2)return;
@@ -1209,12 +1219,29 @@ function fitGraphToContent(){
   const width=Math.max(1,maxX-minX),height=Math.max(1,maxY-minY),padding=54,
     scale=Math.max(.3,Math.min(1.3,Math.min((720-padding*2)/width,(520-padding*2)/height))),
     target={scale,x:360-(minX+maxX)/2*scale,y:260-(minY+maxY)/2*scale};
-  // Nothing worth animating for a nudge; only glide when the framing really moves.
-  if(Math.abs(target.scale-view.scale)<.015&&Math.hypot(target.x-view.x,target.y-view.y)<12)return;
+  // Only refit when the graph has really outgrown its frame. A tight threshold meant every
+  // settling nudge re-zoomed, which reads as the graph breathing in and out on its own.
+  if(Math.abs(target.scale-view.scale)<.07&&Math.hypot(target.x-view.x,target.y-view.y)<46)return;
   glideViewTo(target);updateLabelVisibility();
+}
+// Follows the anchor as it settles, so the ghost arrives where the parent actually is rather
+// than where it stood when the journey began.
+function stepDepartingGhosts(){
+  if(!departingGhosts.length)return;
+  const now=performance.now();
+  departingGhosts=departingGhosts.filter(ghost=>{
+    const target=physics.pos.get(ghost.into),progress=Math.min(1,(now-ghost.start)/ghost.duration);
+    if(!target||progress>=1){ghost.el.remove();return false;}
+    const ease=1-Math.pow(1-progress,3),
+      x=ghost.from.x+(target.x-ghost.from.x)*ease,y=ghost.from.y+(target.y-ghost.from.y)*ease;
+    ghost.el.style.transform=`translate(${x}px,${y}px) scale(${(1-.74*ease).toFixed(3)})`;
+    ghost.el.style.opacity=String((1-ease*ease).toFixed(3));
+    return true;
+  });
 }
 function tickGraph() {
   stepViewTween();
+  stepDepartingGhosts();
   if (activeView === "graph" && physics.pos.size) {
     stepPhysics();
     nodeEls.forEach((el, id) => { const p = physics.pos.get(id); if (p) el.setAttribute("transform", `translate(${p.x.toFixed(2)},${p.y.toFixed(2)})`); });
@@ -1288,13 +1315,20 @@ function renderGraph() {
   // A place that is folded into its parent, or a system swallowed by another, used to blink out
   // of existence while the new connection appeared somewhere else. Before its position is
   // forgotten, note where it was and what it went into, so it can be seen going there.
-  const departing=[];
+  // The pods for this action are worked out the same way the pod pass will work them out, so a
+  // place that is about to become one is known before its old position is forgotten.
+  const podsComing=new Set(eventPodIds(locView,currentEvent)),departing=[];
   [...physics.pos.keys()].filter(id=>!renderIds.has(id)).forEach(id=>{
     const kind=entity(id)?.kind,
       into=kind==="location"?locView.anchorOf.get(id)
         :kind==="system"?(sysView.anchorOf.get(id)||systemSatellites.find(item=>item.id===id)?.anchor)
         :null;
-    if(into&&into!==id&&renderIds.has(into))departing.push({id,kind,from:{...physics.pos.get(id)},into,radius:physics.radii.get(id)||20});
+    if(into&&into!==id&&renderIds.has(into)){
+      // If the place is about to be shown as a pod anyway, the pod itself travels from here —
+      // one continuous move — instead of a ghost going in and a pod coming straight back out.
+      if(kind==="location"&&podsComing.has(id))podOrigins.set(id,{...physics.pos.get(id)});
+      else departing.push({id,kind,from:{...physics.pos.get(id)},into,radius:physics.radii.get(id)||20});
+    }
     physics.pos.delete(id);physics.vel.delete(id);physics.bounds.delete(id);
   });
   visible.forEach((item,index)=>ensurePos(item.id,()=>seedPosition(item,index,visible.length)));
@@ -1336,7 +1370,7 @@ function renderGraph() {
   derived.identityParents.forEach(link=>addSpring(link.child,link.parent,68,.09));
   [...derived.relations.keys(),...derived.awareness.keys()].forEach(key=>{const [a,b]=key.split("|");addSpring(a,b,150,.02);});
   physics.edges=[...springs.values()];
-  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null;
+  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null; departingGhosts=[];
   physics.degree.clear();physics.edges.forEach(edge=>{physics.degree.set(edge.a,(physics.degree.get(edge.a)||0)+1);physics.degree.set(edge.b,(physics.degree.get(edge.b)||0)+1);});
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
@@ -1492,25 +1526,27 @@ function renderGraph() {
     noteEdge(satellite.id,satellite.anchor,satellite.from,satellite.mode==="merged"?"Merged into this system":satellite.reason||"Destroyed");
     straightEdge(satellite.id,satellite.anchor,`edge system-satellite-edge`,satellite.id,satellite.anchor);
   });
-  renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius);
+  renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius,podOrigins);
+  podOrigins=new Map();
   // Draw each departing node where it last stood, then let it travel into whatever took it in.
   departing.forEach(item=>{
-    const target=positions.get(item.into);if(!target)return;
+    if(!positions.get(item.into))return;
+    // The ghost is the node's own glyph, not a stand-in, so what travels is recognisably the
+    // place or system that was standing there a moment ago.
     const ghost=svgEl("g",{class:`node-departing depart-${item.kind}`,"aria-hidden":"true"}),
-      radius=Math.max(12,Math.min(30,item.radius)),
-      name=derived.states.get(item.id)?.displayName||entity(item.id)?.name||"";
-    ghost.appendChild(item.kind==="system"
-      ?svgEl("polygon",{points:Array.from({length:4},(_,i)=>{const angle=Math.PI/2*i;return `${radius*Math.cos(angle)},${radius*Math.sin(angle)}`}).join(" "),class:"depart-glyph"})
-      :svgEl("path",{d:roundedSquarePath(radius,radius*.42),class:"depart-glyph"}));
-    if(name){const label=svgEl("text",{x:0,y:-radius-8,class:"depart-label"});label.textContent=name;ghost.appendChild(label);}
+      state=derived.states.get(item.id),
+      radius=item.kind==="system"?systemGlyphRadius(state):locationGlyphRadius(item.id,locView),
+      name=state?.displayName||entity(item.id)?.name||"";
+    if(item.kind==="system")ghost.append(
+      svgEl("polygon",{points:Array.from({length:4},(_,i)=>{const angle=Math.PI/2*i;return `${radius*Math.cos(angle)},${radius*Math.sin(angle)}`}).join(" "),class:"system-shape"}),
+      svgEl("polygon",{points:Array.from({length:4},(_,i)=>{const angle=Math.PI/2*i;return `${radius*.62*Math.cos(angle)},${radius*.62*Math.sin(angle)}`}).join(" "),class:"system-shape-inner"}));
+    else ghost.append(
+      svgEl("path",{d:roundedSquarePath(radius,radius*.42),class:"location-glyph"}),
+      svgEl("path",{d:roundedSquarePath(radius*.44,radius*.22),class:"location-glyph-core"}));
+    if(name){const label=svgEl("text",{x:0,y:-radius-11,class:"depart-label"});label.textContent=name;ghost.appendChild(label);}
     ghost.style.transform=`translate(${item.from.x}px,${item.from.y}px)`;
     departLayer.appendChild(ghost);
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      const now=positions.get(item.into)||target;
-      ghost.style.transform=`translate(${now.x}px,${now.y}px) scale(.28)`;
-      ghost.classList.add("depart-gone");
-    }));
-    ghost.addEventListener("transitionend",event=>{if(event.propertyName==="opacity")ghost.remove();});
+    departingGhosts.push({el:ghost,from:item.from,into:item.into,start:performance.now(),duration:640});
   });
   applyGraphFocus(derived);
   updateLabelVisibility();
@@ -1534,7 +1570,7 @@ function syncPodTransitions(view,currentEvent){
   }
   return podIds;
 }
-function renderLocationPods(view,currentEvent,positions,layer,glyphRadius){
+function renderLocationPods(view,currentEvent,positions,layer,glyphRadius,origins=new Map()){
   const podIds=activePodIds;
   const placedPods=[];
   const draw=(id,retiring)=>{
@@ -1552,8 +1588,12 @@ function renderLocationPods(view,currentEvent,positions,layer,glyphRadius){
     const bornAt=performance.now(),place=()=>{
       const base=positions.get(anchor);if(!base)return;
       const progress=Math.max(0,Math.min(1,(performance.now()-bornAt)/POD_TRAVEL_MS)),
-        reach=distance*(retiring?1-progress**3:1-(1-progress)**3),
-        x=base.x+Math.cos(angle)*reach,y=base.y+Math.sin(angle)*reach;
+        eased=retiring?1-progress**3:1-(1-progress)**3,
+        target={x:base.x+Math.cos(angle)*distance,y:base.y+Math.sin(angle)*distance},
+        // A pod normally grows out of its parent. One standing in for a node that was just
+        // folded away sets off from where that node stood instead.
+        origin=origins.get(id)||base,
+        x=origin.x+(target.x-origin.x)*eased,y=origin.y+(target.y-origin.y)*eased;
       physics.podPos.set(id,{x,y});
       group.setAttribute("transform",`translate(${x.toFixed(2)},${y.toFixed(2)})`);
       tether.setAttribute("x1",base.x);tether.setAttribute("y1",base.y);tether.setAttribute("x2",x);tether.setAttribute("y2",y);

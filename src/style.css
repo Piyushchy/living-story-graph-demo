@@ -835,8 +835,5 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 /* A place folded into its parent, or a system swallowed by another, is seen going there rather
    than blinking out where it stood. */
 .node-depart-layer { pointer-events: none; }
-.node-departing { transition: transform .62s cubic-bezier(.33,0,.2,1), opacity .62s ease; transform-box: fill-box; transform-origin: center; }
-.node-departing.depart-gone { opacity: 0; }
-.depart-glyph { fill: rgba(60,80,120,.5); stroke: #9fb2cc; stroke-width: 2; }
-.depart-system .depart-glyph { fill: rgba(46,28,78,.55); stroke: #b98cff; }
+.node-departing { transform-box: fill-box; transform-origin: center; }
 .depart-label { fill: #cddcf2; font-size: 11px; font-weight: 700; text-anchor: middle; paint-order: stroke; stroke: #081018; stroke-width: 4px; stroke-linejoin: round; }
