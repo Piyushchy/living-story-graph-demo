@@ -403,7 +403,7 @@ test("dragging a node pins it so the physics simulation stops pulling it back, a
   const body = functionBody("renderGraph");
   assert.match(body, /if\(dragMoved\)\{const p=physics\.pos\.get\(item\.id\);if\(p\)p\.pinned=true;\}else selectNode\(\);/);
   assert.match(body, /target\.addEventListener\("dblclick",event=>\{event\.stopPropagation\(\);const p=physics\.pos\.get\(item\.id\);if\(p\?\.pinned\)\{p\.pinned=false;/);
-  assert.match(source, /if \(id === physics\.dragId \|\| physics\.pos\.get\(id\)\?\.pinned\) return;/);
+  assert.match(source, /if \(id === physics\.dragId \|\| physics\.pos\.get\(id\)\?\.pinned\) \{ physics\.calm\.set\(id,0\); return; \}/);
 });
 
 test("a node can be dragged from anywhere on it, including from its own name — a character's label covers the middle of its circle, so binding drag only to the shape left just the outer ring grabbable", () => {
@@ -561,6 +561,18 @@ test("names are drawn in their own layer above every shape, so a node can never 
   assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=\(entry\.tall\?entry\.group:entry\.text\)\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
   assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
   assert.match(styleSource, /\.node-label-layer \{ pointer-events: none; \}/);
+});
+
+test("the layout runs on a budget, so a busy action cannot leave the graph drifting for seconds", () => {
+  const body = functionBody("stepPhysics");
+  assert.match(source, /const ALPHA_DECAY = 0\.9, ALPHA_FLOOR = 0\.02, ALPHA_CONTACT = 0\.3;/);
+  assert.match(body, /if \(physics\.alpha < ALPHA_FLOOR && !physics\.dragId\) return;/, "below the floor it stops dead rather than drifting");
+  assert.match(body, /physics\.alpha = physics\.dragId \? 1 : physics\.alpha \* ALPHA_DECAY;/, "every frame cools it");
+  assert.match(body, /if\(d<ra\+rb\)\{overlapping\.add\(ids\[i\]\);overlapping\.add\(ids\[j\]\);\}/, "only shapes genuinely on top of each other reheat it — the comfort gap kept it awake for ever");
+  assert.match(body, /if \(overlapping\.size\) physics\.alpha = Math\.max\(physics\.alpha, ALPHA_CONTACT\);/);
+  assert.match(functionBody("renderGraph"), /departingGhosts=\[\]; physics\.alpha=1;/, "and a change heats it again");
+  assert.match(body, /const scaleCount = Math\.round\(ids\.length\/8\)\*8;/, "the strength constants step in eights, so they do not shift the whole balance for one arrival");
+  assert.match(body, /calm = touching \? 0 : Math\.max\(0, Math\.min\(1, \(physics\.calm\.get\(id\)\|\|0\) \+ \(speed < 1\.2 \? \.04 : -\.3\)\)\)/, "and a node that has been sitting still takes a fraction of the force");
 });
 
 test("shapes are pushed apart by their real radii, not just by inverse-square repulsion which let them settle on top of each other", () => {

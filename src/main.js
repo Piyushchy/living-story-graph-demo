@@ -1106,7 +1106,7 @@ function createGradient(defs,id,history,chapter){
 // it drags, settles, and re-flows smoothly whenever the underlying data changes.
 const SEPARATION_GAP = 22;
 const POD_TRAVEL_MS = 520;
-const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), podPos: new Map(), hubPos: new Map(), edges: [], dragId: null };
+const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), podPos: new Map(), hubPos: new Map(), calm: new Map(), edges: [], dragId: null, alpha: 0 };
 const view = { x: 0, y: 0, scale: 1 };
 let lastAutoFitSignature="";
 let viewportGroup = null;
@@ -1119,10 +1119,24 @@ function ensurePos(id, seedFn) {
   if (!physics.pos.has(id)) { const [x, y] = seedFn(); physics.pos.set(id, { x, y }); physics.vel.set(id, { x: 0, y: 0 }); }
   return physics.pos.get(id);
 }
+// The layout used to run until it happened to go quiet, which after a busy action meant seconds
+// of drifting — and with an action a second, it never stopped. It now runs on a budget: a change
+// heats it, every frame cools it, and below a floor it stops dead. Motion is bounded to about
+// half a second whatever happens.
+const ALPHA_DECAY = 0.9, ALPHA_FLOOR = 0.02, ALPHA_CONTACT = 0.3;
 function stepPhysics() {
   const ids = [...physics.pos.keys()]; if (!ids.length) return;
+  if (physics.alpha < ALPHA_FLOOR && !physics.dragId) return;
   const force = new Map(ids.map(id => [id, { x: 0, y: 0 }]));
-  const REPEL = 2600+Math.min(6200,Math.max(0,ids.length-10)*115), CENTER = Math.max(.00032,.00115-Math.max(0,ids.length-12)*.000015), cx = 360, cy = 260;
+  // Both constants used to move with every single node, which changed the balance the whole
+  // layout was resting in and slid everything across the screen each time one thing arrived.
+  // Rounding the count to a step of eight means they change rarely instead of constantly.
+  const scaleCount = Math.round(ids.length/8)*8;
+  const REPEL = 2600+Math.min(6200,Math.max(0,scaleCount-10)*115), CENTER = Math.max(.00032,.00115-Math.max(0,scaleCount-12)*.000015), cx = 360, cy = 260;
+  // A node that has been sitting still has earned the right to stay put: it takes a fraction of
+  // the force until something actually touches it. New arrivals are fully mobile and find their
+  // own place around a layout that no longer swims away from them.
+  const disturbed = new Set(), overlapping = new Set();
   // Keeps one node's name from settling on top of another node's shape — label-versus-label
   // separation alone still let a long place name sit across a neighbouring character.
   const clearLabelOfShape=(labelPos,labelBox,shapePos,shapeRadius,labelForce,shapeForce)=>{
@@ -1144,7 +1158,10 @@ function stepPhysics() {
       // Hard separation: inverse-square repulsion alone still lets two shapes sit on top of
       // each other once springs pull them together.
       const ra=physics.radii.get(ids[i])||24,rb=physics.radii.get(ids[j])||24,clearance=ra+rb+SEPARATION_GAP;
-      if(d<clearance){const push=Math.min(6,(clearance-d)*.24);fa.x+=dx/d*push;fa.y+=dy/d*push;fb.x-=dx/d*push;fb.y-=dy/d*push;}
+      if(d<clearance){const push=Math.min(6,(clearance-d)*.24);fa.x+=dx/d*push;fa.y+=dy/d*push;fb.x-=dx/d*push;fb.y-=dy/d*push;disturbed.add(ids[i]);disturbed.add(ids[j]);
+        // Only shapes genuinely on top of each other keep the run alive. Reheating merely
+        // because two nodes are inside the comfort gap kept it awake for ever.
+        if(d<ra+rb){overlapping.add(ids[i]);overlapping.add(ids[j]);}}
       const ab=physics.bounds.get(ids[i]),bb=physics.bounds.get(ids[j]);
       if(ab&&bb){const labelDx=(a.x+ab.ox)-(b.x+bb.ox),labelDy=(a.y+ab.oy)-(b.y+bb.oy),overlapX=ab.hw+bb.hw+16-Math.abs(labelDx),overlapY=ab.hh+bb.hh+10-Math.abs(labelDy);if(overlapX>0&&overlapY>0){const opposed=(a.y-b.y)*labelDy<0;if(opposed||overlapX<overlapY){const direction=labelDx>=0?1:-1,push=Math.min(5,.14*overlapX);fa.x+=direction*push;fb.x-=direction*push;}else{const direction=labelDy>=0?1:-1,push=Math.min(5,.18*overlapY);fa.y+=direction*push;fb.y-=direction*push;}}}
       clearLabelOfShape(a,ab,b,rb,fa,fb);clearLabelOfShape(b,bb,a,ra,fb,fa);
@@ -1158,12 +1175,22 @@ function stepPhysics() {
     const fa = force.get(edge.a), fb = force.get(edge.b);
     if (fa) { fa.x += fx; fa.y += fy; } if (fb) { fb.x -= fx; fb.y -= fy; }
   });
+  // Shapes actually sitting on top of each other re-heat the run, so a crowded arrival still
+  // gets pushed apart however late it happens.
+  if (overlapping.size) physics.alpha = Math.max(physics.alpha, ALPHA_CONTACT);
+  const heat = physics.dragId ? 1 : Math.min(1, physics.alpha);
+  physics.alpha = physics.dragId ? 1 : physics.alpha * ALPHA_DECAY;
   const DAMP = 0.82, MAXV = 13, REST_SPEED = 0.12;
   ids.forEach(id => {
-    if (id === physics.dragId || physics.pos.get(id)?.pinned) return;
+    if (id === physics.dragId || physics.pos.get(id)?.pinned) { physics.calm.set(id,0); return; }
     const v = physics.vel.get(id), f = force.get(id), p = physics.pos.get(id);
-    v.x = Math.max(-MAXV, Math.min(MAXV, (v.x + f.x) * DAMP));
-    v.y = Math.max(-MAXV, Math.min(MAXV, (v.y + f.y) * DAMP));
+    // Two shapes actually touching always get their full push, so nothing settles overlapping.
+    const touching = disturbed.has(id), speed = Math.hypot(v.x,v.y),
+      calm = touching ? 0 : Math.max(0, Math.min(1, (physics.calm.get(id)||0) + (speed < 1.2 ? .04 : -.3))),
+      mobility = (1 - .78*calm) * heat;
+    physics.calm.set(id,calm);
+    v.x = Math.max(-MAXV, Math.min(MAXV, (v.x + f.x*mobility) * DAMP));
+    v.y = Math.max(-MAXV, Math.min(MAXV, (v.y + f.y*mobility) * DAMP));
     if (Math.abs(v.x) < REST_SPEED && Math.abs(v.y) < REST_SPEED) { v.x = 0; v.y = 0; return; }
     p.x += v.x; p.y += v.y;
   });
@@ -1329,7 +1356,7 @@ function renderGraph() {
       if(kind==="location"&&podsComing.has(id))podOrigins.set(id,{...physics.pos.get(id)});
       else departing.push({id,kind,from:{...physics.pos.get(id)},into,radius:physics.radii.get(id)||20});
     }
-    physics.pos.delete(id);physics.vel.delete(id);physics.bounds.delete(id);
+    physics.pos.delete(id);physics.vel.delete(id);physics.bounds.delete(id);physics.calm.delete(id);
   });
   visible.forEach((item,index)=>ensurePos(item.id,()=>seedPosition(item,index,visible.length)));
   fitGraphToCount(visible.length);
@@ -1370,7 +1397,7 @@ function renderGraph() {
   derived.identityParents.forEach(link=>addSpring(link.child,link.parent,68,.09));
   [...derived.relations.keys(),...derived.awareness.keys()].forEach(key=>{const [a,b]=key.split("|");addSpring(a,b,150,.02);});
   physics.edges=[...springs.values()];
-  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null; departingGhosts=[];
+  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null; departingGhosts=[]; physics.alpha=1;
   physics.degree.clear();physics.edges.forEach(edge=>{physics.degree.set(edge.a,(physics.degree.get(edge.a)||0)+1);physics.degree.set(edge.b,(physics.degree.get(edge.b)||0)+1);});
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
