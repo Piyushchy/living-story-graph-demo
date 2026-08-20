@@ -315,7 +315,7 @@ test("the timeline position and open profile (not just the selected volume) are 
   assert.match(restoreBody, /inRange=vol&&Number\.isFinite\(cached\.currentChapter\)&&cached\.currentChapter>=vol\.from&&cached\.currentChapter<=vol\.to/);
   assert.match(restoreBody, /currentChapter=inRange\?cached\.currentChapter:\(vol\?\.from\|\|1\)/);
   assert.match(restoreBody, /openProfileId=typeof cached\.openProfileId==="string"&&entity\(cached\.openProfileId\)\?cached\.openProfileId:null/);
-  assert.match(source, /function renderAll\(\)\{configureTimeline\(\);renderGraph\(\);renderSummary\(\);renderEvents\(\);renderAdmin\(\);updateSuggestions\(\);cacheActiveVolume\(\);\}/);
+  assert.match(source, /function renderAll\(\)\{configureTimeline\(\);renderGraph\(\);renderSummary\(\);renderEvents\(\);renderQuests\(\);renderAdmin\(\);updateSuggestions\(\);cacheActiveVolume\(\);\}/);
 });
 
 test("closing the profile modal clears the persisted open-profile state, and starting the app reopens whatever profile was persisted", () => {
@@ -762,7 +762,7 @@ test("a system stands on the graph as soon as the story touches it, but the plac
   assert.match(body, /derived\.systemHosts\.forEach\(link=>\{if\(visibleIds\.has\(link\.host\)\)queue\.push\(link\.system\);\}\)/, "and a host on screen brings whatever they carry");
   assert.match(body, /derived\.systemHosts\.filter\(link=>link\.host===selectedId\)\.forEach\(link=>\{queue\.push\(link\.system\);focusSystems\.add\(link\.system\);autoOpenSystems\.add\(link\.system\);\}\)/, "picking the host is what opens the system out — subsystems become nodes and their places come with them");
   assert.match(body, /if\(cursor&&entity\(cursor\)\?\.kind==="system"\)\{queue\.push\(cursor\);focusSystems\.add\(cursor\);\}/, "selecting a system — even one that was swallowed — keeps its line up");
-  assert.match(body, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\)return false;/, "a system still comes in through the system view, so the drill-down holds");
+  assert.match(body, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\|\|kind==="quest"\)return false;/, "a system still comes in through the system view, so the drill-down holds — and a quest is a record, never a node");
   assert.match(body, /sysView\.rendered\.forEach\(id=>renderIds\.add\(id\)\)/);
   assert.match(body, /focusSystems\.forEach\(id=>\{if\(revealedSystems\.has\(id\)\)derived\.systemLocations\.filter\(link=>link\.system===id\)\.forEach\(link=>visibleIds\.add\(link\.location\)\)\;\}\)/, "the places it operates at are the part that stays folded away");
   assert.match(body, /derived\.systemLocations\.forEach\(link=>\{if\(!focusSystems\.has\(link\.system\)\)return;/, "and those lines are not drawn either, unlike a place's, which show whenever anyone connected is up");
@@ -838,10 +838,10 @@ test("a conversation can be found again after the slider moves on — selecting 
   assert.match(functionBody("edgeEndpointName"), /String\(id\)\.startsWith\("conversation:"\)\?"this conversation"/, "and hovering a spoke names it rather than printing an id");
 });
 
-test("a ghost action changes the world without taking a turn: no stop on the slider, not in the list, but everything it does is in force", () => {
+test("a ghost action changes the world without taking a turn: no stop on the slider, not in the list, but everything it does is in force — and it replays in story order, not after everything else", () => {
   assert.match(functionBody("volumeActions"), /&&!event\.ghost\);/, "never a stop");
   assert.match(functionBody("ghostActions"), /event\.ghost&&event\.chapter>=volume\.from&&event\.chapter<=volume\.to&&event\.chapter<=chapter/, "in force from its chapter onward");
-  assert.match(functionBody("revealedVolumeActions"), /return \[\.\.\.volumeActions\(\)\.slice\(0,currentActionIndex\),\.\.\.ghostActions\(\)\];/);
+  assert.match(functionBody("revealedVolumeActions"), /const chosen=new Set\(\[\.\.\.volumeActions\(\)\.slice\(0,currentActionIndex\),\.\.\.ghostActions\(\)\]\.map\(event=>event\.id\)\);\s*return orderedEvents\(\)\.filter\(event=>chosen\.has\(event\.id\)\);/);
   assert.match(functionBody("appliedEvents"), /const volume=activeVol\(\),selected=new Set\(revealedVolumeActions\(\)\.map\(event=>event\.id\)\)/, "so derivation sees it too");
   assert.match(source, /if\(form\.get\("ghost"\)\)record\.ghost=true;/);
   assert.match(functionBody("renderOrderEditor"), /if\(record\.ghost\)delete record\.ghost;else record\.ghost=true;/, "and it can be toggled where the actions are managed");
@@ -876,7 +876,7 @@ test("a system's grade is letters with an optional plus or minus, or one of the 
 
 test("the progression track picker belongs to characters only — it was showing on every kind, including systems, which have nothing to do with it", () => {
   assert.match(functionBody("updateEntityFormFields"), /\$\("#entity-initial-track-field"\)\.hidden=!isCharacter;/);
-  assert.match(functionBody("updateEntityFormFields"), /const isSystem=kind==="system";\$\("#entity-authority-field"\)\.hidden=!isSystem;\$\("#entity-grade-field"\)\.hidden=!isSystem;/);
+  assert.match(functionBody("updateEntityFormFields"), /const isSystem=kind==="system",isQuest=kind==="quest";\$\("#entity-authority-field"\)\.hidden=!isSystem;\$\("#entity-grade-field"\)\.hidden=!isSystem;/);
 });
 
 test("a system that was merged away or destroyed shrinks to a small marker on whatever succeeded it, named only when that system is the one being looked at", () => {
@@ -953,6 +953,34 @@ test("neither a number nor a grade is compulsory: a system can start without one
   assert.match(source, /<span>Grade \(optional\)<\/span>/);
   assert.match(source, /<article><span>Authority<\/span><strong>\$\{Number\.isFinite\(Number\(state\.authority\)\)\?escapeHtml\(String\(state\.authority\)\):"—"\}/, "the panel says so plainly rather than inventing a value");
   assert.match(source, /migrated\.schemaVersion=12;/, "and readers already holding the demo are brought along");
+});
+
+test("a quest is a record with a run of its own: issued, inched forward chapter by chapter, and settled", () => {
+  assert.match(source, /<option value="quest_issue">Quest is issued<\/option><option value="quest_progress">Quest progress changes<\/option><option value="quest_end">Quest completed, failed, or abandoned<\/option><option value="quest_chain">Quest belongs to a chain<\/option>/);
+  assert.match(source, /<option value="quest">Quest<\/option>/, "and a quest is its own kind of identity, with its own terms");
+  const derived = functionBody("derive");
+  assert.match(derived, /if\(String\(event\.type\)\.startsWith\("quest_"\)&&source\?\.kind==="quest"\)/);
+  assert.match(derived, /run\.status=outcome==="fail"\?"failed":outcome==="abandon"\?"abandoned":"complete"/);
+  assert.match(derived, /if\(!run\.explicitProgress&&kids\.length\)run\.progress=Math\.round\(total\/kids\.length\)/, "a chain with no figure of its own reads as how far through its parts it is");
+  assert.match(derived, /if\(questRuns\.has\(link\.child\)&&!questRuns\.has\(link\.parent\)\)questRun\(link\.parent\)/, "and a chain whose first part is issued still gets a header");
+  assert.match(functionBody("renderQuests"), /active=roots\.filter\(run=>run\.status==="active"\),settled=roots\.filter\(run=>run\.status!=="active"\)/, "a settled quest drops out of the active list rather than crowding it");
+  assert.match(functionBody("questCardHtml"), /style="--quest-progress:\$\{run\.progress\}%"/, "the card is filled by how far along the quest is");
+  assert.match(functionBody("questCardHtml"), /data-quest-chain="\$\{escapeHtml\(run\.quest\)\}"/, "and a chain opens and closes to show the quests inside it");
+  assert.match(styleSource, /\.quest-fill \{ position: absolute; inset: 0 auto 0 0; width: var\(--quest-progress,0%\)/);
+  assert.match(source, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\|\|kind==="quest"\)return false;/, "quests never become graph nodes");
+  assert.match(source, /if\(knownIds\.has\(item\.id\)&&item\.kind!=="quest"\)/, "nor graph search results");
+});
+
+test("a quest carries the terms the story states — and any of them may be missing", () => {
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  assert.match(sample, /id: "q-hearth", kind: "quest"[^}]*questBadge: "Chain"[^}]*rewardRank: "A"[^}]*timeLimit:[^}]*rewards:[^}]*achievements:[^}]*failure:/, "one quest states every term");
+  assert.match(sample, /id: "q-ledger", kind: "quest", name: "Balance the Winter Ledger", intro: 30, timeLimit: "Before the spring audit", description:/, "and another states almost none");
+  assert.match(sample, /type: "quest_chain", source: "q-stock", target: "q-hearth"/);
+  assert.match(sample, /type: "quest_progress", source: "q-winter", progress: 72/);
+  assert.match(sample, /type: "quest_end", source: "q-envoy", action: "fail"/);
+  assert.match(source, /if\(kind==="quest"&&!gradeIsValid\(form\.get\("rewardRank"\)\)\)/, "a reward rank is checked the same way a system grade is");
+  assert.match(source, /if\(!percent\|\|!Number\.isFinite\(Number\(percent\)\)\|\|Number\(percent\)<0\|\|Number\(percent\)>100\)/, "and progress has to be a percentage");
+  assert.match(source, /migrated\.schemaVersion=13;/, "readers already holding the demo are brought along");
 });
 
 test("a rank change is visible when it happens: the system comes up for its own action even with no host selected, and says which way it moved", () => {
