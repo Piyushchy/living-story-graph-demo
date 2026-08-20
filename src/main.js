@@ -1285,7 +1285,18 @@ function renderGraph() {
   const visible=data.entities.filter(item=>renderIds.has(item.id));
   const resolveLocationId=id=>entity(id)?.kind==="location"?(locView.anchorOf.get(id)||id):id;
   if(selectedId&&!renderIds.has(selectedId)&&!systemSatellites.some(item=>item.id===selectedId))selectedId=null;
-  [...physics.pos.keys()].filter(id=>!renderIds.has(id)).forEach(id=>{physics.pos.delete(id);physics.vel.delete(id);physics.bounds.delete(id);});
+  // A place that is folded into its parent, or a system swallowed by another, used to blink out
+  // of existence while the new connection appeared somewhere else. Before its position is
+  // forgotten, note where it was and what it went into, so it can be seen going there.
+  const departing=[];
+  [...physics.pos.keys()].filter(id=>!renderIds.has(id)).forEach(id=>{
+    const kind=entity(id)?.kind,
+      into=kind==="location"?locView.anchorOf.get(id)
+        :kind==="system"?(sysView.anchorOf.get(id)||systemSatellites.find(item=>item.id===id)?.anchor)
+        :null;
+    if(into&&into!==id&&renderIds.has(into))departing.push({id,kind,from:{...physics.pos.get(id)},into,radius:physics.radii.get(id)||20});
+    physics.pos.delete(id);physics.vel.delete(id);physics.bounds.delete(id);
+  });
   visible.forEach((item,index)=>ensurePos(item.id,()=>seedPosition(item,index,visible.length)));
   fitGraphToCount(visible.length);
   const positions=physics.pos;
@@ -1329,7 +1340,7 @@ function renderGraph() {
   physics.degree.clear();physics.edges.forEach(edge=>{physics.degree.set(edge.a,(physics.degree.get(edge.a)||0)+1);physics.degree.set(edge.b,(physics.degree.get(edge.b)||0)+1);});
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
-  const edgeLayer=svgEl("g"),satelliteLayer=svgEl("g",{class:"system-satellite-layer"}),conversationLayer=svgEl("g",{class:"conversation-layer"}),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
+  const edgeLayer=svgEl("g"),departLayer=svgEl("g",{class:"node-depart-layer"}),satelliteLayer=svgEl("g",{class:"system-satellite-layer"}),conversationLayer=svgEl("g",{class:"conversation-layer"}),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,departLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
   // While an action pops a hidden place out of its parent, links point at the pod itself, so the
   // line sits on the place the reader is actually being shown and rides back in as it retracts.
   const podIds=syncPodTransitions(locView,currentEvent),podSet=new Set([...podIds,...retiringPodIds]);
@@ -1482,6 +1493,25 @@ function renderGraph() {
     straightEdge(satellite.id,satellite.anchor,`edge system-satellite-edge`,satellite.id,satellite.anchor);
   });
   renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius);
+  // Draw each departing node where it last stood, then let it travel into whatever took it in.
+  departing.forEach(item=>{
+    const target=positions.get(item.into);if(!target)return;
+    const ghost=svgEl("g",{class:`node-departing depart-${item.kind}`,"aria-hidden":"true"}),
+      radius=Math.max(12,Math.min(30,item.radius)),
+      name=derived.states.get(item.id)?.displayName||entity(item.id)?.name||"";
+    ghost.appendChild(item.kind==="system"
+      ?svgEl("polygon",{points:Array.from({length:4},(_,i)=>{const angle=Math.PI/2*i;return `${radius*Math.cos(angle)},${radius*Math.sin(angle)}`}).join(" "),class:"depart-glyph"})
+      :svgEl("path",{d:roundedSquarePath(radius,radius*.42),class:"depart-glyph"}));
+    if(name){const label=svgEl("text",{x:0,y:-radius-8,class:"depart-label"});label.textContent=name;ghost.appendChild(label);}
+    ghost.style.transform=`translate(${item.from.x}px,${item.from.y}px)`;
+    departLayer.appendChild(ghost);
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      const now=positions.get(item.into)||target;
+      ghost.style.transform=`translate(${now.x}px,${now.y}px) scale(.28)`;
+      ghost.classList.add("depart-gone");
+    }));
+    ghost.addEventListener("transitionend",event=>{if(event.propertyName==="opacity")ghost.remove();});
+  });
   applyGraphFocus(derived);
   updateLabelVisibility();
 }

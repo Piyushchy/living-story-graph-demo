@@ -556,7 +556,7 @@ function pureSandbox(names) {
 
 test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /viewportGroup\.append\(edgeLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation and system markers");
+  assert.match(body, /viewportGroup\.append\(edgeLayer,departLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation and system markers");
   assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,tall:Boolean\(rankLabel\),halfWidth:/);
   assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=\(entry\.tall\?entry\.group:entry\.text\)\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
   assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
@@ -970,6 +970,27 @@ test("the bar is not a list of chapters — it carries where the reader is, and 
   assert.match(body, /class="main-timeline-mark here-mark expandable"[^`]*data-expand-chapter="\$\{here\.chapter\}"/, "where the reader is opens into that chapter's events");
   assert.match(body, /several=here\.entries\.length>1;/, "and it is only openable when the chapter actually holds several");
   assert.match(styleSource, /\.main-timeline-mark\.here-mark\{width:11px;height:11px/, "it is the one mark always present, so it is the loudest");
+});
+
+test("a node folded into something else is seen going there, rather than blinking out where it stood", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const departing=\[\];/);
+  assert.match(body, /into=kind==="location"\?locView\.anchorOf\.get\(id\)\s*:kind==="system"\?\(sysView\.anchorOf\.get\(id\)\|\|systemSatellites\.find\(item=>item\.id===id\)\?\.anchor\)/, "a place goes to the parent that took it in; a system to whatever swallowed or succeeded it");
+  assert.match(body, /if\(into&&into!==id&&renderIds\.has\(into\)\)departing\.push\(\{id,kind,from:\{\.\.\.physics\.pos\.get\(id\)\},into/, "captured before the position is forgotten, and only when there is somewhere to go");
+  assert.match(body, /ghost\.style\.transform=`translate\(\$\{item\.from\.x\}px,\$\{item\.from\.y\}px\)`;/, "it starts where the node last stood");
+  assert.match(body, /ghost\.style\.transform=`translate\(\$\{now\.x\}px,\$\{now\.y\}px\) scale\(\.28\)`;/, "and travels in, shrinking as it arrives");
+  assert.match(body, /ghost\.addEventListener\("transitionend",event=>\{if\(event\.propertyName==="opacity"\)ghost\.remove\(\);\}\)/, "and does not linger once it is gone");
+  assert.match(body, /viewportGroup\.append\(edgeLayer,departLayer,nodeLayer/, "it travels under the nodes, so the parent covers it as it arrives");
+  assert.match(styleSource, /\.node-departing \{ transition: transform \.62s cubic-bezier\(\.33,0,\.2,1\), opacity \.62s ease;/);
+});
+
+test("a place known only to be inside a realm can later be placed exactly, without confusing the hierarchy", () => {
+  // The link is keyed by the child, so the newest statement replaces the older, broader one.
+  assert.match(functionBody("derive"), /else locationParents\.set\(event\.source,\{child:event\.source,parent:event\.location,from:event\.chapter\}\)/);
+  assert.match(functionBody("buildDrillView"), /while\(true\)\{const parent=parentOfRaw\(cursor\);if\(!parent\|\|seen\.has\(parent\)\)break;/, "and the walk up cannot loop, whatever order the statements arrive in");
+  assert.match(source, /if\(type==="location_parent"&&source\.id===location\.id\)\{toast\("A location cannot contain itself"\)/);
+  assert.match(source, /if\(type==="location_parent"&&action!=="remove"&&locationLineage\(location\.id,derive\(chapter\)\)\.includes\(source\.id\)\)\{toast\("That would create a circular location hierarchy"\)/);
+  assert.match(source, /String\(source\.locationType\|\|""\)===LOCATION_ROOT_TYPE\)\{toast\("A realm is the widest place the graph draws/);
 });
 
 test("a quest is a record with a run of its own: issued, inched forward chapter by chapter, and settled", () => {
