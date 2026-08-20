@@ -956,16 +956,16 @@ test("neither a number nor a grade is compulsory: a system can start without one
 });
 
 test("a quest is a record with a run of its own: issued, inched forward chapter by chapter, and settled", () => {
-  assert.match(source, /<option value="quest_issue">Quest is issued<\/option><option value="quest_progress">Quest progress changes<\/option><option value="quest_end">Quest completed, failed, or abandoned<\/option><option value="quest_chain">Quest belongs to a chain<\/option>/);
+  assert.match(source, /<option value="quest_issue">Quest is issued<\/option><option value="quest_update">Quest update, hint, remark, or notification<\/option><option value="quest_progress">Quest progress changes<\/option><option value="quest_end">Quest completed, failed, or abandoned<\/option><option value="quest_part">Quest is part of a larger quest<\/option><option value="quest_contribution">Quest contribution and share of the reward<\/option>/);
   assert.match(source, /<option value="quest">Quest<\/option>/, "and a quest is its own kind of identity, with its own terms");
   const derived = functionBody("derive");
   assert.match(derived, /if\(String\(event\.type\)\.startsWith\("quest_"\)&&source\?\.kind==="quest"\)/);
   assert.match(derived, /run\.status=outcome==="fail"\?"failed":outcome==="abandon"\?"abandoned":"complete"/);
   assert.match(derived, /if\(!run\.explicitProgress&&kids\.length\)run\.progress=Math\.round\(total\/kids\.length\)/, "a chain with no figure of its own reads as how far through its parts it is");
-  assert.match(derived, /if\(questRuns\.has\(link\.child\)&&!questRuns\.has\(link\.parent\)\)questRun\(link\.parent\)/, "and a chain whose first part is issued still gets a header");
+  assert.match(derived, /if\(questRuns\.has\(link\.child\)&&!questRuns\.has\(link\.parent\)\)questRun\(link\.parent\)/, "and a larger quest whose first part is issued still gets a header");
   assert.match(functionBody("renderQuests"), /active=roots\.filter\(run=>run\.status==="active"\),settled=roots\.filter\(run=>run\.status!=="active"\)/, "a settled quest drops out of the active list rather than crowding it");
   assert.match(functionBody("questCardHtml"), /style="--quest-progress:\$\{run\.progress\}%"/, "the card is filled by how far along the quest is");
-  assert.match(functionBody("questCardHtml"), /data-quest-chain="\$\{escapeHtml\(run\.quest\)\}"/, "and a chain opens and closes to show the quests inside it");
+  assert.match(functionBody("questCardHtml"), /data-quest-chain="\$\{escapeHtml\(run\.quest\)\}"/, "and a larger quest opens and closes to show its parts");
   assert.match(styleSource, /\.quest-fill \{ position: absolute; inset: 0 auto 0 0; width: var\(--quest-progress,0%\)/);
   assert.match(source, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\|\|kind==="quest"\)return false;/, "quests never become graph nodes");
   assert.match(source, /if\(knownIds\.has\(item\.id\)&&item\.kind!=="quest"\)/, "nor graph search results");
@@ -973,14 +973,53 @@ test("a quest is a record with a run of its own: issued, inched forward chapter 
 
 test("a quest carries the terms the story states — and any of them may be missing", () => {
   const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
-  assert.match(sample, /id: "q-hearth", kind: "quest"[^}]*questBadge: "Chain"[^}]*rewardRank: "A"[^}]*timeLimit:[^}]*rewards:[^}]*achievements:[^}]*failure:/, "one quest states every term");
+  assert.match(sample, /id: "q-hearth", kind: "quest"[^}]*questBadge: "World"[^}]*timeLimit:[^}]*achievements:[^}]*failure:/, "one quest states most of its terms up front");
   assert.match(sample, /id: "q-ledger", kind: "quest", name: "Balance the Winter Ledger", intro: 30, timeLimit: "Before the spring audit", description:/, "and another states almost none");
-  assert.match(sample, /type: "quest_chain", source: "q-stock", target: "q-hearth"/);
+  assert.match(sample, /type: "quest_part", source: "q-stock", target: "q-hearth"/);
   assert.match(sample, /type: "quest_progress", source: "q-winter", progress: 72/);
   assert.match(sample, /type: "quest_end", source: "q-envoy", action: "fail"/);
   assert.match(source, /if\(kind==="quest"&&!gradeIsValid\(form\.get\("rewardRank"\)\)\)/, "a reward rank is checked the same way a system grade is");
   assert.match(source, /if\(!percent\|\|!Number\.isFinite\(Number\(percent\)\)\|\|Number\(percent\)<0\|\|Number\(percent\)>100\)/, "and progress has to be a percentage");
-  assert.match(source, /migrated\.schemaVersion=13;/, "readers already holding the demo are brought along");
+  assert.match(source, /migrated\.schemaVersion=14;/, "readers already holding the demo are brought along");
+  assert.match(source, /if\(event\.type==="quest_chain"\)event\.type="quest_part";/, "and anything already recorded under the old wording is renamed");
+});
+
+test("every action that offers a second identity or a free-text value actually keeps it — the system and quest actions were reading both and dropping them", () => {
+  assert.match(source, /if\(\["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge","quest_part","quest_contribution","quest_issue"\]\.includes\(type\)\|\|\(type==="note"&&target\)\)record\.target=target\?\.id;/);
+  assert.match(source, /"residency","system_host","system_location","system_end","quest_end","quest_contribution"\]\.includes\(type\)&&value\)record\.value=/);
+  assert.match(source, /showsSystemValue=\["system_host","system_location","system_end"\]\.includes\(type\)/, "and a destroyed system can be given its reason, which the sample always had but the form never offered");
+});
+
+test("a quest's reward is usually only named once it is finished, and it is scaled to how the host performed", () => {
+  const derived = functionBody("derive");
+  assert.match(derived, /if\(event\.rewardRank\)run\.rewardRank=event\.rewardRank;/);
+  assert.match(derived, /if\(event\.performance\)run\.performance=event\.performance;/);
+  assert.match(derived, /if\(event\.value\)run\.reward=event\.value;/);
+  assert.match(functionBody("questCardHtml"), /rewardText=run\.reward\|\|\(item\.rewards\?\.length\?item\.rewards\.join\(", "\):settled\?"":"Told on completion"\)/, "so the card says the reward is still to come rather than showing none");
+  assert.match(functionBody("questCardHtml"), /rank\?`<span class="quest-rank">\$\{escapeHtml\(rank\)\}<\/span>`:""/, "the rank is written as the story writes it, with nothing bolted on the front");
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  assert.match(sample, /type: "quest_end", source: "q-anomaly", action: "complete", value: "Realm Seed", rewardRank: "Destiny", performance: "SSS\+"/);
+  assert.match(source, /const SPECIAL_GRADES = \["destiny","fate","divine","oblivion","death","spirit","life","chaos"\];/, "the named ranks above the letters all count as ranks");
+});
+
+test("a quest's own terms can grow as the story turns — an added objective is not a second quest", () => {
+  assert.match(functionBody("derive"), /if\(event\.type==="quest_update"\)run\.updates\.push\(\{chapter:event\.chapter,order:event\.order\|\|0,kind:"note",noteKind:event\.value\|\|"Update"/);
+  assert.match(source, /<option value="Update">Quest update<\/option><option value="Hint">Quest hint<\/option><option value="Remark">Remark<\/option><option value="Notification">New notification<\/option><option value="Objective">Added objective<\/option>/);
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  ["Remark","Update","Hint","Objective","Notification"].forEach(kind=>assert.match(sample, new RegExp(`type: "quest_update", source: "q-anomaly", value: "${kind}"`), `the demo shows a ${kind.toLowerCase()}`));
+  assert.match(styleSource, /\.quest-updates li\.note-hint \.quest-update-text \{ color: #9fd8ff; \}/);
+});
+
+test("a joint quest is worked by more than one person and paid by contribution, which need not be equal", () => {
+  assert.match(functionBody("derive"), /\[event\.target,\.\.\.\(event\.characters\|\|\[\]\)\]\.filter\(Boolean\)\.forEach\(id=>\{if\(states\.get\(id\)\?\.kind==="character"&&!run\.holders\.includes\(id\)\)run\.holders\.push\(id\);\}\)/);
+  assert.match(functionBody("derive"), /if\(event\.type==="quest_contribution"&&states\.get\(event\.target\)\?\.kind==="character"\)/);
+  assert.match(functionBody("questCardHtml"), /joint=run\.holders\.length>1/);
+  assert.match(functionBody("questCardHtml"), /joint\?'<span class="quest-joint">Joint<\/span>':""/);
+  assert.match(functionBody("questCardHtml"), /run\.contributions\.length\?`<dl class="quest-facts quest-shares">/, "each contributor's share and reward is listed separately");
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  assert.match(sample, /type: "quest_issue", source: "q-caravan", target: "lex", characters: \["lex","vane"\]/);
+  assert.match(sample, /type: "quest_contribution", source: "q-caravan", target: "lex", value: "Held the rear against the frost", rewardRank: "S", performance: "A\+"/);
+  assert.match(sample, /type: "quest_contribution", source: "q-caravan", target: "vane", value: "Broke the road ahead", rewardRank: "A", performance: "B\+"/);
 });
 
 test("a rank change is visible when it happens: the system comes up for its own action even with no host selected, and says which way it moved", () => {
