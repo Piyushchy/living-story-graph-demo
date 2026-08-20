@@ -715,11 +715,18 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .event-message-edit:hover { border-color: #2a3a4e; background: #0b1421; }
 .event-message-edit:focus { border-color: #6de0d5; background: #0b1421; color: #eaf2ff; outline: none; }
 .system-grade { fill: #e6d4ff; font-size: 15px; font-weight: 800; letter-spacing: .01em; text-anchor: middle; pointer-events: none; }
-.system-grade-special { font-size: 9px; letter-spacing: .08em; }
+/* A named grade is a rank like any other letter — it has to be readable in full, never clipped. */
+.system-grade-special { font-size: 9px; letter-spacing: .06em; }
+.system-grade-special.grade-len-5 { font-size: 8px; letter-spacing: .03em; }
+.system-grade-special.grade-len-6 { font-size: 7.5px; letter-spacing: .01em; }
+.system-grade-special.grade-len-7 { font-size: 6.5px; letter-spacing: 0; }
 .node.system-divine .system-shape { fill: rgba(78,64,20,.94); stroke: #ffd479; }
 .node.system-divine .system-grade { fill: #ffe9b0; }
-.node.system-death .system-shape { fill: rgba(66,22,30,.94); stroke: #ef5d67; }
-.node.system-death .system-grade { fill: #ffc3c7; }
+/* Death is a high grade, not a destroyed system — it must not borrow the danger red that marks
+   an ending, or readers take it for one. */
+.node.system-death .system-shape { fill: rgba(48,18,58,.94); stroke: #c471e8; }
+.node.system-death .system-shape-inner { stroke: rgba(226,180,255,.5); }
+.node.system-death .system-grade { fill: #f0cdff; }
 .node.system-life .system-shape { fill: rgba(18,54,40,.94); stroke: #55d6a7; }
 .node.system-life .system-grade { fill: #b6f2d8; }
 /* A system that was merged away or destroyed: a small marker, named only when the system it

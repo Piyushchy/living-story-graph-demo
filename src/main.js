@@ -36,7 +36,7 @@ const sampleData = {
     { id: "inn-system", kind: "system", name: "Midnight Inn System", intro: 1, authority: 7, grade: "S", description: "The system bonded to Lex that runs the Inn's holdings." },
     { id: "inn-taverns", kind: "system", name: "Midnight Taverns", intro: 12, description: "The tavern branch of the Midnight Inn System. Neither its authority nor its grade is known when it is founded." },
     { id: "hearth-system", kind: "system", name: "Hearthkeeper System", intro: 18, authority: 2, grade: "C", description: "A small hearth system that the Midnight Inn System later swallowed." },
-    { id: "ash-system", kind: "system", name: "Ashfall System", intro: 26, authority: 4, grade: "Death", description: "A rival system destroyed in the Inn's early years." },
+    { id: "ash-system", kind: "system", name: "Ashfall System", intro: 26, authority: 4, grade: "B", description: "A rival system destroyed in the Inn's early years." },
     { id: "warden-system", kind: "system", name: "Warden System", intro: 34, authority: 6, grade: "A", description: "An authority-graded system bonded to Vane." },
     { id: "inn-resorts", kind: "system", name: "Midnight Resorts", intro: 50, authority: 5, grade: "A-", description: "The resort branch of the Midnight Inn System." },
     { id: "lex", kind: "character", name: "Lex", gender: "male", mentioned: 1, appeared: 1, description: "Founder and central figure of the Midnight Inn." },
@@ -136,7 +136,7 @@ const sampleData = {
     { id: "rank-1", chapter: 20, order: 1, type: "system_rank", source: "inn-system", grade: "S+", description: "The Midnight Inn System is regraded S+ after the winter." },
     { id: "rank-2", chapter: 28, order: 1, type: "system_rank", source: "inn-system", authority: 11, description: "The Midnight Inn System's authority rises to 11." },
     { id: "rank-3", chapter: 31, order: 1, type: "system_rank", source: "ash-system", authority: 2, grade: "D", description: "The Ashfall System is broken down to authority 2, grade D, before it is destroyed." },
-    { id: "rank-4", chapter: 37, order: 1, type: "system_rank", source: "warden-system", authority: 9, grade: "SS", description: "The Warden System is raised to authority 9 and regraded SS." },
+    { id: "rank-4", chapter: 37, order: 1, type: "system_rank", source: "warden-system", authority: 9, grade: "Death", description: "The Warden System is raised to authority 9 and regraded Death, the second-highest grade anyone has seen." },
     { id: "rank-5", chapter: 24, order: 1, type: "system_rank", source: "inn-taverns", authority: 3, grade: "B", description: "The Midnight Taverns are rated for the first time: authority 3, grade B." },
     { id: "rank-6", chapter: 25, order: 1, type: "system_rank", source: "hearth-system", grade: null, description: "The Hearthkeeper System is left ungraded in the days before the Inn swallows it." },
     { id: "talk-1", chapter: 22, order: 5, type: "conversation", source: "lex", characters: ["lex","mary","gerald"], location: "inn-lobby", description: "Lex, Mary, and Gerald settle how the Inn will run its front of house." },
@@ -1160,7 +1160,7 @@ function renderGraph() {
         locationShell.append(svgEl("polygon",{points:points(r),class:"system-shape"}),svgEl("polygon",{points:points(r*.62),class:"system-shape-inner"}));
         // A grade is one to three characters, which is exactly what fits in the middle of the
         // diamond; the named grades get their own colour instead of a letter treatment.
-        if(state.grade){const grade=svgEl("text",{x:0,y:isSpecialGrade(state.grade)?3:5,class:`system-grade${isSpecialGrade(state.grade)?" system-grade-special":""}`});grade.textContent=isSpecialGrade(state.grade)?String(state.grade).trim().toUpperCase().slice(0,4):String(state.grade).trim().toUpperCase();locationShell.appendChild(grade);}
+        if(state.grade){const grade=svgEl("text",{x:0,y:isSpecialGrade(state.grade)?3:5,class:`system-grade${isSpecialGrade(state.grade)?` system-grade-special grade-len-${String(state.grade).trim().length}`:""}`});grade.textContent=String(state.grade).trim().toUpperCase();locationShell.appendChild(grade);}
         else locationShell.appendChild(svgEl("circle",{cx:0,cy:0,r:r*.17,class:"system-core"}));
         // The number gets its own pip under the diamond; the two move independently.
         if(Number.isFinite(Number(state.authority))){locationShell.append(svgEl("circle",{cx:0,cy:r-2,r:10,class:"system-authority-pip"}));const authority=svgEl("text",{x:0,y:r+1.6,class:"system-authority-text"});authority.textContent=String(state.authority);locationShell.appendChild(authority);}

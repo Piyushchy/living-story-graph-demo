@@ -862,6 +862,8 @@ test("a system's grade is letters with an optional plus or minus, or one of the 
   assert.equal(run('gradeIsValid("Divine")'), true);
   assert.equal(run('gradeIsValid("Death")'), true);
   assert.equal(run('gradeIsValid("life")'), true);
+  assert.match(styleSource, /\.node\.system-death \.system-shape \{ fill: rgba\(48,18,58,\.94\); stroke: #c471e8; \}/, "Death is graded, not destroyed, so it does not borrow the danger red");
+  assert.match(styleSource, /\.system-grade-special\.grade-len-6 \{ font-size: 7\.5px/, "and a long named grade shrinks to fit rather than being clipped");
   assert.equal(run('gradeIsValid("")'), true, "a system may simply have no grade");
   assert.equal(run('gradeIsValid("unknown")'), true, "or one nobody has been told");
   assert.equal(run('authorityIsValid("7")'), true);
@@ -909,7 +911,7 @@ test("an action's message is editable where it is read in the editor, and stays 
 test("the demo carries a merged system, a destroyed one, and graded systems, and a stored copy picks them up even if its novel was renamed", () => {
   const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("function deepClone"));
   assert.match(sample, /id: "hearth-system", kind: "system"[^}]*grade: "C"/);
-  assert.match(sample, /id: "ash-system", kind: "system"[^}]*grade: "Death"/);
+  assert.match(sample, /id: "ash-system", kind: "system"[^}]*grade: "B"/, "the destroyed system is not also the one carrying a named grade — those are separate ideas");
   assert.match(sample, /type: "system_merge", source: "hearth-system", target: "inn-system"/);
   assert.match(sample, /type: "system_end", source: "ash-system"/);
   assert.match(sample, /id: "inn-system"[^}]*authority: 7, grade: "S"/);
@@ -931,7 +933,7 @@ test("a system's authority and grade both move over time, in the demo and indepe
   assert.match(sample, /type: "system_rank", source: "inn-system", grade: "S\+"/, "a grade change on its own");
   assert.match(sample, /type: "system_rank", source: "inn-system", authority: 11/, "an authority change on its own");
   assert.match(sample, /type: "system_rank", source: "ash-system", authority: 2, grade: "D"/, "and both falling together");
-  assert.match(sample, /type: "system_rank", source: "warden-system", authority: 9, grade: "SS"/, "and both rising together");
+  assert.match(sample, /type: "system_rank", source: "warden-system", authority: 9, grade: "Death"/, "and both rising together — a named grade is a high rank, not an ending");
   assert.match(sample, /ghost: true/, "a structural fact is still carried as a ghost");
   assert.match(source, /if\(!rankAuthority&&!rankGrade\)\{toast\("Give the new authority, the new grade, or both — or write unknown to take one away"\)/);
   assert.match(source, /source\.previousAuthority=source\.authority;source\.previousGrade=source\.grade;/, "what it was is kept so the move can be shown");
