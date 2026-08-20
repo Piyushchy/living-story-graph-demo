@@ -2,8 +2,8 @@ import "./style.css";
 import { normalizeIdentityIntroductionOrder } from "./order.js";
 
 const COLORS = { friendly: "#45c98b", hostile: "#ef5d67", neutral: "#9aa9c0" };
-const MARKED_EVENT_TYPES = new Set(["cultivation","relationship","status","alias","display_name","identity_parent","membership","movement","residency","location_parent","organization_location"]);
-const EVENT_TYPE_COLORS = { cultivation:"#e8ad3c",relationship:"#45c98b",status:"#ef5d67",alias:"#9f7aea",display_name:"#7dd3fc",identity_parent:"#c084fc",membership:"#4f8df7",movement:"#22c7b8",residency:"#55d6a7",location_parent:"#f2c95e",organization_location:"#c084fc",meeting:"#27b8b8",awareness:"#36a8d4",mention:"#7f8da3",appearance:"#ef71b8",corpse_appearance:"#ef5d67",note:"#edf2ff" };
+const MARKED_EVENT_TYPES = new Set(["cultivation","relationship","status","alias","display_name","identity_parent","membership","movement","residency","location_parent","organization_location","system_host","system_parent","system_location","system_merge","system_end","system_rank","quest_issue","quest_progress","quest_end","quest_chain"]);
+const EVENT_TYPE_COLORS = { cultivation:"#e8ad3c",relationship:"#45c98b",status:"#ef5d67",alias:"#9f7aea",display_name:"#7dd3fc",identity_parent:"#c084fc",membership:"#4f8df7",movement:"#22c7b8",residency:"#55d6a7",location_parent:"#f2c95e",organization_location:"#c084fc",meeting:"#27b8b8",conversation:"#ffd479",system_host:"#b98cff",system_parent:"#b98cff",system_location:"#8f74c4",system_merge:"#8f74c4",system_end:"#ef5d67",system_rank:"#ffd479",quest_issue:"#ffb347",quest_progress:"#7dd3fc",quest_end:"#45c98b",quest_chain:"#e8ad3c",awareness:"#36a8d4",mention:"#7f8da3",appearance:"#ef71b8",corpse_appearance:"#ef5d67",note:"#edf2ff" };
 const STORAGE_KEY = "living-story-graph-demo-v1";
 const VIEW_STATE_KEY = "living-story-graph-view-state-v1";
 const PUBLISH_DIRTY_KEY = "living-story-graph-publish-dirty-v1";
@@ -13,7 +13,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const CULTIVATION_LEVELS = ["Mortal","Body Tempering","Qi Training","Foundation Establishment","Golden Core","Nascent Soul","Earth Immortal","Heaven Immortal","Celestial Immortal","Demi Dao Lord","Dao Lord","Above Dao Lord"];
 
 const sampleData = {
-  schemaVersion: 6,
+  schemaVersion: 13,
   novel: "The Innkeeper — graph demonstration",
   volumes: [
     { id: "v1", name: "Volume 1", from: 1, to: 40 },
@@ -21,6 +21,7 @@ const sampleData = {
     { id: "v3", name: "Volume 3", from: 81, to: 120 }
   ],
   cultivationLevels: CULTIVATION_LEVELS,
+  progressionTracks: [{ id: "cultivation", name: "Cultivation", levels: CULTIVATION_LEVELS }],
   entities: [
     { id: "inn", kind: "organization", name: "Midnight Inn", intro: 1, description: "A growing inter-realm sanctuary and organization." },
     { id: "jotun", kind: "organization", name: "Jotun Empire", intro: 30, description: "A major empire active across the story." },
@@ -32,11 +33,26 @@ const sampleData = {
     { id: "verdan", kind: "location", locationType: "World", name: "Verdan", intro: 1, description: "A temperate world inside the Azure Mortal Realm." },
     { id: "stonevale", kind: "location", locationType: "City", name: "Stonevale", intro: 1, description: "The trade city on Verdan where the Midnight Inn was built." },
     { id: "garden-heart", kind: "location", locationType: "Site", name: "Heart of the Garden", intro: 45, description: "The still centre of the Primordial Garden Realm." },
+    { id: "inn-system", kind: "system", name: "Midnight Inn System", intro: 1, authority: 7, grade: "S", description: "The system bonded to Lex that runs the Inn's holdings." },
+    { id: "inn-taverns", kind: "system", name: "Midnight Taverns", intro: 12, description: "The tavern branch of the Midnight Inn System. Neither its authority nor its grade is known when it is founded." },
+    { id: "hearth-system", kind: "system", name: "Hearthkeeper System", intro: 18, authority: 2, grade: "C", description: "A small hearth system that the Midnight Inn System later swallowed." },
+    { id: "ash-system", kind: "system", name: "Ashfall System", intro: 26, authority: 4, grade: "B", description: "A rival system destroyed in the Inn's early years." },
+    { id: "warden-system", kind: "system", name: "Warden System", intro: 34, authority: 6, grade: "A", description: "An authority-graded system bonded to Vane." },
+    { id: "inn-resorts", kind: "system", name: "Midnight Resorts", intro: 50, authority: 5, grade: "A-", description: "The resort branch of the Midnight Inn System." },
+    { id: "q-hearth", kind: "quest", name: "Keep the Hearth Lit", intro: 4, questBadge: "Chain", rewardRank: "A", timeLimit: "Until the winter breaks", rewards: ["Hearth token"], achievements: ["First Innkeeper"], failure: "The Inn loses its licence and Lex loses the deed.", description: "Hold the Midnight Inn open through the whole of the first winter. Three tasks make up the chain." },
+    { id: "q-stock", kind: "quest", name: "Stock the Cellar", intro: 4, rewardRank: "C", timeLimit: "Seven days", rewards: ["40 contribution points"], description: "Fill the Inn's cellar before the roads close." },
+    { id: "q-cook", kind: "quest", name: "Find a Cook", intro: 8, rewardRank: "B", rewards: ["Mary's service contract"], failure: "The kitchen stays shut for a month.", description: "Hire someone who can feed a full house." },
+    { id: "q-winter", kind: "quest", name: "Survive the Long Frost", intro: 18, questBadge: "Urgent", timeLimit: "Ninety days", failure: "Authority falls by one and the Hearthkeeper System is recalled.", description: "Keep every guest alive until the thaw." },
+    { id: "q-envoy", kind: "quest", name: "Answer the Jotun Envoy", intro: 26, questBadge: "Hidden", rewardRank: "S", rewards: ["Warden System access", "Jotun safe-conduct"], achievements: ["Spoken For"], failure: "The Jotun Empire marks the Inn as hostile.", description: "Meet Envoy Luthor without giving the Inn away. Nobody was told this quest existed." },
+    { id: "q-ledger", kind: "quest", name: "Balance the Winter Ledger", intro: 30, timeLimit: "Before the spring audit", description: "A quest with no reward stated — the ledger simply has to balance." },
     { id: "lex", kind: "character", name: "Lex", gender: "male", mentioned: 1, appeared: 1, description: "Founder and central figure of the Midnight Inn." },
     { id: "mary", kind: "character", name: "Mary", gender: "female", mentioned: 8, appeared: 8, description: "An administrator and adviser within the Inn." },
     { id: "gerald", kind: "character", name: "Gerald", gender: "male", mentioned: 18, appeared: 22, description: "A charming host known for welcoming guests." },
     { id: "luthor", kind: "character", name: "Luthor", gender: "male", mentioned: 18, appeared: 18, description: "A reliable but dangerous member of the Inn." },
-    { id: "eclipse", kind: "character", name: "Eclipse", gender: "female", mentioned: 45, appeared: 58, description: "An ancient primordial queen whose identity resists perception." }
+    { id: "eclipse", kind: "character", name: "Eclipse", gender: "female", mentioned: 45, appeared: 58, description: "An ancient primordial queen whose identity resists perception." },
+    { id: "vane", kind: "character", name: "Vane", gender: "female", mentioned: 30, appeared: 33, description: "A warden of Stonevale, bonded to the Warden System." },
+    { id: "halden", kind: "character", name: "Halden", gender: "male", mentioned: 36, appeared: 36, description: "A courier whose body is found before he is ever seen alive." },
+    { id: "eclipse-veil", kind: "character", name: "The Veil", gender: "female", mentioned: 62, appeared: 62, description: "An avatar Eclipse wears when she walks outside the Garden." }
   ],
   events: [
     { id: "e1", chapter: 1, type: "cultivation", source: "lex", level: 1, value: "Mortal", description: "Lex is recorded at Mortal cultivation." },
@@ -93,8 +109,59 @@ const sampleData = {
     { id: "hier-1", chapter: 1, order: 3, type: "location_parent", source: "inn-lobby", location: "inn-estate", action: "add", description: "The Midnight Inn Lobby is inside the Midnight Inn Estate." },
     { id: "hier-2", chapter: 1, order: 3, type: "location_parent", source: "inn-estate", location: "stonevale", action: "add", description: "The Midnight Inn Estate stands inside the city of Stonevale." },
     { id: "hier-3", chapter: 1, order: 3, type: "location_parent", source: "stonevale", location: "verdan", action: "add", description: "Stonevale is a city of the world Verdan." },
-    { id: "hier-4", chapter: 1, order: 3, type: "location_parent", source: "verdan", location: "azure-realm", action: "add", description: "Verdan is one of the worlds held by the Azure Mortal Realm." },
+    { id: "hier-4", chapter: 1, order: 3, type: "location_parent", source: "verdan", location: "azure-realm", action: "add", ghost: true, description: "Verdan is one of the worlds held by the Azure Mortal Realm." },
     { id: "hier-5", chapter: 45, order: 3, type: "location_parent", source: "garden-heart", location: "garden-realm", action: "add", description: "The Heart of the Garden lies at the centre of the Primordial Garden Realm." },
+    { id: "sys-1", chapter: 1, order: 5, type: "system_host", source: "inn-system", target: "lex", value: "Host", action: "add", description: "The Midnight Inn System bonds to Lex as its host." },
+    { id: "sys-2", chapter: 12, order: 1, type: "system_parent", source: "inn-taverns", target: "inn-system", action: "add", description: "Midnight Taverns becomes a subsystem of the Midnight Inn System." },
+    { id: "sys-3", chapter: 12, order: 2, type: "system_location", source: "inn-taverns", location: "inn-lobby", value: "Tavern", action: "open", description: "Midnight Taverns opens in the Midnight Inn Lobby." },
+    { id: "sys-4", chapter: 30, order: 5, type: "system_location", source: "inn-taverns", location: "stonevale", value: "Tavern", action: "open", description: "Midnight Taverns opens a second house in Stonevale." },
+    { id: "sys-7", chapter: 18, order: 6, type: "system_host", source: "hearth-system", target: "lex", value: "Host", action: "add", description: "The Hearthkeeper System bonds to Lex." },
+    { id: "sys-8", chapter: 26, order: 6, type: "system_merge", source: "hearth-system", target: "inn-system", action: "add", description: "The Hearthkeeper System merges into the Midnight Inn System." },
+    { id: "sys-9", chapter: 26, order: 7, type: "system_host", source: "ash-system", target: "luthor", value: "Host", action: "add", description: "The Ashfall System bonds to Luthor." },
+    { id: "sys-10", chapter: 30, order: 6, type: "system_end", source: "ash-system", value: "Burned out in the Jotun campaign", action: "add", description: "The Ashfall System is destroyed." },
+    { id: "sys-5", chapter: 50, order: 1, type: "system_parent", source: "inn-resorts", target: "inn-system", action: "add", description: "Midnight Resorts becomes a subsystem of the Midnight Inn System." },
+    { id: "sys-6", chapter: 50, order: 2, type: "system_location", source: "inn-resorts", location: "garden-realm", value: "Resort", action: "open", description: "Midnight Resorts opens inside the Primordial Garden Realm." },
+    { id: "age-1", chapter: 5, order: 6, type: "age", source: "lex", value: "Around thirty", description: "Lex is described as being around thirty." },
+    { id: "note-1", chapter: 15, order: 1, type: "note", source: "inn", description: "The Inn survives its first hard winter without losing a guest." },
+    { id: "dn-1", chapter: 30, order: 7, type: "display_name", source: "luthor", value: "Envoy Luthor", description: "Luthor is publicly styled Envoy Luthor once the Jotun posting is announced." },
+    { id: "vane-1", chapter: 30, order: 8, type: "mention", source: "vane", description: "A warden named Vane is mentioned." },
+    { id: "vane-2", chapter: 33, order: 1, type: "appearance", source: "vane", description: "Vane appears alive." },
+    { id: "vane-3", chapter: 33, order: 2, type: "status", source: "vane", value: "alive", description: "Vane is alive." },
+    { id: "auth-1", chapter: 33, order: 3, type: "cultivation", source: "vane", level: 5, value: "Golden Core", description: "Vane is recorded at Golden Core cultivation." },
+    { id: "vane-4", chapter: 33, order: 4, type: "movement", source: "vane", location: "stonevale", description: "Vane takes up her post in Stonevale." },
+    { id: "vsys-1", chapter: 34, order: 1, type: "system_host", source: "warden-system", target: "vane", value: "Host", action: "add", description: "The Warden System bonds to Vane." },
+    { id: "vsys-2", chapter: 34, order: 2, type: "system_location", source: "warden-system", location: "stonevale", value: "Watchpost", action: "open", description: "The Warden System opens a watchpost in Stonevale." },
+    { id: "corpse-1", chapter: 36, order: 1, type: "corpse_appearance", source: "halden", description: "Halden's body is found in Stonevale before anyone has seen him alive." },
+    { id: "corpse-2", chapter: 36, order: 2, type: "movement", source: "halden", location: "stonevale", description: "Halden's body is recovered in Stonevale." },
+    { id: "gender-1", chapter: 38, order: 1, type: "gender", source: "vane", value: "female", description: "Vane, taken for a man behind the warden's mask, is confirmed to be a woman." },
+    { id: "auth-2", chapter: 39, order: 1, type: "cultivation", source: "vane", level: 6, value: "Nascent Soul", description: "Vane reaches Nascent Soul cultivation." },
+    { id: "veil-1", chapter: 62, order: 1, type: "mention", source: "eclipse-veil", description: "A figure called the Veil is mentioned." },
+    { id: "veil-2", chapter: 62, order: 2, type: "appearance", source: "eclipse-veil", description: "The Veil appears alive." },
+    { id: "veil-3", chapter: 62, order: 3, type: "status", source: "eclipse-veil", value: "alive", description: "The Veil is alive." },
+    { id: "ip-1", chapter: 62, order: 4, type: "identity_parent", source: "eclipse-veil", target: "eclipse", value: "Avatar", action: "add", description: "The Veil is revealed to be an avatar Eclipse wears outside the Garden." },
+    { id: "rank-1", chapter: 20, order: 1, type: "system_rank", source: "inn-system", grade: "S+", description: "The Midnight Inn System is regraded S+ after the winter." },
+    { id: "rank-2", chapter: 28, order: 1, type: "system_rank", source: "inn-system", authority: 11, description: "The Midnight Inn System's authority rises to 11." },
+    { id: "rank-3", chapter: 31, order: 1, type: "system_rank", source: "ash-system", authority: 2, grade: "D", description: "The Ashfall System is broken down to authority 2, grade D, before it is destroyed." },
+    { id: "rank-4", chapter: 37, order: 1, type: "system_rank", source: "warden-system", authority: 9, grade: "Death", description: "The Warden System is raised to authority 9 and regraded Death, the second-highest grade anyone has seen." },
+    { id: "rank-5", chapter: 24, order: 1, type: "system_rank", source: "inn-taverns", authority: 3, grade: "B", description: "The Midnight Taverns are rated for the first time: authority 3, grade B." },
+    { id: "rank-6", chapter: 25, order: 1, type: "system_rank", source: "hearth-system", grade: null, description: "The Hearthkeeper System is left ungraded in the days before the Inn swallows it." },
+    { id: "qa-1", chapter: 4, order: 1, type: "quest_issue", source: "q-hearth", target: "lex", action: "issue", description: "Keep the Hearth Lit is issued to Lex." },
+    { id: "qa-2", chapter: 4, order: 2, type: "quest_issue", source: "q-stock", target: "lex", action: "issue", description: "Stock the Cellar is issued to Lex." },
+    { id: "qa-3", chapter: 4, order: 3, type: "quest_chain", source: "q-stock", target: "q-hearth", action: "add", description: "Stock the Cellar is part of the Keep the Hearth Lit chain." },
+    { id: "qa-4", chapter: 6, order: 1, type: "quest_progress", source: "q-stock", progress: 45, description: "The cellar is nearly half filled." },
+    { id: "qa-5", chapter: 8, order: 1, type: "quest_issue", source: "q-cook", target: "lex", action: "issue", description: "Find a Cook is issued to Lex." },
+    { id: "qa-6", chapter: 8, order: 2, type: "quest_chain", source: "q-cook", target: "q-hearth", action: "add", description: "Find a Cook is part of the Keep the Hearth Lit chain." },
+    { id: "qa-7", chapter: 9, order: 1, type: "quest_end", source: "q-stock", action: "complete", description: "The cellar is full; Stock the Cellar is completed." },
+    { id: "qa-8", chapter: 11, order: 1, type: "quest_end", source: "q-cook", action: "complete", description: "Mary takes the kitchen; Find a Cook is completed." },
+    { id: "qa-9", chapter: 18, order: 1, type: "quest_issue", source: "q-winter", target: "lex", action: "issue", description: "Survive the Long Frost is issued to Lex." },
+    { id: "qa-10", chapter: 18, order: 2, type: "quest_chain", source: "q-winter", target: "q-hearth", action: "add", description: "Survive the Long Frost is part of the Keep the Hearth Lit chain." },
+    { id: "qa-11", chapter: 22, order: 6, type: "quest_progress", source: "q-winter", progress: 30, description: "A month of the frost is behind them." },
+    { id: "qa-12", chapter: 26, order: 8, type: "quest_issue", source: "q-envoy", target: "lex", action: "issue", ghost: true, description: "Answer the Jotun Envoy is issued to Lex, though no one is told." },
+    { id: "qa-13", chapter: 30, order: 1, type: "quest_issue", source: "q-ledger", action: "issue", description: "Balance the Winter Ledger is issued, to nobody in particular." },
+    { id: "qa-14", chapter: 31, order: 2, type: "quest_progress", source: "q-winter", progress: 72, description: "The worst of the frost has passed." },
+    { id: "qa-15", chapter: 34, order: 1, type: "quest_end", source: "q-envoy", action: "fail", description: "Luthor leaves unanswered; Answer the Jotun Envoy is failed." },
+    { id: "talk-1", chapter: 22, order: 5, type: "conversation", source: "lex", characters: ["lex","mary","gerald"], location: "inn-lobby", description: "Lex, Mary, and Gerald settle how the Inn will run its front of house." },
+    { id: "talk-2", chapter: 58, order: 4, type: "conversation", source: "lex", characters: ["lex","gerald","eclipse"], location: "garden-realm", description: "Lex, Gerald, and Eclipse speak in the Primordial Garden Realm." },
     { id: "home-1", chapter: 1, order: 4, type: "residency", source: "lex", location: "inn-estate", value: "Home", action: "begin", description: "Lex makes the Midnight Inn Estate his home." },
     { id: "home-2", chapter: 8, order: 4, type: "residency", source: "mary", location: "inn-estate", value: "Resident staff", action: "begin", description: "Mary begins residing at the Midnight Inn Estate as resident staff." },
     { id: "home-3", chapter: 22, order: 4, type: "residency", source: "gerald", location: "inn-estate", value: "Resident staff", action: "begin", description: "Gerald begins residing at the Midnight Inn Estate as resident staff." },
@@ -123,14 +190,15 @@ let data = deepClone(sampleData);
 let selectedId = null;
 let openProfileId = null;
 let locationPovId = null;
-let expandedLocations = new Set();
-let lastLocationView = null;
+let expandedLocations = new Set(), expandedSystems = new Set();
+let lastLocationView = null, lastSystemView = null;
 let collapsingLocationId = null, locationCollapseTimer = null;
 let emergingLocations = new Set(), emergeTimer = null;
 let activePodIds = [], activePodKey = "", retiringPodIds = [], podRetireTimer = null;
 let currentChapter = 1;
 let currentActionIndex = 0;
 let chapterAutoplayTimer=null,expandedChapter=null;
+let eventScrollHold=false,autoplayHeldByHover=false;
 let activeVolume = "";
 let activeView = "graph";
 let wheelDelta = 0;
@@ -162,24 +230,26 @@ app.innerHTML = `
             <div class="field timeline-field"><span class="chapter-label"><span>Chapter <strong id="chapter-value">80</strong></span><span id="event-position"></span><button type="button" id="collapse-chapter-events" class="collapse-chapter-events" hidden>Collapse events ×</button></span><div class="range-row"><button class="step" id="previous" aria-label="Previous stop">−</button><div class="main-range-wrap"><input id="timeline" type="range"><div id="timeline-marks" class="main-timeline-marks"></div></div><button class="step" id="next" aria-label="Next stop">+</button></div></div>
           </div>
           <div class="graph-layout" id="graph-layout">
-            <div class="graph-card"><svg id="graph" viewBox="0 0 720 520" role="img" aria-label="Chapter-aware novel relationship graph"></svg><div id="slider-onboarding" class="slider-onboarding" hidden><span class="slider-pointer" aria-hidden="true">↑</span><strong>Use the slider</strong></div><div class="graph-zoom-controls"><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-reset" aria-label="Reset view">⟲</button><button type="button" id="zoom-out" aria-label="Zoom out">−</button></div></div>
+            <div class="graph-card"><svg id="graph" viewBox="0 0 720 520" role="img" aria-label="Chapter-aware novel relationship graph"></svg><div id="edge-tip" class="edge-tip" role="status" hidden></div><div id="slider-onboarding" class="slider-onboarding" hidden><span class="slider-pointer" aria-hidden="true">↑</span><strong>Use the slider</strong></div><div class="graph-zoom-controls"><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-reset" aria-label="Reset view">⟲</button><button type="button" id="zoom-out" aria-label="Zoom out">−</button></div></div>
             <aside class="side">
               <div class="mobile-panel-tabs" role="tablist" aria-label="Graph information">
                 <button class="mobile-panel-tab active" data-panel="info" role="tab">Info</button>
                 <button class="mobile-panel-tab" data-panel="events" role="tab">Events</button>
+                <button class="mobile-panel-tab" data-panel="quests" role="tab">Quests</button>
                 <button class="mobile-panel-tab" data-panel="legend" role="tab">Legend</button>
               </div>
               <section id="summary" class="side-card summary mobile-active" data-panel-content="info"><div class="empty">Select a character, organization, or location. Double-click a node for full details.</div></section>
-              <section class="side-card events-card" data-panel-content="events"><div class="events-head"><strong id="events-title">Chapter events</strong><span id="events-count"></span></div><ul id="events-list" class="events-list"></ul></section>
+              <section class="side-card events-card" data-panel-content="events"><div class="events-head"><strong id="events-title">Chapter events</strong><span id="events-count"></span><span id="events-hold" class="events-hold" hidden>Paused</span></div><ul id="events-list" class="events-list"></ul></section>
+              <section class="side-card quests-card" data-panel-content="quests" aria-label="Quests"><div class="events-head"><strong>Quests</strong><span id="quests-count"></span></div><div id="quests-list" class="quests-list"></div></section>
               <section class="side-card mobile-legend" data-panel-content="legend" aria-label="Mobile graph legend">
-                <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span>
+                <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span>
                 <span><i class="line-key friendly"></i>Friendly</span><span><i class="line-key hostile"></i>Hostile</span><span><i class="line-key neutral"></i>Neutral / awareness</span><span><i class="line-key clone"></i>Clone / avatar</span><span><i class="line-key member"></i>Membership</span><span><i class="line-key location"></i>Travel / activity</span><span><i class="line-key residence"></i>Residence</span><span><i class="line-key hierarchy"></i>Inside location</span><span><i class="line-key organization-location"></i>Organization place</span>
                 <span><i class="ring mentioned"></i>Mentioned only</span><span><i class="ring unknown"></i>Unknown status</span><span><i class="ring"></i>Alive</span><span><i class="ring dead"></i>Dead</span><span><i class="diamond"></i>Alias count</span><span><i class="corona-key"></i>Cultivation level</span>
               </section>
             </aside>
           </div>
           <div class="legend desktop-legend" aria-label="Graph legend">
-            <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span>
+            <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span>
             <span><i class="line-key friendly"></i>Friendly</span><span><i class="line-key hostile"></i>Hostile</span><span><i class="line-key neutral"></i>Neutral / awareness arrow</span><span><i class="line-key clone"></i>Clone / avatar</span><span><i class="line-key member"></i>Membership</span><span><i class="line-key location"></i>Travel / activity</span><span><i class="line-key residence"></i>Residence</span><span><i class="line-key hierarchy"></i>Inside location</span><span><i class="line-key organization-location"></i>Organization place</span>
             <span><i class="ring mentioned"></i>Mentioned only</span><span><i class="ring unknown"></i>Unknown status</span><span><i class="ring"></i>Alive</span><span><i class="ring dead"></i>Dead</span><span><i class="diamond"></i>Alias count</span><span><i class="corona-key"></i>Cultivation level</span>
           </div>
@@ -215,26 +285,34 @@ app.innerHTML = `
           </form>
           <div class="admin-grid">
             <form id="entity-form" class="admin-card"><div class="admin-card-heading"><h2 id="entity-form-title">Create character, organization, or location</h2><div class="manage-row"><input id="manage-entity" list="admin-entity-options" placeholder="Load an existing identity"><button class="button ghost" id="load-entity" type="button">Load</button></div></div><p id="creation-edit-note" class="event-edit-mode-note" hidden><strong>Editing a creation-generated row.</strong> These facts were made by this identity form, so saving here updates the original linked row instead of creating a chapter event.</p><input name="editingId" type="hidden"><input name="editingCreationEventId" type="hidden"><div class="form-grid">
-              <label class="field"><span>Type</span><select name="kind"><option value="character">Character</option><option value="organization">Organization</option><option value="location">Location</option></select></label>
+              <label class="field"><span>Type</span><select name="kind"><option value="character">Character</option><option value="organization">Organization</option><option value="location">Location</option><option value="system">System</option><option value="quest">Quest</option></select></label>
               <label class="field"><span>Initial public name or descriptor</span><input name="name" required placeholder="E.g. Unknown Manufacturer"><small class="field-note">You may also paste <code>[[Visible name|https://fandom-page]]</code>; it will be separated automatically.</small></label>
               <label class="field" id="entity-gender-field"><span>Gender</span><select name="gender"><option value="unknown">Unknown</option><option value="female">Female</option><option value="male">Male</option></select></label>
+              <label class="field" id="entity-authority-field" hidden><span>Authority (optional)</span><input name="authority" list="system-unknown-options" inputmode="numeric" maxlength="12" placeholder="7" /><small class="field-note">A plain number, nothing else. Leave it blank if this system has no authority or none has been revealed. This is the starting authority; use a rank action to change it later.</small></label>
+              <label class="field" id="entity-grade-field" hidden><span>Grade (optional)</span><input name="grade" list="system-grade-options" maxlength="7" placeholder="S" /><datalist id="system-grade-options"><option value="Divine"></option><option value="Death"></option><option value="Life"></option><option value="Unknown"></option></datalist><datalist id="system-unknown-options"><option value="Unknown"></option></datalist><small class="field-note">One to three letters with an optional + or − — S, A+, SS, SSS− — or one of the special grades: Divine, Death, Life. Leave it blank if this system is ungraded or its grade is unknown. This is the starting grade; use a rank action to change it later.</small></label>
+              <label class="field" id="entity-quest-badge-field" hidden><span>Quest badge (optional)</span><input name="questBadge" list="quest-badge-options" maxlength="24" placeholder="Hidden" /><datalist id="quest-badge-options"><option value="Hidden"></option><option value="World"></option><option value="Chain"></option><option value="Daily"></option><option value="Urgent"></option><option value="Punishment"></option></datalist><small class="field-note">A short word for a special quest, shown as a badge in the quest tab. Leave it blank for an ordinary quest.</small></label>
+              <label class="field" id="entity-quest-reward-rank-field" hidden><span>Reward rank (optional)</span><input name="rewardRank" list="system-grade-options" maxlength="9" placeholder="A" /><small class="field-note">The same shape as a system grade — one to three letters with an optional + or −, or Divine, Death, Life. Leave it blank when the rank is not stated.</small></label>
+              <label class="field" id="entity-quest-time-limit-field" hidden><span>Time limit (optional)</span><input name="timeLimit" maxlength="80" placeholder="Three days" /><small class="field-note">Written however the story writes it — a count of days, a deadline, or nothing at all.</small></label>
+              <label class="field" id="entity-quest-rewards-field" hidden><span>Rewards (optional)</span><input name="rewards" maxlength="240" placeholder="200 contribution points, Hearth token" /><small class="field-note">Separate them with commas. A sub-quest can carry its own rewards, and many quests carry none.</small></label>
+              <label class="field" id="entity-quest-achievements-field" hidden><span>Achievements (optional)</span><input name="achievements" maxlength="240" placeholder="First Innkeeper" /><small class="field-note">Separate them with commas.</small></label>
+              <label class="field" id="entity-quest-failure-field" hidden><span>On failure (optional)</span><input name="failure" maxlength="240" placeholder="Authority falls by one" /><small class="field-note">What the punishment is if the quest is failed.</small></label>
               <label class="field" id="entity-location-type-field" hidden><span>Place level / type</span><select name="locationType"><option value="Universe">Universe</option><option value="Realm">Realm</option><option value="World">World / planet</option><option value="Continent">Continent</option><option value="Country">Country / empire</option><option value="State">State / province</option><option value="City">City / settlement</option><option value="District">District</option><option value="Site" selected>Site / estate</option><option value="Building">Building</option><option value="Room">Room / area</option><option value="Other">Other</option></select></label>
               <label class="field" id="entity-mentioned-field"><span>First mentioned chapter (optional)</span><input name="mentioned" type="number" min="1" placeholder="Leave blank if they appear directly"></label>
               <label class="field" id="entity-appeared-field"><span id="entity-appeared-label">First appearance chapter (optional)</span><input name="appeared" type="number" min="1" placeholder="Leave blank if they have not appeared yet"></label>
-              <label class="field" id="entity-initial-cultivation-field"><span>Known cultivation when introduced (optional)</span><select name="initialLevel"><option value="">Unknown / not revealed</option>${CULTIVATION_LEVELS.map((name,index)=>`<option value="${index+1}">${name}</option>`).join("")}</select><small class="field-note">Unknown adds no cultivation ring. Choose Mortal only when the novel confirms it.</small></label>
+              <label class="field" id="entity-initial-track-field"><span>Progression track</span><select name="initialTrack"></select></label><label class="field" id="entity-initial-cultivation-field"><span>Known rank when introduced (optional)</span><select name="initialLevel"><option value="">Unknown / not revealed</option>${CULTIVATION_LEVELS.map((name,index)=>`<option value="${index+1}">${name}</option>`).join("")}</select><small class="field-note">Unknown adds no cultivation ring. Choose Mortal only when the novel confirms it.</small></label>
               <label class="field" id="entity-initial-cultivation-alias-field"><span>Equivalent path title (optional)</span><input name="initialCultivationAlias" placeholder="E.g. Earthen Deity"><small class="field-note">Synchronized to the canonical tier selected above.</small></label>
               <label class="field span-2" id="entity-creation-source-field"><span>Introduction chapter source URL / citation (optional)</span><input name="creationSourceUrl" type="url" placeholder="https://www.webnovel.com/book/…"><small class="field-note">Applied to the appearance and initial-cultivation facts generated by this creation record.</small></label>
               <label class="field span-2" id="entity-creation-description-field" hidden><span>Selected creation-row wording</span><textarea name="creationEventDescription" rows="3"></textarea><small class="field-note">This changes only the creation row you clicked. Name, chapter, presence and initial cultivation remain controlled by the fields above.</small></label>
               <label class="field span-2"><span>Description</span><textarea name="description" rows="3" placeholder="Short spoiler-aware profile"></textarea></label>
             </div><p class="form-help" id="entity-help">Presence: enter First mentioned only when the character is named before appearing. Enter First appearance when they physically enter the story. Either field can be used by itself.</p><div class="form-actions"><button class="button danger" id="delete-entity" type="button" hidden>Delete identity</button><button class="button ghost" id="cancel-entity-edit" type="button" hidden>Cancel edit</button><button class="button primary" id="save-entity" type="submit">Create and add to graph</button></div></form>
             <form id="event-form" class="admin-card"><h2 id="event-form-title">Add chapter changes</h2><p id="event-edit-mode-note" class="event-edit-mode-note" hidden><strong>Editing this exact saved event.</strong> Saving replaces only the row you clicked; it does not create a new event or edit the identity form.</p><input name="editingId" type="hidden"><div class="form-grid">
-              <label class="field"><span>Event type</span><select name="type"><option value="mention">Mentioned in this chapter</option><option value="appearance">Appears alive in this chapter</option><option value="corpse_appearance">Dead body / corpse appears</option><option value="display_name">Public/display name changes</option><option value="alias">Alias revealed</option><option value="identity_parent">Clone / avatar / identity hierarchy</option><option value="movement">Character travels / changes location</option><option value="residency">Character residence / long-term base</option><option value="location_parent">Location placed inside another location</option><option value="cultivation">Cultivation change</option><option value="status">Status becomes known or changes</option><option value="gender">Gender becomes known or changes</option><option value="age">Age stated or changes</option><option value="awareness">Awareness / mentioned by</option><option value="meeting">Meeting</option><option value="relationship">Relationship change</option><option value="membership">Organization membership</option><option value="organization_location">Organization headquarters / branch</option><option value="note">Story event</option></select></label>
+              <label class="field"><span>Event type</span><select name="type"><option value="mention">Mentioned in this chapter</option><option value="appearance">Appears alive in this chapter</option><option value="corpse_appearance">Dead body / corpse appears</option><option value="display_name">Public/display name changes</option><option value="alias">Alias revealed</option><option value="identity_parent">Clone / avatar / identity hierarchy</option><option value="movement">Character travels / changes location</option><option value="residency">Character residence / long-term base</option><option value="location_parent">Location placed inside another location</option><option value="cultivation">Cultivation change</option><option value="status">Status becomes known or changes</option><option value="gender">Gender becomes known or changes</option><option value="age">Age stated or changes</option><option value="awareness">Awareness / mentioned by</option><option value="meeting">Meeting</option><option value="conversation">Conversation between characters</option><option value="relationship">Relationship change</option><option value="membership">Organization membership</option><option value="organization_location">Organization headquarters / branch</option><option value="system_host">System bonds to a host</option><option value="system_parent">Subsystem of another system</option><option value="system_location">System operates at a location</option><option value="system_rank">System authority / grade changes</option><option value="system_merge">System merges into another system</option><option value="system_end">System is destroyed</option><option value="quest_issue">Quest is issued</option><option value="quest_progress">Quest progress changes</option><option value="quest_end">Quest completed, failed, or abandoned</option><option value="quest_chain">Quest belongs to a chain</option><option value="note">Story event</option></select></label>
               <label class="field"><span>Chapter</span><input name="chapter" type="number" min="1" value="80" required></label>
               <label class="field" id="event-source-field"><span id="event-source-label">Character</span><input name="source" list="admin-entity-options" required placeholder="Type a name or alias"><datalist id="admin-entity-options"></datalist></label>
               <label class="field" id="event-location-field"><span id="event-location-label">Where this happened (optional)</span><input name="location" list="location-options" placeholder="Type a location"><datalist id="location-options"></datalist></label>
-              <label class="field" id="event-target-field"><span id="event-target-label">Second character</span><input name="target" list="admin-entity-options"></label>
+              <label class="field" id="event-target-field"><span id="event-target-label">Second character</span><input name="target" list="admin-entity-options"></label><label class="field" id="event-authority-field"><span>New authority</span><input name="authority" list="system-unknown-options" inputmode="numeric" maxlength="12" placeholder="8" /><small class="field-note">Leave blank to keep the authority it already has. Write unknown to take it away entirely.</small></label><label class="field" id="event-grade-field"><span>New grade</span><input name="grade" list="system-grade-options" maxlength="9" placeholder="S+" /><small class="field-note">Leave blank to keep the grade it already has. Write unknown to take it away entirely.</small></label><label class="field" id="event-progress-field"><span>Progress %</span><input name="progress" inputmode="numeric" maxlength="3" placeholder="40" /><small class="field-note">Nought to a hundred. A chain quest with no figure of its own takes the average of the quests inside it.</small></label><label class="field checkbox-field" id="event-ghost-field"><input type="checkbox" name="ghost" /><span>Ghost action — change the world without appearing in the list</span></label><label class="field" id="event-characters-field"><span>Everyone in the conversation</span><input name="characters" list="admin-entity-options" placeholder="Lex, Mary, Gerald" /><small class="field-note">Separate names with commas. One action covers the whole conversation, however many are in it.</small></label>
               <label class="field" id="event-value-field"><span id="event-value-label">Value</span><input name="value"><datalist id="location-role-options"><option value="Headquarters"></option><option value="Branch"></option><option value="Base"></option><option value="Territory"></option><option value="Outpost"></option></datalist><datalist id="residence-role-options"><option value="Home"></option><option value="Permanent resident"></option><option value="Resident staff"></option><option value="Long-term guest"></option><option value="Camp"></option><option value="Domain"></option></datalist></label>
-              <label class="field" id="event-level-field"><span>Canonical cultivation tier</span><select name="level"><option value="">Choose a tier…</option>${CULTIVATION_LEVELS.map((name,index)=>`<option value="${index+1}">${index+1}. ${name}</option>`).join("")}</select><small class="field-note">The tier controls graph size and progression automatically.</small></label>
+              <label class="field" id="event-track-field"><span>Progression track</span><select name="track"></select></label><label class="field" id="event-level-field"><span>Rank on that track</span><select name="level"><option value="">Choose a rank…</option></select><small class="field-note">The rank controls graph size and progression automatically.</small></label>
               <label class="field" id="event-action-field"><span id="event-action-label">Organization membership change</span><select name="action"><option value="reveal">Existing membership is revealed</option><option value="join">Joins in this chapter</option><option value="leave">Leaves / membership ends</option></select></label>
               <label class="field span-2"><span>Additional chapter details (optional)</span><textarea name="description" rows="3" placeholder="Example: Lex obtained [[Protos Energy|https://wiki.example.com/protos-energy]]"></textarea></label>
               <label class="field span-2"><span>Chapter source URL / citation (optional)</span><input name="sourceUrl" type="url" placeholder="https://the-innkeeper.fandom.com/wiki/Chapter_1"><small class="field-note">Shown publicly as a clickable “Chapter 1 ↗” citation beside this event.</small></label>
@@ -263,6 +341,17 @@ app.innerHTML = `
             </div>
           </form>
           <section class="admin-card data-card"><div class="summary-title"><div><h2>All identities</h2><small>Characters, organizations, and locations exist independently from their events.</small></div><span class="chip" id="entity-count"></span></div><div class="table-wrap entity-data-table"><table><thead><tr><th>Name</th><th>Type</th><th>Introduced</th><th>Events</th><th></th></tr></thead><tbody id="entity-table"></tbody></table></div></section>
+          <form id="track-form" class="admin-card"><div class="admin-card-heading"><h2>Progression tracks</h2></div>
+            <p class="field-note">A track is just an ordered ladder of ranks — cultivation tiers, an authority grade from G to S, anything. Lowest first, one per line. Characters can be on different tracks.</p>
+            <div id="track-rows" class="track-rows"></div>
+            <div class="editor-actions"><button type="button" class="button ghost" id="add-track">Add a track</button><button class="button" type="submit">Save tracks</button></div>
+          </form>
+          <section class="admin-card data-card" id="order-card"><div class="summary-title"><div><h2>Chapter running order</h2><small>Order only matters inside a chapter, so this edits one chapter at a time — a thousand more chapters do not make this list longer.</small></div><span class="chip" id="order-count"></span></div>
+            <div class="order-controls"><button type="button" class="button ghost" id="order-prev">◀ Earlier chapter</button><label class="field"><span>Chapter</span><input id="order-chapter" type="number" min="1" inputmode="numeric" /></label><button type="button" class="button ghost" id="order-next">Later chapter ▶</button></div>
+            <p class="order-position" id="order-position"></p>
+            <ol class="order-list" id="order-list"></ol>
+            <p class="order-hint">Drag a row by its handle, or use the arrows. The slider plays a chapter's actions in exactly this order.</p>
+          </section>
           <section class="admin-card data-card"><div class="summary-title"><h2>All chapter events</h2><span class="chip" id="data-count"></span></div><div class="table-wrap event-data-table"><table><thead><tr><th>Chapter</th><th>Type</th><th>Entities</th><th>Description</th><th></th></tr></thead><tbody id="event-table"></tbody></table></div></section>
         </div>
       </section>
@@ -290,13 +379,40 @@ function migrateCultivationData(stored){
   (stored.events||[]).filter(event=>event.type==="cultivation").forEach(event=>{const mapped=legacyByName[String(event.value||"").trim().toLowerCase()];event.level=mapped?.level||legacyByLevel[Number(event.level)]||Math.max(1,Math.min(CULTIVATION_LEVELS.length,Number(event.level)||1));if(mapped)event.value=mapped.value;});
   stored.cultivationLevels=deepClone(CULTIVATION_LEVELS);stored.schemaVersion=5;return stored;
 }
-function cultivationCanonical(event){return CULTIVATION_LEVELS[Math.max(0,(Number(event?.level)||1)-1)]||"Unknown tier";}
+// Progression ladders are data, not code: a story can run cultivation tiers, an authority grade
+// from G to S, or anything else, and each ladder is whatever list the author typed in.
+const DEFAULT_TRACK_ID = "cultivation";
+// Authority is a plain number with no ceiling, so it reads as size rather than as a tier.
+function systemGlyphRadius(state){const authority=Number(state?.authority);return 26+Math.min(16,Math.max(0,Number.isFinite(authority)?authority:0)**.6*3.4);}
+// A grade is a short rank — one to three characters for most systems — or one of the named
+// gradings that sit outside the letters entirely.
+const SPECIAL_GRADES = ["divine","death","life"];
+function isSpecialGrade(grade){return SPECIAL_GRADES.includes(String(grade||"").trim().toLowerCase());}
+// Neither number nor grade is compulsory. A system can be born without one, lose it when it is
+// swallowed by something bigger, or simply never have had it revealed — so there has to be a way
+// to say "not this" as well as a way to leave a field alone.
+const UNKNOWN_WORDS = ["unknown","none","ungraded","no grade","-","—","–","?"];
+function meansUnknown(text){return UNKNOWN_WORDS.includes(String(text??"").trim().toLowerCase());}
+function gradeIsValid(grade){const text=String(grade||"").trim();return !text||meansUnknown(text)||isSpecialGrade(text)||/^[A-Za-z]{1,3}[+-]?$/.test(text);}
+// A rank that is absent and a rank that is unknown read the same on the graph: there isn't one.
+function rankWord(value){const text=String(value??"").trim();return text===""?"none":text;}
+function authorityIsValid(authority){const text=String(authority??"").trim();return !text||meansUnknown(text)||Number.isFinite(Number(text));}
+function progressionTracks(){
+  const list=(Array.isArray(data.progressionTracks)?data.progressionTracks:[]).filter(track=>track&&track.id&&Array.isArray(track.levels)&&track.levels.length);
+  return list.length?list:[{id:DEFAULT_TRACK_ID,name:"Cultivation",levels:deepClone(data.cultivationLevels?.length?data.cultivationLevels:CULTIVATION_LEVELS)}];
+}
+function trackFor(id){const tracks=progressionTracks();return tracks.find(track=>track.id===id)||tracks[0];}
+function trackLevels(id){return trackFor(id).levels;}
+function trackName(id){return trackFor(id).name||"Progression";}
+function trackIdOf(record){return record?.track&&progressionTracks().some(track=>track.id===record.track)?record.track:progressionTracks()[0].id;}
+function cultivationCanonical(event){const ladder=trackLevels(trackIdOf(event));return ladder[Math.max(0,(Number(event?.level)||1)-1)]||"Unknown tier";}
 function cultivationDisplay(event){return String(event?.value||"").trim()||cultivationCanonical(event);}
 function cultivationLabel(event){const shown=cultivationDisplay(event),canonical=cultivationCanonical(event);return shown.toLowerCase()===canonical.toLowerCase()?shown:`${shown} · equivalent to ${canonical}`;}
 
 function loadLocalData() {
+  let stored = null;
   try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!stored) return deepClone(sampleData);
     stored.entities = (stored.entities || []).map(item => {
       const sample = sampleData.entities.find(candidate => candidate.id === item.id);
@@ -325,9 +441,87 @@ function loadLocalData() {
       if(isBundledDemo){const entityIds=new Set(migrated.entities.map(item=>item.id));sampleData.entities.filter(item=>["azure-realm","verdan","stonevale","garden-heart"].includes(item.id)&&!entityIds.has(item.id)).forEach(item=>migrated.entities.push(deepClone(item)));const eventIds=new Set((migrated.events||[]).map(event=>event.id));sampleData.events.filter(event=>["hier-2","hier-3","hier-4","hier-5","loc-9"].includes(event.id)&&!eventIds.has(event.id)).forEach(event=>migrated.events.push(deepClone(event)));}
       migrated.schemaVersion=6;
     }
+    if((migrated.schemaVersion||1)<7){
+      if(!Array.isArray(migrated.progressionTracks)||!migrated.progressionTracks.length)
+        migrated.progressionTracks=[{id:DEFAULT_TRACK_ID,name:"Cultivation",levels:deepClone(migrated.cultivationLevels?.length?migrated.cultivationLevels:CULTIVATION_LEVELS)}];
+      (migrated.events||[]).forEach(event=>{if(event.type==="cultivation"&&!event.track)event.track=DEFAULT_TRACK_ID;});
+      migrated.schemaVersion=7;
+    }
+    if((migrated.schemaVersion||1)<8){
+      // Identified by its cast rather than its title, so a demo whose novel has been renamed
+      // still picks up new sample material.
+      const isBundledDemo=["lex","eclipse","inn-lobby"].every(id=>migrated.entities.some(item=>item.id===id));
+      if(isBundledDemo){
+        const entityIds=new Set(migrated.entities.map(item=>item.id));
+        sampleData.entities.filter(item=>["inn-system","inn-taverns","inn-resorts"].includes(item.id)&&!entityIds.has(item.id)).forEach(item=>migrated.entities.push(deepClone(item)));
+        const eventIds=new Set((migrated.events||[]).map(event=>event.id));
+        sampleData.events.filter(event=>/^(sys-|talk-)/.test(event.id)&&!eventIds.has(event.id)).forEach(event=>migrated.events.push(deepClone(event)));
+      }
+      migrated.schemaVersion=8;
+    }
+    if((migrated.schemaVersion||1)<9){
+      const isBundledDemo=["lex","eclipse","inn-lobby"].every(id=>migrated.entities.some(item=>item.id===id));
+      if(isBundledDemo){
+        const entityIds=new Set(migrated.entities.map(item=>item.id));
+        sampleData.entities.filter(item=>["hearth-system","ash-system"].includes(item.id)&&!entityIds.has(item.id)).forEach(item=>migrated.entities.push(deepClone(item)));
+        sampleData.entities.filter(item=>item.kind==="system").forEach(sample=>{const stored=migrated.entities.find(item=>item.id===sample.id);if(stored&&stored.grade===undefined){stored.grade=sample.grade;stored.authority=sample.authority;}});
+        const eventIds=new Set((migrated.events||[]).map(event=>event.id));
+        sampleData.events.filter(event=>["sys-7","sys-8","sys-9","sys-10"].includes(event.id)&&!eventIds.has(event.id)).forEach(event=>migrated.events.push(deepClone(event)));
+      }
+      migrated.schemaVersion=9;
+    }
+    if((migrated.schemaVersion||1)<10){
+      const isBundledDemo=["lex","eclipse","inn-lobby"].every(id=>migrated.entities.some(item=>item.id===id));
+      if(isBundledDemo){
+        const entityIds=new Set(migrated.entities.map(item=>item.id));
+        sampleData.entities.filter(item=>["vane","halden","eclipse-veil","warden-system"].includes(item.id)&&!entityIds.has(item.id)).forEach(item=>migrated.entities.push(deepClone(item)));
+        const eventIds=new Set((migrated.events||[]).map(event=>event.id));
+        sampleData.events.filter(event=>/^(age-|note-|dn-|vane-|auth-|vsys-|corpse-|gender-|veil-|ip-)/.test(event.id)&&!eventIds.has(event.id)).forEach(event=>migrated.events.push(deepClone(event)));
+        const hierarchyFact=(migrated.events||[]).find(event=>event.id==="hier-4");
+        if(hierarchyFact&&hierarchyFact.ghost===undefined)hierarchyFact.ghost=true;
+      }
+      migrated.schemaVersion=10;
+    }
+    if((migrated.schemaVersion||1)<11){
+      const isBundledDemo=["lex","eclipse","inn-lobby"].every(id=>migrated.entities.some(item=>item.id===id));
+      if(isBundledDemo){
+        // Authority belongs to systems and is a number; the character-side ladder added in the
+        // previous version was a misreading and is withdrawn here.
+        migrated.progressionTracks=(migrated.progressionTracks||[]).filter(track=>track.id!=="authority");
+        (migrated.events||[]).filter(event=>["auth-1","auth-2"].includes(event.id)).forEach(event=>{
+          const replacement=sampleData.events.find(sample=>sample.id===event.id);
+          if(replacement){delete event.track;event.level=replacement.level;event.value=replacement.value;event.description=replacement.description;}
+        });
+        const eventIds=new Set((migrated.events||[]).map(event=>event.id));
+        sampleData.events.filter(event=>/^rank-/.test(event.id)&&!eventIds.has(event.id)).forEach(event=>migrated.events.push(deepClone(event)));
+      }
+      migrated.schemaVersion=11;
+    }
+    if((migrated.schemaVersion||1)<12){
+      const isBundledDemo=["lex","eclipse","inn-lobby"].every(id=>migrated.entities.some(item=>item.id===id));
+      if(isBundledDemo){
+        // Authority and grade are both optional now, so the demo shows a system that starts with
+        // neither and one that has its grade taken away before it is swallowed.
+        const taverns=migrated.entities.find(item=>item.id==="inn-taverns");
+        if(taverns){delete taverns.authority;delete taverns.grade;}
+        const eventIds=new Set((migrated.events||[]).map(event=>event.id));
+        sampleData.events.filter(event=>["rank-5","rank-6"].includes(event.id)&&!eventIds.has(event.id)).forEach(event=>migrated.events.push(deepClone(event)));
+      }
+      migrated.schemaVersion=12;
+    }
+    if((migrated.schemaVersion||1)<13){
+      const isBundledDemo=["lex","eclipse","inn-lobby"].every(id=>migrated.entities.some(item=>item.id===id));
+      if(isBundledDemo){
+        const entityIds=new Set(migrated.entities.map(item=>item.id));
+        sampleData.entities.filter(item=>item.kind==="quest"&&!entityIds.has(item.id)).forEach(item=>migrated.entities.push(deepClone(item)));
+        const eventIds=new Set((migrated.events||[]).map(event=>event.id));
+        sampleData.events.filter(event=>/^qa-/.test(event.id)&&!eventIds.has(event.id)).forEach(event=>migrated.events.push(deepClone(event)));
+      }
+      migrated.schemaVersion=13;
+    }
     localStorage.setItem(STORAGE_KEY,JSON.stringify(migrated));return migrated;
   }
-  catch { return deepClone(sampleData); }
+  catch (error) { console.error("Story data could not be brought up to date; keeping it as it was.", error); return stored || deepClone(sampleData); }
 }
 async function loadData() {
   if(localStorage.getItem(PUBLISH_DIRTY_KEY)==="1"){hostedDataStatus="dirty";return loadLocalData();}
@@ -439,6 +633,7 @@ function firstAppearance(item){return earliestChapter([item?.appeared,...data.ev
 function hasAppeared(item,chapter){const first=firstAppearance(item);return first!==null&&first<=chapter;}
 function pairKey(a,b) { return [a,b].sort().join("|"); }
 function activeVol() { return data.volumes.find(v => v.id === activeVolume) || data.volumes[0]; }
+function absorbedInto(id,derived){const result=new Set(),queue=[id];while(queue.length){const current=queue.shift();(derived.systemMerges||[]).filter(link=>link.into===current).forEach(link=>{if(result.has(link.absorbed))return;result.add(link.absorbed);queue.push(link.absorbed);});}return result;}
 function eventInvolves(event,id) { return event.source === id || event.target === id || event.location === id || (event.characters || []).includes(id); }
 function eventLocation(event){return event.location?entity(event.location):null;}
 function eventsAtLocation(id,chapter=currentChapter){const source=chapter===currentChapter?appliedEvents():orderedEvents();return source.filter(event=>event.chapter===chapter&&event.location===id).sort((a,b)=>(a.order||0)-(b.order||0));}
@@ -448,10 +643,19 @@ function timelineChaptersFor(chosen,volume){if(chosen?.kind==="location"&&locati
 function eventMatchesTimelineFocus(event,chosen){return !chosen||(chosen.kind==="location"&&locationPovId?event.location===chosen.id&&locationCharacterIds(event).includes(locationPovId):eventInvolves(event,chosen.id));}
 function orderedEvents(){return data.events.map((event,index)=>({event,index})).sort((a,b)=>a.event.chapter-b.event.chapter||(a.event.order||0)-(b.event.order||0)||a.index-b.index).map(item=>item.event);}
 function nextEventOrder(chapter,drafts=[]){const sameChapter=[...data.events,...drafts].filter(event=>event.chapter===chapter);return sameChapter.reduce((max,event,index)=>Math.max(max,Number(event.order)||index+1),0)+1;}
-function volumeActions(volume=activeVol()){return orderedEvents().filter(event=>event.chapter>=volume.from&&event.chapter<=volume.to);}
-function revealedVolumeActions(){return volumeActions().slice(0,currentActionIndex);}
+// A ghost action still changes the world but never takes a turn: it is not a stop on the slider
+// and it is not listed, yet everything it does is in force from its chapter onward.
+function volumeActions(volume=activeVol()){return orderedEvents().filter(event=>event.chapter>=volume.from&&event.chapter<=volume.to&&!event.ghost);}
+function ghostActions(volume=activeVol(),chapter=currentChapter){return orderedEvents().filter(event=>event.ghost&&event.chapter>=volume.from&&event.chapter<=volume.to&&event.chapter<=chapter);}
+// Ghost actions have to be folded back into story order, not appended: derivation is
+// order-sensitive, so a ghost issued in chapter 26 must not be replayed after a chapter 34
+// action that settles the same thing.
+function revealedVolumeActions(){
+  const chosen=new Set([...volumeActions().slice(0,currentActionIndex),...ghostActions()].map(event=>event.id));
+  return orderedEvents().filter(event=>chosen.has(event.id));
+}
 function currentActionEvent(){return currentActionIndex>0?volumeActions()[currentActionIndex-1]||null:null;}
-function appliedEvents(){const volume=activeVol(),selected=new Set(volumeActions().slice(0,currentActionIndex).map(event=>event.id));return orderedEvents().filter(event=>event.chapter<volume.from||(event.chapter<=volume.to&&selected.has(event.id)));}
+function appliedEvents(){const volume=activeVol(),selected=new Set(revealedVolumeActions().map(event=>event.id));return orderedEvents().filter(event=>event.chapter<volume.from||(event.chapter<=volume.to&&selected.has(event.id)));}
 function resolveEntity(text) {
   const q = text.trim().toLowerCase();
   if (!q) return null;
@@ -481,33 +685,72 @@ function roundedSquarePath(r,corner){const c=Math.min(corner,r);return `M ${-r+c
 // `parentOf` skips ancestors that are not revealed yet, so a deep location still
 // attaches to the closest place the reader can actually see.
 function buildLocationView(derived,visibleIds){
-  const locationIds=[...visibleIds].filter(id=>entity(id)?.kind==="location"),present=new Set(locationIds),parentOf=new Map(),children=new Map(locationIds.map(id=>[id,[]]));
-  locationIds.forEach(id=>{const seen=new Set([id]);let cursor=id,found=null;while(true){const parent=locationParentOf(cursor,derived);if(!parent||seen.has(parent))break;seen.add(parent);if(present.has(parent)){found=parent;break;}cursor=parent;}parentOf.set(id,found);});
-  locationIds.forEach(id=>{const parent=parentOf.get(id);if(parent)children.get(parent).push(id);});
-  const rendered=new Set(),expanded=new Set(),depth=new Map();
-  const walk=(id,level)=>{if(rendered.has(id))return;rendered.add(id);depth.set(id,level);const kids=children.get(id)||[];if(kids.length&&expandedLocations.has(id)){expanded.add(id);kids.forEach(kid=>walk(kid,level+1));}};
-  locationIds.filter(id=>!parentOf.get(id)).forEach(id=>walk(id,0));
-  const anchorOf=new Map();
-  locationIds.forEach(id=>{let cursor=id;const guard=new Set();while(cursor&&!rendered.has(cursor)&&!guard.has(cursor)){guard.add(cursor);cursor=parentOf.get(cursor);}anchorOf.set(id,cursor||null);});
-  return {locationIds,present,rendered,expanded,children,parentOf,anchorOf,depth};
+  return buildDrillView([...visibleIds].filter(id=>entity(id)?.kind==="location"),id=>locationParentOf(id,derived),expandedLocations);
 }
-function renderedLocationSubtree(id,view){const result=[],stack=[...(view.children.get(id)||[])];while(stack.length){const current=stack.pop();if(!view.rendered.has(current))continue;result.push(current);(view.children.get(current)||[]).forEach(kid=>stack.push(kid));}return result;}
+// Systems drill down exactly the way places do — collapsed to the outermost one, opened into a
+// dot ringed by its subsystems — so both share one tree builder.
+// `alsoExpanded` opens a branch for one beat without the reader having clicked: a subsystem that
+// is doing something right now has to be visible for that action, then folds back on its own.
+function buildSystemView(derived,systemIds,alsoExpanded=null){
+  const parentOf=new Map(derived.systemParents.map(link=>[link.child,link.parent])),
+    expanded=alsoExpanded&&alsoExpanded.size?new Set([...expandedSystems,...alsoExpanded]):expandedSystems;
+  return buildDrillView([...systemIds],id=>parentOf.get(id)||null,expanded);
+}
+// `parentOfRaw` gives the structural parent, which may not be on screen; the walk skips those so
+// a deep node still attaches to the closest ancestor the reader can actually see.
+function buildDrillView(nodeIds,parentOfRaw,expandedSet){
+  const present=new Set(nodeIds),parentOf=new Map(),children=new Map(nodeIds.map(id=>[id,[]]));
+  nodeIds.forEach(id=>{const seen=new Set([id]);let cursor=id,found=null;while(true){const parent=parentOfRaw(cursor);if(!parent||seen.has(parent))break;seen.add(parent);if(present.has(parent)){found=parent;break;}cursor=parent;}parentOf.set(id,found);});
+  nodeIds.forEach(id=>{const parent=parentOf.get(id);if(parent)children.get(parent).push(id);});
+  const rendered=new Set(),expanded=new Set(),depth=new Map();
+  const walk=(id,level)=>{if(rendered.has(id))return;rendered.add(id);depth.set(id,level);const kids=children.get(id)||[];if(kids.length&&expandedSet.has(id)){expanded.add(id);kids.forEach(kid=>walk(kid,level+1));}};
+  nodeIds.filter(id=>!parentOf.get(id)).forEach(id=>walk(id,0));
+  const anchorOf=new Map();
+  nodeIds.forEach(id=>{let cursor=id;const guard=new Set();while(cursor&&!rendered.has(cursor)&&!guard.has(cursor)){guard.add(cursor);cursor=parentOf.get(cursor);}anchorOf.set(id,cursor||null);});
+  return {locationIds:nodeIds,present,rendered,expanded,children,parentOf,anchorOf,depth};
+}
+
+function renderedSubtree(id,view){const result=[],stack=[...(view.children.get(id)||[])];while(stack.length){const current=stack.pop();if(!view.rendered.has(current))continue;result.push(current);(view.children.get(current)||[]).forEach(kid=>stack.push(kid));}return result;}
 function locationGlyphRadius(id,view){const base=LOCATION_TIER_RADIUS[entity(id)?.locationType]||LOCATION_TIER_RADIUS.Other;return Math.max(17,base-(view.depth.get(id)||0)*2);}
+// One definition of how much room a node takes, so the layout can reserve space for a node
+// before it is drawn. Mirrors the shapes built in renderGraph.
+function nodeRadiusFor(item,state,view,chapter,systemView){
+  if(item.kind==="organization")return 42;
+  if(item.kind==="system")return systemView?.expanded.has(item.id)?20:systemGlyphRadius(state);
+  if(item.kind==="location")return view.expanded.has(item.id)?20:locationGlyphRadius(item.id,view)+8;
+  const appeared=state?.appeared!==null&&state?.appeared<=chapter;
+  return appeared?radius(state)+17:29;
+}
 
 function derive(chapter,eventSubset=null) {
   const states = new Map();
   const actionLimited=Array.isArray(eventSubset);
-  data.entities.forEach(item => states.set(item.id,{...item,displayName:item.name,nameHistory:[],mentioned:actionLimited?null:firstMention(item),appeared:actionLimited?null:firstAppearance(item),aliases:[],level:0,realm:"Unrevealed",canonicalRealm:"Unrevealed",status:"unknown",memberships:[]}));
+  data.entities.forEach(item => states.set(item.id,{...item,displayName:item.name,nameHistory:[],mentioned:actionLimited?null:firstMention(item),appeared:actionLimited?null:firstAppearance(item),aliases:[],level:0,track:DEFAULT_TRACK_ID,realm:"Unrevealed",canonicalRealm:"Unrevealed",status:"unknown",memberships:[]}));
   const memberships = new Map();
   const awareness = new Map();
   const meetings = new Map();
   const relations = new Map();
   const locations = new Map();
   const locationVisits = [];
+  const conversations = [];
   const organizationLocations = new Map();
   const residences = new Map();
   const locationParents = new Map();
   const identityParents = new Map();
+  const systemHosts = new Map();
+  const systemParents = new Map();
+  const systemLocations = new Map();
+  const systemMerges = new Map();
+  const systemEnds = new Map();
+  const questRuns = new Map();
+  const questChains = new Map();
+  // A quest is a record with a life of its own: issued in one chapter, inched forward over
+  // several more, and settled in another. Every one of those is an action, so the tab shows
+  // exactly what the reader has read and nothing further.
+  const questRun = id => {
+    if(!questRuns.has(id))questRuns.set(id,{quest:id,status:"active",progress:0,explicitProgress:false,from:null,to:null,holders:[],updates:[]});
+    return questRuns.get(id);
+  };
   (eventSubset||orderedEvents().filter(e=>e.chapter<=chapter)).forEach(event => {
     const source = states.get(event.source);
     if(event.type==="mention"&&source)source.mentioned=source.mentioned===null?event.chapter:Math.min(source.mentioned,event.chapter);
@@ -516,7 +759,7 @@ function derive(chapter,eventSubset=null) {
     if(event.type==="corpse_appearance"&&source)source.status="dead";
     if (event.type === "alias" && source) source.aliases.push({chapter:event.chapter,value:event.value});
     if (event.type === "display_name" && source && event.value) { source.displayName=event.value;source.nameHistory.push({chapter:event.chapter,value:event.value}); }
-    if (event.type === "cultivation" && source) { source.level = Number(event.level)||1; source.canonicalRealm=cultivationCanonical(event);source.realm=cultivationDisplay(event); }
+    if (event.type === "cultivation" && source) { source.track=trackIdOf(event); source.level = Number(event.level)||1; source.canonicalRealm=cultivationCanonical(event);source.realm=cultivationDisplay(event); }
     if (event.type === "status" && source) source.status = event.value || "unknown";
     if (event.type === "gender" && source && event.value) source.gender = event.value;
     if (event.type === "age" && source && event.value) source.age = event.value;
@@ -535,15 +778,71 @@ function derive(chapter,eventSubset=null) {
     if(event.type==="location_parent"&&source?.kind==="location"&&states.get(event.location)?.kind==="location"){
       if(event.action==="remove"){if(locationParents.get(event.source)?.parent===event.location)locationParents.delete(event.source);}else locationParents.set(event.source,{child:event.source,parent:event.location,from:event.chapter});
     }
+    if(event.type==="system_host"&&source?.kind==="system"&&states.get(event.target)?.kind==="character"){
+      const key=event.source+"|"+event.target;
+      if(event.action==="remove")systemHosts.delete(key);else systemHosts.set(key,{system:event.source,host:event.target,role:event.value||"Host",from:event.chapter});
+    }
+    if(event.type==="system_parent"&&source?.kind==="system"&&states.get(event.target)?.kind==="system"){
+      if(event.action==="remove"){if(systemParents.get(event.source)?.parent===event.target)systemParents.delete(event.source);}
+      else systemParents.set(event.source,{child:event.source,parent:event.target,from:event.chapter});
+    }
+    if(event.type==="system_rank"&&source?.kind==="system"){
+      source.previousAuthority=source.authority;source.previousGrade=source.grade;
+      if(event.authority===null)source.authority=undefined;else if(event.authority!==undefined&&String(event.authority).trim()!=="")source.authority=Number(event.authority);
+      if(event.grade===null)source.grade=undefined;else if(event.grade)source.grade=String(event.grade).trim();
+      source.rankFrom=event.chapter;
+    }
+    if(event.type==="system_merge"&&source?.kind==="system"&&states.get(event.target)?.kind==="system"){
+      if(event.action==="remove")systemMerges.delete(event.source);
+      else systemMerges.set(event.source,{absorbed:event.source,into:event.target,from:event.chapter});
+    }
+    if(String(event.type).startsWith("quest_")&&source?.kind==="quest"){
+      if(event.type==="quest_chain"){
+        if(event.action==="remove"){if(questChains.get(event.source)?.parent===event.target)questChains.delete(event.source);}
+        else if(states.get(event.target)?.kind==="quest"&&event.target!==event.source)questChains.set(event.source,{child:event.source,parent:event.target,from:event.chapter});
+      }else{
+        const run=questRun(event.source);
+        if(run.from===null)run.from=event.chapter;
+        if(event.type==="quest_issue"){
+          if(event.action==="withdraw"){questRuns.delete(event.source);}
+          else{run.status="active";run.to=null;if(states.get(event.target)?.kind==="character"&&!run.holders.includes(event.target))run.holders.push(event.target);
+            run.updates.push({chapter:event.chapter,order:event.order||0,kind:"issued",text:event.description||"",progress:run.progress});}
+        }
+        if(event.type==="quest_progress"){
+          const percent=Math.max(0,Math.min(100,Number(event.progress)));
+          if(Number.isFinite(percent)){run.progress=percent;run.explicitProgress=true;}
+          run.updates.push({chapter:event.chapter,order:event.order||0,kind:"progress",text:event.description||"",progress:run.progress});
+        }
+        if(event.type==="quest_end"){
+          const outcome=event.action||"complete";
+          if(outcome==="reopen"){run.status="active";run.to=null;}
+          else{run.status=outcome==="fail"?"failed":outcome==="abandon"?"abandoned":"complete";run.to=event.chapter;if(run.status==="complete"){run.progress=100;run.explicitProgress=true;}}
+          run.updates.push({chapter:event.chapter,order:event.order||0,kind:run.status,text:event.description||"",progress:run.progress});
+        }
+      }
+    }
+    if(event.type==="system_end"&&source?.kind==="system"){
+      if(event.action==="remove")systemEnds.delete(event.source);
+      else systemEnds.set(event.source,{system:event.source,from:event.chapter,reason:event.value||"Destroyed"});
+    }
+    if(event.type==="system_location"&&source?.kind==="system"&&states.get(event.location)?.kind==="location"){
+      const key=event.source+"|"+event.location;
+      if(event.action==="close")systemLocations.delete(key);else systemLocations.set(key,{system:event.source,location:event.location,role:event.value||"Branch",from:event.chapter});
+    }
     if(event.type==="identity_parent"&&source?.kind==="character"&&states.get(event.target)?.kind==="character"){
       if(event.action==="remove"){if(identityParents.get(event.source)?.parent===event.target)identityParents.delete(event.source);}else identityParents.set(event.source,{child:event.source,parent:event.target,relation:event.value||"Clone",from:event.chapter});
     }
     if (event.type === "awareness" && source && states.has(event.target)) {
       const key = pairKey(event.source,event.target);
-      if (!awareness.has(key)) awareness.set(key,{a:key.split("|")[0],b:key.split("|")[1],aToB:false,bToA:false});
-      const pair = awareness.get(key); if (event.source === pair.a) pair.aToB = true; else pair.bToA = true;
+      if (!awareness.has(key)) awareness.set(key,{a:key.split("|")[0],b:key.split("|")[1],aToB:false,bToA:false,from:event.chapter});
+      const pair = awareness.get(key); pair.from = event.chapter; if (event.source === pair.a) pair.aToB = true; else pair.bToA = true;
     }
     if (event.type === "meeting" && source && states.has(event.target)) meetings.set(pairKey(event.source,event.target),event);
+    if (event.type === "conversation" && source) {
+      const talkers=[...new Set([event.source,...(event.characters||[])])].filter(id=>states.get(id)?.kind==="character");
+      talkers.forEach((a,index)=>talkers.slice(index+1).forEach(b=>{if(!meetings.has(pairKey(a,b)))meetings.set(pairKey(a,b),event);}));
+      if(talkers.length>1)conversations.push({id:event.id,chapter:event.chapter,order:event.order||0,location:event.location||null,talkers,description:event.description||""});
+    }
     if (event.type === "relationship" && source && states.has(event.target)) {
       const key = pairKey(event.source,event.target); if (!relations.has(key)) relations.set(key,[]); relations.get(key).push(event);
     }
@@ -553,12 +852,45 @@ function derive(chapter,eventSubset=null) {
     }
   });
   memberships.forEach(item => states.get(item.character)?.memberships.push(item));
-  return { states, memberships:[...memberships.values()], organizationLocations:[...organizationLocations.values()], residences:[...residences.values()], locationParents:[...locationParents.values()], identityParents:[...identityParents.values()], awareness, meetings, relations, locations, locationVisits };
+  // A chain quest that carries no figure of its own reads as how far through its parts it is,
+  // and a chain whose first part is issued gets a header even if the chain itself never was.
+  const questChildren=new Map();
+  questChains.forEach(link=>{if(!questChildren.has(link.parent))questChildren.set(link.parent,[]);questChildren.get(link.parent).push(link.child);});
+  questChains.forEach(link=>{if(questRuns.has(link.child)&&!questRuns.has(link.parent))questRun(link.parent).from=questRuns.get(link.child).from;});
+  const computedProgress=new Set(),rollUpQuest=id=>{
+    const run=questRuns.get(id);if(!run)return 0;
+    if(computedProgress.has(id))return run.progress;computedProgress.add(id);
+    const kids=(questChildren.get(id)||[]).filter(child=>questRuns.has(child)),
+      total=kids.reduce((sum,child)=>sum+rollUpQuest(child),0);
+    if(!run.explicitProgress&&kids.length)run.progress=Math.round(total/kids.length);
+    return run.progress;
+  };
+  [...questRuns.keys()].forEach(id=>rollUpQuest(id));
+  return { states, quests:[...questRuns.values()], questChains:[...questChains.values()], memberships:[...memberships.values()], organizationLocations:[...organizationLocations.values()], residences:[...residences.values()], locationParents:[...locationParents.values()], identityParents:[...identityParents.values()], systemHosts:[...systemHosts.values()], systemParents:[...systemParents.values()], systemLocations:[...systemLocations.values()], systemMerges:[...systemMerges.values()], systemEnds:[...systemEnds.values()], awareness, meetings, relations, locations, locationVisits, conversations };
 }
 function currentDerived(){return derive(currentChapter,appliedEvents());}
 
+// The ladders live in the data, so every control that offers a rank is filled from them.
+function fillTrackSelect(select,selected){
+  if(!select)return;
+  const tracks=progressionTracks(),value=tracks.some(track=>track.id===selected)?selected:tracks[0].id;
+  select.innerHTML=tracks.map(track=>`<option value="${escapeHtml(track.id)}">${escapeHtml(track.name||track.id)}</option>`).join("");
+  select.value=value;
+}
+function fillLevelSelect(select,trackId,selected){
+  if(!select)return;
+  const ladder=trackLevels(trackId);
+  select.innerHTML=`<option value="">Choose a rank…</option>`+ladder.map((name,index)=>`<option value="${index+1}">${index+1}. ${escapeHtml(name)}</option>`).join("");
+  select.value=selected&&Number(selected)<=ladder.length?String(selected):"";
+}
+function refreshProgressionControls(){
+  const eventForm=$("#event-form"),entityForm=$("#entity-form");
+  if(eventForm){const keepLevel=eventForm.elements.level.value;fillTrackSelect(eventForm.elements.track,eventForm.elements.track.value);fillLevelSelect(eventForm.elements.level,eventForm.elements.track.value,keepLevel);}
+  if(entityForm){const keepLevel=entityForm.elements.initialLevel.value;fillTrackSelect(entityForm.elements.initialTrack,entityForm.elements.initialTrack.value);fillLevelSelect(entityForm.elements.initialLevel,entityForm.elements.initialTrack.value,keepLevel);}
+}
 function configure() {
   $("#novel-name").textContent = data.novel;
+  refreshProgressionControls();
   volumeSelect.innerHTML = data.volumes.map(v=>`<option value="${escapeHtml(v.id)}">${escapeHtml(v.name)}</option>`).join("");
   volumeSelect.value = activeVolume;
   updateSuggestions();
@@ -566,7 +898,9 @@ function configure() {
 }
 function updateSuggestions() {
   const d=currentDerived(),known=appliedEvents(),knownIds=new Set(known.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),publicOptions=[],adminOptions=[];
-  data.entities.forEach(item=>{const shown=stateName(d,item.id);if(knownIds.has(item.id)){publicOptions.push(`<option value="${escapeHtml(shown)}">${item.kind}</option>`);if(shown!==item.name)publicOptions.push(`<option value="${escapeHtml(item.name)}">Earlier name of ${escapeHtml(shown)}</option>`);known.filter(e=>["alias","display_name"].includes(e.type)&&e.source===item.id).forEach(e=>publicOptions.push(`<option value="${escapeHtml(e.value)}">Known name of ${escapeHtml(shown)}</option>`));}adminOptions.push(`<option value="${escapeHtml(item.name)}">${item.kind}</option>`);data.events.filter(e=>["alias","display_name"].includes(e.type)&&e.source===item.id).forEach(e=>adminOptions.push(`<option value="${escapeHtml(e.value)}">Name of ${escapeHtml(item.name)}</option>`));});
+  // A quest is a record, not a node, so it is never offered by the graph search — only by the
+// editor's own list, where it has to be pickable as an action's subject.
+data.entities.forEach(item=>{const shown=stateName(d,item.id);if(knownIds.has(item.id)&&item.kind!=="quest"){publicOptions.push(`<option value="${escapeHtml(shown)}">${item.kind}</option>`);if(shown!==item.name)publicOptions.push(`<option value="${escapeHtml(item.name)}">Earlier name of ${escapeHtml(shown)}</option>`);known.filter(e=>["alias","display_name"].includes(e.type)&&e.source===item.id).forEach(e=>publicOptions.push(`<option value="${escapeHtml(e.value)}">Known name of ${escapeHtml(shown)}</option>`));}adminOptions.push(`<option value="${escapeHtml(item.name)}">${item.kind}</option>`);data.events.filter(e=>["alias","display_name"].includes(e.type)&&e.source===item.id).forEach(e=>adminOptions.push(`<option value="${escapeHtml(e.value)}">Name of ${escapeHtml(item.name)}</option>`));});
   $("#entity-options").innerHTML = publicOptions.join("");
   $("#admin-entity-options").innerHTML = adminOptions.join("");
   $("#location-options").innerHTML=data.entities.filter(item=>item.kind==="location").map(item=>`<option value="${escapeHtml(item.name)}"></option>`).join("");
@@ -590,7 +924,7 @@ function configureTimeline() {
 function cancelChapterSequence(){clearTimeout(chapterAutoplayTimer);chapterAutoplayTimer=null;}
 function expandChapterEvents(chapter){const entries=chapterEventEntries(chapter);if(entries.length<2)return;cancelChapterSequence();expandedChapter=chapter;if(currentActionEvent()?.chapter!==chapter)currentActionIndex=entries[0].index;currentChapter=chapter;renderAll();}
 function collapseChapterEvents(){cancelChapterSequence();expandedChapter=null;renderAll();}
-function scheduleChapterSequence(){cancelChapterSequence();if(expandedChapter!==null)return;const current=currentActionEvent(),next=volumeActions()[currentActionIndex];if(!current||!next||next.chapter!==current.chapter)return;chapterAutoplayTimer=setTimeout(()=>{chapterAutoplayTimer=null;currentActionIndex+=1;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();scheduleChapterSequence();},1150);}
+function scheduleChapterSequence(){cancelChapterSequence();if(expandedChapter!==null||eventScrollHold)return;const current=currentActionEvent(),next=volumeActions()[currentActionIndex];if(!current||!next||next.chapter!==current.chapter)return;chapterAutoplayTimer=setTimeout(()=>{chapterAutoplayTimer=null;currentActionIndex+=1;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();scheduleChapterSequence();},1150);}
 function applyTimeline() {
   const previous=currentActionIndex,value=Number(timeline.value);cancelChapterSequence();if(timeline.dataset.mode==="chapter-events"){const groups=volumeChapterGroups(),groupIndex=groups.findIndex(group=>group.chapter===expandedChapter),entries=groups[groupIndex]?.entries||[];if(value<=0){expandedChapter=null;currentActionIndex=groupIndex>0?groups[groupIndex-1].entries.at(-1).index:0;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();return;}if(value>=entries.length+1){expandedChapter=null;const nextGroup=groups[groupIndex+1];currentActionIndex=nextGroup?nextGroup.entries[0].index:entries.at(-1)?.index||0;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();if(nextGroup)scheduleChapterSequence();return;}currentActionIndex=entries[value-1].index;currentChapter=expandedChapter;renderAll();return;}const groups=volumeChapterGroups();if(value<=0){currentActionIndex=0;currentChapter=activeVol().from;renderAll();return;}const group=groups[value-1];if(!group)return;currentActionIndex=group.entries[0].index;currentChapter=group.chapter;renderAll();if(currentActionIndex>previous)scheduleChapterSequence();
 }
@@ -604,7 +938,7 @@ function seedPosition(item,index,total) {
   if(fixed[item.id]) return fixed[item.id]; const angle=index*2.3999632297,r=58+27*Math.sqrt(index+1);return [360+Math.cos(angle)*r,260+Math.sin(angle)*r*.78];
 }
 function visibleFrom(item){return item.kind!=="character"?(validChapter(item.intro)??Infinity):(firstMention(item)??firstAppearance(item)??Infinity);}
-function radius(state){return 19+Math.min(CULTIVATION_LEVELS.length,Math.max(0,Number(state.level)||0))*1.4;}
+function radius(state){const ladder=trackLevels(state?.track);return 19+Math.min(1,Math.max(0,Number(state.level)||0)/ladder.length)*17;}
 
 function createGradient(defs,id,history,chapter){
   if(!history.length)return {url:COLORS.neutral,el:null}; const gradient=svgEl("linearGradient",{id,gradientUnits:"userSpaceOnUse"}); const startChapter=history[0].chapter;
@@ -614,14 +948,17 @@ function createGradient(defs,id,history,chapter){
 // --- Flowy force-directed layout engine (Obsidian-style): positions persist across
 // renders and drift continuously under simple physics, so the graph never "snaps" —
 // it drags, settles, and re-flows smoothly whenever the underlying data changes.
-const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), edges: [], dragId: null };
+const SEPARATION_GAP = 22;
+const POD_TRAVEL_MS = 520;
+const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), podPos: new Map(), hubPos: new Map(), edges: [], dragId: null };
 const view = { x: 0, y: 0, scale: 1 };
 let lastAutoFitSignature="";
 let viewportGroup = null;
 let dragMoved = false, dragOffset = { x: 0, y: 0 }, dragStartClient = { x: 0, y: 0 };
 let panStart = null;
-let autoFitTimers = [], viewPinnedByUser = false;
+let autoFitTimers = [], viewPinnedByUser = false, viewTween = null;
 
+function pointFor(id){return physics.pos.get(id)||physics.podPos.get(id)||physics.hubPos.get(id)||null;}
 function ensurePos(id, seedFn) {
   if (!physics.pos.has(id)) { const [x, y] = seedFn(); physics.pos.set(id, { x, y }); physics.vel.set(id, { x: 0, y: 0 }); }
   return physics.pos.get(id);
@@ -637,8 +974,8 @@ function stepPhysics() {
     const dx=(labelPos.x+labelBox.ox)-shapePos.x,dy=(labelPos.y+labelBox.oy)-shapePos.y,
       overlapX=labelBox.hw+shapeRadius+14-Math.abs(dx),overlapY=labelBox.hh+shapeRadius+12-Math.abs(dy);
     if(overlapX<=0||overlapY<=0)return;
-    if(overlapX<overlapY){const direction=dx>=0?1:-1,push=Math.min(3.5,Math.max(.7,.055*overlapX));labelForce.x+=direction*push;shapeForce.x-=direction*push;}
-    else{const direction=dy>=0?1:-1,push=Math.min(3.5,Math.max(.7,.075*overlapY));labelForce.y+=direction*push;shapeForce.y-=direction*push;}
+    if(overlapX<overlapY){const direction=dx>=0?1:-1,push=Math.min(3.5,.085*overlapX);labelForce.x+=direction*push;shapeForce.x-=direction*push;}
+    else{const direction=dy>=0?1:-1,push=Math.min(3.5,.11*overlapY);labelForce.y+=direction*push;shapeForce.y-=direction*push;}
   };
   for (let i = 0; i < ids.length; i++) {
     const a = physics.pos.get(ids[i]), fa = force.get(ids[i]);
@@ -649,11 +986,11 @@ function stepPhysics() {
       const d = Math.sqrt(d2), f = REPEL / d2, fx = dx / d * f, fy = dy / d * f;
       fa.x += fx; fa.y += fy; fb.x -= fx; fb.y -= fy;
       // Hard separation: inverse-square repulsion alone still lets two shapes sit on top of
-      // each other once springs pull them together, which is what made the graph look tangled.
-      const ra=physics.radii.get(ids[i])||24,rb=physics.radii.get(ids[j])||24,clearance=ra+rb+22;
+      // each other once springs pull them together.
+      const ra=physics.radii.get(ids[i])||24,rb=physics.radii.get(ids[j])||24,clearance=ra+rb+SEPARATION_GAP;
       if(d<clearance){const push=Math.min(6,(clearance-d)*.24);fa.x+=dx/d*push;fa.y+=dy/d*push;fb.x-=dx/d*push;fb.y-=dy/d*push;}
       const ab=physics.bounds.get(ids[i]),bb=physics.bounds.get(ids[j]);
-      if(ab&&bb){const labelDx=(a.x+ab.ox)-(b.x+bb.ox),labelDy=(a.y+ab.oy)-(b.y+bb.oy),overlapX=ab.hw+bb.hw+16-Math.abs(labelDx),overlapY=ab.hh+bb.hh+10-Math.abs(labelDy);if(overlapX>0&&overlapY>0){const opposed=(a.y-b.y)*labelDy<0;if(opposed||overlapX<overlapY){const direction=labelDx>=0?1:-1,push=Math.min(5,Math.max(.9,.11*overlapX));fa.x+=direction*push;fb.x-=direction*push;}else{const direction=labelDy>=0?1:-1,push=Math.min(5,Math.max(.9,.15*overlapY));fa.y+=direction*push;fb.y-=direction*push;}}}
+      if(ab&&bb){const labelDx=(a.x+ab.ox)-(b.x+bb.ox),labelDy=(a.y+ab.oy)-(b.y+bb.oy),overlapX=ab.hw+bb.hw+16-Math.abs(labelDx),overlapY=ab.hh+bb.hh+10-Math.abs(labelDy);if(overlapX>0&&overlapY>0){const opposed=(a.y-b.y)*labelDy<0;if(opposed||overlapX<overlapY){const direction=labelDx>=0?1:-1,push=Math.min(5,.14*overlapX);fa.x+=direction*push;fb.x-=direction*push;}else{const direction=labelDy>=0?1:-1,push=Math.min(5,.18*overlapY);fa.y+=direction*push;fb.y-=direction*push;}}}
       clearLabelOfShape(a,ab,b,rb,fa,fb);clearLabelOfShape(b,bb,a,ra,fb,fa);
     }
     fa.x += (cx - a.x) * CENTER; fa.y += (cy - a.y) * CENTER;
@@ -665,18 +1002,33 @@ function stepPhysics() {
     const fa = force.get(edge.a), fb = force.get(edge.b);
     if (fa) { fa.x += fx; fa.y += fy; } if (fb) { fb.x -= fx; fb.y -= fy; }
   });
-  const DAMP = 0.82, MAXV = 13;
+  const DAMP = 0.82, MAXV = 13, REST_SPEED = 0.12;
   ids.forEach(id => {
     if (id === physics.dragId || physics.pos.get(id)?.pinned) return;
     const v = physics.vel.get(id), f = force.get(id), p = physics.pos.get(id);
     v.x = Math.max(-MAXV, Math.min(MAXV, (v.x + f.x) * DAMP));
     v.y = Math.max(-MAXV, Math.min(MAXV, (v.y + f.y) * DAMP));
+    if (Math.abs(v.x) < REST_SPEED && Math.abs(v.y) < REST_SPEED) { v.x = 0; v.y = 0; return; }
     p.x += v.x; p.y += v.y;
   });
 }
 let nodeEls = new Map(), labelEls = new Map(), edgeUpdaters = [];
 let hoverId = null, labelCullFrame = 0;
 function applyViewTransform() { if (viewportGroup) viewportGroup.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.scale})`); graph.style.setProperty("--label-scale", labelScale().toFixed(3)); }
+// The fit used to jump straight to its new framing, which read as the graph lurching. Ease
+// into it instead, and drop the tween the moment the reader takes hold of the view.
+function glideViewTo(target,duration=700){
+  if(!viewportGroup||!nodeEls.size){Object.assign(view,target);applyViewTransform();return;}
+  viewTween={from:{x:view.x,y:view.y,scale:view.scale},to:target,start:performance.now(),duration};
+}
+function stepViewTween(){
+  if(!viewTween)return;
+  const progress=Math.min(1,(performance.now()-viewTween.start)/viewTween.duration),
+    eased=progress<.5?4*progress**3:1-(-2*progress+2)**3/2,{from,to}=viewTween;
+  view.x=from.x+(to.x-from.x)*eased;view.y=from.y+(to.y-from.y)*eased;view.scale=from.scale+(to.scale-from.scale)*eased;
+  applyViewTransform();
+  if(progress>=1)viewTween=null;
+}
 function labelScale() { return Math.min(1.25, Math.max(.8, 1 / view.scale)); }
 // How many quiet nodes may keep a name. A handful of nodes keep all of them; a crowded graph
 // hands names to the few that rank highest and lets hover reveal the rest.
@@ -688,13 +1040,13 @@ function toSvgPoint(clientX, clientY) {
 }
 function toContentPoint(clientX, clientY) { const u = toSvgPoint(clientX, clientY); return { x: (u.x - view.x) / view.scale, y: (u.y - view.y) / view.scale }; }
 function zoomBy(factor, atX = 360, atY = 260) {
-  viewPinnedByUser = true;
+  viewPinnedByUser = true; viewTween = null;
   const contentX = (atX - view.x) / view.scale, contentY = (atY - view.y) / view.scale;
   view.scale = Math.max(0.35, Math.min(3, view.scale * factor));
   view.x = atX - contentX * view.scale; view.y = atY - contentY * view.scale;
   applyViewTransform();
 }
-function fitGraphToCount(count,force=false){const signature=`${activeVolume}:${count}`;if(!force&&signature===lastAutoFitSignature)return;lastAutoFitSignature=signature;const scale=Math.max(.38,Math.min(1,Math.sqrt(18/Math.max(18,count))));view.scale=scale;view.x=360*(1-scale);view.y=260*(1-scale);applyViewTransform();viewPinnedByUser=false;scheduleAutoFit();}
+function fitGraphToCount(count,force=false){const signature=`${activeVolume}:${count}`;if(!force&&signature===lastAutoFitSignature)return;lastAutoFitSignature=signature;const scale=Math.max(.38,Math.min(1,Math.sqrt(18/Math.max(18,count))));glideViewTo({scale,x:360*(1-scale),y:260*(1-scale)});viewPinnedByUser=false;scheduleAutoFit();}
 // The seeded scale above is a guess made before the simulation has run. Once the layout
 // settles, fit the real bounding box to the canvas so the graph fills the space instead of
 // huddling in the middle — and so a big graph zooms out far enough for the declutter to work.
@@ -706,11 +1058,14 @@ function fitGraphToContent(){
   entries.forEach(([id,point])=>{const reach=(physics.radii.get(id)||24)+10,label=labelEls.get(id),top=label?Math.min(0,label.offset)-15:0,bottom=label?Math.max(0,label.offset)+15:0;
     minX=Math.min(minX,point.x-reach);maxX=Math.max(maxX,point.x+reach);minY=Math.min(minY,point.y-reach+top);maxY=Math.max(maxY,point.y+reach+bottom);});
   const width=Math.max(1,maxX-minX),height=Math.max(1,maxY-minY),padding=54,
-    scale=Math.max(.3,Math.min(1.3,Math.min((720-padding*2)/width,(520-padding*2)/height)));
-  view.scale=scale;view.x=360-(minX+maxX)/2*scale;view.y=260-(minY+maxY)/2*scale;
-  applyViewTransform();updateLabelVisibility();
+    scale=Math.max(.3,Math.min(1.3,Math.min((720-padding*2)/width,(520-padding*2)/height))),
+    target={scale,x:360-(minX+maxX)/2*scale,y:260-(minY+maxY)/2*scale};
+  // Nothing worth animating for a nudge; only glide when the framing really moves.
+  if(Math.abs(target.scale-view.scale)<.015&&Math.hypot(target.x-view.x,target.y-view.y)<12)return;
+  glideViewTo(target);updateLabelVisibility();
 }
 function tickGraph() {
+  stepViewTween();
   if (activeView === "graph" && physics.pos.size) {
     stepPhysics();
     nodeEls.forEach((el, id) => { const p = physics.pos.get(id); if (p) el.setAttribute("transform", `translate(${p.x.toFixed(2)},${p.y.toFixed(2)})`); });
@@ -724,34 +1079,117 @@ function renderGraph() {
   const awaitingAction=currentActionIndex===0,layout=$("#graph-layout"),onboarding=$("#slider-onboarding");layout.classList.toggle("awaiting-action",awaitingAction);onboarding.hidden=!awaitingAction;
   if(awaitingAction){nodeEls=new Map();edgeUpdaters=[];physics.edges=[];graph.replaceChildren();requestAnimationFrame(positionSliderOnboarding);return;}
   const volumeApplied=revealedVolumeActions(),previousApplied=volumeActions().slice(0,Math.max(0,currentActionIndex-1)),currentEvent=currentActionEvent(),appliedNow=appliedEvents(),fullDerived=derive(currentChapter,appliedNow),priorCultivationDerived=currentEvent?.type==="cultivation"?derive(currentChapter,appliedNow.filter(event=>event.id!==currentEvent.id)):null,volumeDerived=derive(currentChapter,volumeApplied),derived={...volumeDerived,states:fullDerived.states,locationParents:fullDerived.locationParents},visibleIds=new Set(volumeApplied.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),previousVisibleIds=new Set(previousApplied.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),chapterChangedIds=new Set(volumeApplied.filter(event=>event.chapter===currentChapter).flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean)));
+  // A system stands on the graph as soon as the story has touched it, the same as anyone else.
+  // What stays folded away until you pick out the system or its host is the rest of its reach:
+  // the places it runs at. That is the difference from places, whose links are drawn whenever
+  // someone connected to them is on screen.
+  const revealedSystems=new Set(),systemSatellites=[],focusSystems=new Set(),autoOpenSystems=new Set();
+  const actionSystem=currentEvent&&String(currentEvent.type).startsWith("system_")?[currentEvent.source,currentEvent.target].find(id=>entity(id)?.kind==="system"):null;
+  {
+    const retired=new Set([...derived.systemMerges.map(link=>link.absorbed),...derived.systemEnds.map(link=>link.system)]),
+      queue=[...visibleIds].filter(id=>entity(id)?.kind==="system");
+    derived.systemHosts.forEach(link=>{if(visibleIds.has(link.host))queue.push(link.system);});
+    if(actionSystem){queue.push(actionSystem);focusSystems.add(actionSystem);}
+    if(selectedId){
+      // Picking the host is what opens the system out: its subsystems come up as nodes of their
+      // own and the places they run at come with them, the way a place opens into its children.
+      derived.systemHosts.filter(link=>link.host===selectedId).forEach(link=>{queue.push(link.system);focusSystems.add(link.system);autoOpenSystems.add(link.system);});
+      if(entity(selectedId)?.kind==="system"){
+        focusSystems.add(selectedId);
+        // Selecting a system that was swallowed should still bring up whatever swallowed it, so the
+        // marker has something to sit on.
+        let cursor=selectedId;const guard=new Set();
+        while(cursor&&retired.has(cursor)&&!guard.has(cursor)){guard.add(cursor);cursor=derived.systemMerges.find(link=>link.absorbed===cursor)?.into||derived.systemParents.find(link=>link.child===cursor)?.parent||null;}
+        if(cursor&&entity(cursor)?.kind==="system"){queue.push(cursor);focusSystems.add(cursor);}
+      }
+    }
+    while(queue.length){const id=queue.shift();if(!id||revealedSystems.has(id)||entity(id)?.kind!=="system"||(retired.has(id)&&id!==actionSystem))continue;revealedSystems.add(id);
+      derived.systemParents.filter(link=>link.parent===id).forEach(link=>{queue.push(link.child);if(focusSystems.has(id))focusSystems.add(link.child);});}
+    focusSystems.forEach(id=>{if(revealedSystems.has(id))derived.systemLocations.filter(link=>link.system===id).forEach(link=>visibleIds.add(link.location));});
+    // A system that was swallowed or destroyed keeps its history but stops taking up room: it
+    // rides whatever succeeded it as a small marker instead of being a node of its own.
+    derived.systemMerges.forEach(link=>{
+      if(revealedSystems.has(link.into)||selectedId===link.absorbed)
+        systemSatellites.push({id:link.absorbed,anchor:link.into,mode:"merged",from:link.from});
+    });
+    derived.systemEnds.forEach(link=>{
+      if(systemSatellites.some(item=>item.id===link.system))return;
+      const parent=derived.systemParents.find(edge=>edge.child===link.system)?.parent,
+        host=derived.systemHosts.find(edge=>edge.system===link.system)?.host,
+        anchor=parent&&revealedSystems.has(parent)?parent:(host&&visibleIds.has(host)?host:null);
+      if(anchor)
+        systemSatellites.push({id:link.system,anchor,mode:"ended",from:link.from,reason:link.reason});
+    });
+  }
   const locView=buildLocationView(derived,visibleIds);lastLocationView=locView;
+  // A system acting this beat has to be on screen for it, even when it normally sits folded
+  // inside a bigger one.
+  const actionAncestors=new Set();
+  if(actionSystem){let cursor=derived.systemParents.find(link=>link.child===actionSystem)?.parent;while(cursor&&!actionAncestors.has(cursor)){actionAncestors.add(cursor);cursor=derived.systemParents.find(link=>link.child===cursor)?.parent;}}
+  actionAncestors.forEach(id=>autoOpenSystems.add(id));
+  const sysView=buildSystemView(derived,revealedSystems,autoOpenSystems);lastSystemView=sysView;
+  [...expandedSystems].forEach(id=>{if(!sysView.expanded.has(id))expandedSystems.delete(id);});
   [...expandedLocations].forEach(id=>{if(!locView.expanded.has(id))expandedLocations.delete(id);});
   if(collapsingLocationId&&!locView.expanded.has(collapsingLocationId))collapsingLocationId=null;
-  const renderIds=new Set([...visibleIds].filter(id=>entity(id)?.kind!=="location"||locView.rendered.has(id))),visible=data.entities.filter(item=>renderIds.has(item.id));
+  const renderIds=new Set([...visibleIds].filter(id=>{const kind=entity(id)?.kind;if(kind==="system"||kind==="quest")return false;return kind!=="location"||locView.rendered.has(id);}));
+  sysView.rendered.forEach(id=>renderIds.add(id));
+  const visible=data.entities.filter(item=>renderIds.has(item.id));
   const resolveLocationId=id=>entity(id)?.kind==="location"?(locView.anchorOf.get(id)||id):id;
-  if(selectedId&&!renderIds.has(selectedId))selectedId=null;
+  if(selectedId&&!renderIds.has(selectedId)&&!systemSatellites.some(item=>item.id===selectedId))selectedId=null;
   [...physics.pos.keys()].filter(id=>!renderIds.has(id)).forEach(id=>{physics.pos.delete(id);physics.vel.delete(id);physics.bounds.delete(id);});
   visible.forEach((item,index)=>ensurePos(item.id,()=>seedPosition(item,index,visible.length)));
   fitGraphToCount(visible.length);
   const positions=physics.pos;
   const glyphRadius=id=>locView.expanded.has(id)?9:locationGlyphRadius(id,locView),locationDistance=id=>locView.expanded.has(id)?74:glyphRadius(id)+58;
-  physics.bounds.clear();
-  const springs=new Map(),addSpring=(a,b,length,strength)=>{if(!a||!b||a===b||!renderIds.has(a)||!renderIds.has(b))return;const key=a<b?`${a}|${b}`:`${b}|${a}`,existing=springs.get(key);if(existing){existing.length=Math.min(existing.length,length);existing.strength=Math.max(existing.strength,strength);return;}springs.set(key,{a,b,length,strength});};
-  derived.memberships.forEach(m=>addSpring(m.character,m.organization,105,.022));
+  physics.bounds.clear();physics.radii.clear();
+  visible.forEach(item=>physics.radii.set(item.id,nodeRadiusFor(item,derived.states.get(item.id),locView,currentChapter,sysView)));
+  // A spring shorter than the two nodes need to sit apart fights the separation force forever,
+  // which is what made the whole graph shiver. Every rest length clears both shapes.
+  const restLength=(a,b,desired)=>Math.max(desired,(physics.radii.get(a)||24)+(physics.radii.get(b)||24)+SEPARATION_GAP+8);
+  const springs=new Map(),addSpring=(a,b,desired,strength)=>{if(!a||!b||a===b||!renderIds.has(a)||!renderIds.has(b))return;const length=restLength(a,b,desired),key=a<b?`${a}|${b}`:`${b}|${a}`,existing=springs.get(key);if(existing){existing.length=Math.min(existing.length,length);existing.strength=Math.max(existing.strength,strength);return;}springs.set(key,{a,b,length,strength});};
+  // Everything that orbits a hub — members of an organisation, everyone standing in a place, the
+  // children of an opened place — is collected first so the ring can be widened to fit the crowd.
+  // Eighteen people cannot all sit 90 units from one place: they end up pressed together, and the
+  // contact solver shoves them apart again every frame, which never stops moving.
+  const hubLinks=[],hubMembers=new Map();
+  const queueHubLink=(member,hub,desired,strength)=>{
+    if(!member||!hub||member===hub||!renderIds.has(member)||!renderIds.has(hub))return;
+    hubLinks.push({member,hub,desired,strength});
+    if(!hubMembers.has(hub))hubMembers.set(hub,new Set());
+    hubMembers.get(hub).add(member);
+  };
+  derived.memberships.forEach(m=>queueHubLink(m.character,m.organization,105,.022));
+  derived.organizationLocations.forEach(link=>queueHubLink(link.organization,resolveLocationId(link.location),locationDistance(resolveLocationId(link.location)),.032));
+  derived.residences.forEach(link=>queueHubLink(link.character,resolveLocationId(link.location),locationDistance(resolveLocationId(link.location)),.04));
+  [...derived.locations.values()].forEach(visit=>queueHubLink(visit.character,resolveLocationId(visit.location),locationDistance(resolveLocationId(visit.location)),.047));
+  locView.rendered.forEach(id=>{if(!locView.expanded.has(id))return;(locView.children.get(id)||[]).forEach(kid=>queueHubLink(kid,id,86+glyphRadius(kid),.14));});
+  const hubRing=new Map();
+  hubMembers.forEach((members,hub)=>{
+    if(members.size<2)return hubRing.set(hub,0);
+    let circumference=0;members.forEach(id=>{circumference+=2*(physics.radii.get(id)||24)+SEPARATION_GAP;});
+    hubRing.set(hub,circumference/(2*Math.PI));
+  });
+  hubLinks.forEach(link=>addSpring(link.member,link.hub,Math.max(link.desired,hubRing.get(link.hub)||0),link.strength));
+  derived.systemHosts.forEach(link=>addSpring(link.system,link.host,120,.05));
+  derived.systemLocations.forEach(link=>{if(focusSystems.has(link.system))addSpring(link.system,resolveLocationId(link.location),120,.03);});
+  sysView.rendered.forEach(id=>{if(!sysView.expanded.has(id))return;(sysView.children.get(id)||[]).forEach(kid=>addSpring(kid,id,104,.12));});
   derived.identityParents.forEach(link=>addSpring(link.child,link.parent,68,.09));
-  derived.organizationLocations.forEach(link=>{const place=resolveLocationId(link.location);addSpring(link.organization,place,locationDistance(place),.032);});
-  derived.residences.forEach(link=>{const place=resolveLocationId(link.location);addSpring(link.character,place,locationDistance(place),.04);});
-  [...derived.locations.values()].forEach(visit=>{const place=resolveLocationId(visit.location);addSpring(visit.character,place,locationDistance(place),.047);});
-  // An opened location keeps its children in a tight ring so the drill-down reads as one cluster.
-  locView.rendered.forEach(id=>{if(!locView.expanded.has(id))return;(locView.children.get(id)||[]).forEach(kid=>addSpring(kid,id,86+glyphRadius(kid),.14));});
   [...derived.relations.keys(),...derived.awareness.keys()].forEach(key=>{const [a,b]=key.split("|");addSpring(a,b,150,.02);});
   physics.edges=[...springs.values()];
-  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null; physics.radii.clear();
+  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null;
   physics.degree.clear();physics.edges.forEach(edge=>{physics.degree.set(edge.a,(physics.degree.get(edge.a)||0)+1);physics.degree.set(edge.b,(physics.degree.get(edge.b)||0)+1);});
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
-  const edgeLayer=svgEl("g"),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,nodeLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
-  const straightEdge=(a,b,className,dataA,dataB)=>{if(!a||!b||a===b)return null;const aPos=positions.get(a),bPos=positions.get(b);if(!aPos||!bPos)return null;const muted=locView.expanded.has(a)||locView.expanded.has(b),element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:`${className}${muted?" opened-location-edge":""}`,"data-a":dataA,"data-b":dataB});edgeLayer.appendChild(element);edgeUpdaters.push(()=>{const p1=positions.get(a),p2=positions.get(b);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);});return element;};
+  const edgeLayer=svgEl("g"),satelliteLayer=svgEl("g",{class:"system-satellite-layer"}),conversationLayer=svgEl("g",{class:"conversation-layer"}),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
+  // While an action pops a hidden place out of its parent, links point at the pod itself, so the
+  // line sits on the place the reader is actually being shown and rides back in as it retracts.
+  const podIds=syncPodTransitions(locView,currentEvent),podSet=new Set([...podIds,...retiringPodIds]);
+  physics.podPos.clear();
+  podSet.forEach(id=>{const base=positions.get(locView.anchorOf.get(id));if(base)physics.podPos.set(id,{x:base.x,y:base.y});});
+  const edgeLocationId=id=>entity(id)?.kind!=="location"?id:(podSet.has(id)?id:(locView.anchorOf.get(id)||id));
+  edgeIndex=[];
+  const noteEdge=(a,b,chapter,note)=>{if(a&&b&&a!==b&&chapter)edgeIndex.push({a,b,chapter:Number(chapter),note});};
+  const straightEdge=(a,b,className,dataA,dataB)=>{if(!a||!b||a===b)return null;const aPos=pointFor(a),bPos=pointFor(b);if(!aPos||!bPos)return null;const muted=locView.expanded.has(a)||locView.expanded.has(b),element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:`${className}${muted?" opened-location-edge":""}`,"data-a":dataA,"data-b":dataB});edgeLayer.appendChild(element);edgeUpdaters.push(()=>{const p1=pointFor(a),p2=pointFor(b);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);});return element;};
   const pairKeys=new Set([...derived.relations.keys(),...derived.awareness.keys()]);
   pairKeys.forEach((key,index)=>{const [aId,bId]=key.split("|"),aPos=positions.get(aId),bPos=positions.get(bId);if(!aPos||!bPos)return;const history=derived.relations.get(key)||[],met=derived.meetings.get(key),aware=derived.awareness.get(key),type=history.length?String(history.at(-1).value).toLowerCase():"neutral";let element;
     const newPair=Boolean(currentEvent&&["awareness","relationship"].includes(currentEvent.type)&&pairKey(currentEvent.source,currentEvent.target)===key),edgeClass=`edge relation-edge${newPair?" newly-revealed-edge":""}`;
@@ -761,37 +1199,97 @@ function renderGraph() {
     } else if(history.length){const grad=createGradient(defs,`grad-r-${index}`,history,currentChapter);element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:edgeClass,stroke:grad.url,"data-a":aId,"data-b":bId});
       edgeUpdaters.push(()=>{const p1=positions.get(aId),p2=positions.get(bId);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);if(grad.el){grad.el.setAttribute("x1",p1.x);grad.el.setAttribute("y1",p1.y);grad.el.setAttribute("x2",p2.x);grad.el.setAttribute("y2",p2.y);}});
     }
+    const lastRelation=history.at(-1);
+    noteEdge(aId,bId,lastRelation?.chapter??met?.chapter??aware?.from,lastRelation?`Relationship became ${String(lastRelation.value).toLowerCase()}`:met?"Met":"Became aware of each other");
     if(element)edgeLayer.appendChild(element);
   });
-  derived.memberships.forEach(m=>straightEdge(m.character,m.organization,`edge membership-edge${currentEvent?.type==="membership"&&currentEvent.source===m.character&&currentEvent.target===m.organization?" newly-revealed-edge":""}`,m.character,m.organization));
+  derived.memberships.forEach(m=>{noteEdge(m.character,m.organization,m.from,`${m.role}`);return straightEdge(m.character,m.organization,`edge membership-edge${currentEvent?.type==="membership"&&currentEvent.source===m.character&&currentEvent.target===m.organization?" newly-revealed-edge":""}`,m.character,m.organization);});
   // Location links are re-pointed at the deepest place the reader can currently see, so a
   // collapsed realm inherits every connection of the places folded inside it.
-  const locationEdgeSeen=new Set(),locationEdge=(from,to,baseClass,active)=>{const target=resolveLocationId(to);if(!target||from===target)return;const key=`${baseClass}|${from}|${target}`;if(locationEdgeSeen.has(key)&&!active)return;locationEdgeSeen.add(key);straightEdge(from,target,`edge ${baseClass}${active?" newly-revealed-edge":""}`,from,target);};
-  derived.organizationLocations.forEach(link=>locationEdge(link.organization,link.location,"organization-location-edge",currentEvent?.type==="organization_location"&&currentEvent.source===link.organization&&currentEvent.location===link.location));
-  derived.residences.forEach(link=>locationEdge(link.character,link.location,"residence-edge",currentEvent?.type==="residency"&&currentEvent.source===link.character&&currentEvent.location===link.location));
-  derived.locations.forEach((visit,character)=>locationEdge(character,visit.location,"location-edge",currentEvent?.type==="movement"&&currentEvent.source===character&&currentEvent.location===visit.location));
-  derived.locationParents.forEach(link=>{const child=resolveLocationId(link.child),parent=resolveLocationId(link.parent);if(!child||!parent||child===parent)return;straightEdge(child,parent,`edge hierarchy-edge${currentEvent?.type==="location_parent"&&currentEvent.source===link.child&&currentEvent.location===link.parent?" newly-revealed-edge":""}`,child,parent);});
-  derived.identityParents.forEach(link=>straightEdge(link.child,link.parent,`edge identity-edge${currentEvent?.type==="identity_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent));
-  const activeIds=new Set(currentEvent?[currentEvent.source,currentEvent.target,currentEvent.location,...(currentEvent.characters||[])].filter(Boolean).map(resolveLocationId):[]);
-  const retractingIds=collapsingLocationId?new Set([...renderedLocationSubtree(collapsingLocationId,locView)]):new Set();
-  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=item.kind==="location"&&locView.expanded.has(item.id),emerging=item.kind==="location"&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,nodeRadius=42;
+  const locationEdgeSeen=new Set(),locationEdge=(from,to,baseClass,active,chapter,note)=>{const target=edgeLocationId(to);if(!target||from===target)return;noteEdge(from,target,chapter,note);const key=`${baseClass}|${from}|${target}`;if(locationEdgeSeen.has(key)&&!active)return;locationEdgeSeen.add(key);straightEdge(from,target,`edge ${baseClass}${active?" newly-revealed-edge":""}`,from,target);};
+  derived.organizationLocations.forEach(link=>locationEdge(link.organization,link.location,"organization-location-edge",currentEvent?.type==="organization_location"&&currentEvent.source===link.organization&&currentEvent.location===link.location,link.from,`${link.role} based here`));
+  derived.residences.forEach(link=>locationEdge(link.character,link.location,"residence-edge",currentEvent?.type==="residency"&&currentEvent.source===link.character&&currentEvent.location===link.location,link.from,`${link.role} here`));
+  derived.locations.forEach((visit,character)=>locationEdge(character,visit.location,"location-edge",currentEvent?.type==="movement"&&currentEvent.source===character&&currentEvent.location===visit.location,visit.chapter,"Travelled here"));
+  derived.locationParents.forEach(link=>{const child=edgeLocationId(link.child),parent=edgeLocationId(link.parent);if(!child||!parent||child===parent)return;noteEdge(child,parent,link.from,"Sits inside");straightEdge(child,parent,`edge hierarchy-edge${currentEvent?.type==="location_parent"&&currentEvent.source===link.child&&currentEvent.location===link.parent?" newly-revealed-edge":""}`,child,parent);});
+  // A conversation is one thing that happened between several people, so three or more of them
+  // meet at a marker joined to each — six lines between four people says nothing about them
+  // being in the same room. It shows while its action plays, and whenever anyone who was in it
+  // is selected, so it can still be found once the slider has moved on.
+  physics.hubPos.clear();
+  derived.conversations.filter(convo=>currentEvent?.id===convo.id||(selectedId&&convo.talkers.includes(selectedId))).forEach(convo=>{
+    const talkers=convo.talkers.filter(id=>renderIds.has(id));if(talkers.length<2)return;
+    const live=currentEvent?.id===convo.id,edgeClass=`edge conversation-edge${live?" newly-revealed-edge":""}`;
+    if(talkers.length===2){noteEdge(talkers[0],talkers[1],convo.chapter,"In conversation");straightEdge(talkers[0],talkers[1],edgeClass,talkers[0],talkers[1]);return;}
+    const hubId=`conversation:${convo.id}`,centre=()=>{const points=talkers.map(pointFor).filter(Boolean);return points.length?{x:points.reduce((sum,point)=>sum+point.x,0)/points.length,y:points.reduce((sum,point)=>sum+point.y,0)/points.length}:null;};
+    const start=centre();if(!start)return;
+    physics.hubPos.set(hubId,start);
+    const hub=svgEl("g",{class:`conversation-hub${live?" conversation-hub-live":""}`,"data-id":hubId});
+    hub.append(svgEl("circle",{cx:0,cy:0,r:14,class:"conversation-hub-ring"}));
+    const count=svgEl("text",{x:0,y:3.8,class:"conversation-hub-count"});count.textContent=String(talkers.length);hub.appendChild(count);
+    conversationLayer.appendChild(hub);
+    const place=()=>{const point=centre();if(!point)return;physics.hubPos.set(hubId,point);hub.setAttribute("transform",`translate(${point.x.toFixed(2)},${point.y.toFixed(2)})`);};
+    place();edgeUpdaters.push(place);
+    talkers.forEach(id=>{noteEdge(id,hubId,convo.chapter,convo.description||"In this conversation");straightEdge(id,hubId,edgeClass,id,hubId);});
+  });
+  // Plenty of actions name a place without being a movement — a meeting, a fight, a note. While
+  // such an action is showing, tie everyone it involves to the place it names.
+  if(currentEvent?.location&&entity(currentEvent.location)?.kind==="location"&&!["movement","residency","organization_location","location_parent"].includes(currentEvent.type)){
+    const place=edgeLocationId(currentEvent.location);
+    locationCharacterIds(currentEvent).forEach(who=>{noteEdge(who,place,currentEvent.chapter,"Here for this action");straightEdge(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place);});
+  }
+  derived.systemHosts.forEach(link=>{noteEdge(link.system,link.host,link.from,`${link.role} of this system`);straightEdge(link.system,link.host,`edge system-host-edge${currentEvent?.type==="system_host"&&currentEvent.source===link.system&&currentEvent.target===link.host?" newly-revealed-edge":""}`,link.system,link.host);});
+  derived.systemLocations.forEach(link=>{if(!focusSystems.has(link.system))return;const place=edgeLocationId(link.location);noteEdge(link.system,place,link.from,`${link.role} here`);straightEdge(link.system,place,`edge system-location-edge${currentEvent?.type==="system_location"&&currentEvent.source===link.system&&currentEvent.location===link.location?" newly-revealed-edge":""}`,link.system,place);});
+  derived.systemParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,"Subsystem of");straightEdge(link.child,link.parent,`edge system-parent-edge${currentEvent?.type==="system_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent);});
+  derived.identityParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,link.relation);return straightEdge(link.child,link.parent,`edge identity-edge${currentEvent?.type==="identity_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent);});
+  const activeIds=new Set(currentEvent?[currentEvent.source,currentEvent.target,currentEvent.location,...(currentEvent.characters||[])].filter(Boolean).map(edgeLocationId):[]);
+  const retractingIds=collapsingLocationId?new Set([...renderedSubtree(collapsingLocationId,locView)]):new Set();
+  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null;
     if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));
-    }else if(item.kind==="location"){const r=locationGlyphRadius(item.id,locView),childCount=(locView.children.get(item.id)||[]).length;nodeRadius=openedLocation?20:r+8;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(38,r+16),class:"node-hit-target"}));
+    }else if(item.kind==="system"){const opened=sysView.expanded.has(item.id),childCount=(sysView.children.get(item.id)||[]).length,r=systemGlyphRadius(state),
+        rankMoved=currentEvent?.type==="system_rank"&&currentEvent.source===item.id;
+      group.appendChild(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}));
+      locationShell=svgEl("g",{class:"location-shell"});
+      if(opened){labelY=-28;locationShell.append(svgEl("circle",{cx:0,cy:0,r:18,class:"system-open-halo"}),svgEl("circle",{cx:0,cy:0,r:6.5,class:"system-open-dot"}));
+      }else{labelY=-r-14;
+        const points=(size,rot=0)=>Array.from({length:4},(_,i)=>{const angle=Math.PI/2*i+rot;return `${size*Math.cos(angle)},${size*Math.sin(angle)}`}).join(" ");
+        locationShell.append(svgEl("polygon",{points:points(r),class:"system-shape"}),svgEl("polygon",{points:points(r*.62),class:"system-shape-inner"}));
+        // A grade is one to three characters, which is exactly what fits in the middle of the
+        // diamond; the named grades get their own colour instead of a letter treatment.
+        if(state.grade){const grade=svgEl("text",{x:0,y:isSpecialGrade(state.grade)?3:5,class:`system-grade${isSpecialGrade(state.grade)?` system-grade-special grade-len-${String(state.grade).trim().length}`:""}`});grade.textContent=String(state.grade).trim().toUpperCase();locationShell.appendChild(grade);}
+        else locationShell.appendChild(svgEl("circle",{cx:0,cy:0,r:r*.17,class:"system-core"}));
+        // The number gets its own pip under the diamond; the two move independently.
+        if(Number.isFinite(Number(state.authority))){locationShell.append(svgEl("circle",{cx:0,cy:r-2,r:10,class:"system-authority-pip"}));const authority=svgEl("text",{x:0,y:r+1.6,class:"system-authority-text"});authority.textContent=String(state.authority);locationShell.appendChild(authority);}
+        if(rankMoved){
+          locationShell.appendChild(svgEl("polygon",{points:points(r+9),class:"system-rank-pulse"}));
+          const moves=[];
+          if(String(state.previousGrade??"")!==String(state.grade??""))moves.push(`${rankWord(state.previousGrade)} → ${rankWord(state.grade)}`);
+          if(String(state.previousAuthority??"")!==String(state.authority??""))moves.push(`authority ${rankWord(state.previousAuthority)} → ${rankWord(state.authority)}`);
+          // Losing a number counts as falling, the same as a smaller one would.
+          const before=Number(state.previousAuthority),now=Number(state.authority),
+            fell=Number.isFinite(before)&&(!Number.isFinite(now)||now<before);
+          // The movement is written under the diamond, clear of the system's own name above it,
+          // and it goes in the label layer so no other node can be drawn over it.
+          if(moves.length)rankLabel={text:moves.join(" · "),y:r+(Number.isFinite(now)?26:19),tone:fell?"rank-fell":"rank-rose"};
+        }
+        if(childCount){locationShell.append(svgEl("circle",{cx:r-6,cy:-r+6,r:9.5,class:"system-child-badge"}));const badge=svgEl("text",{x:r-6,y:-r+9.4,class:"location-child-badge-text system-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);}
+      }
+      group.appendChild(locationShell);
+    }else if(item.kind==="location"){const r=locationGlyphRadius(item.id,locView),childCount=(locView.children.get(item.id)||[]).length;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(38,r+16),class:"node-hit-target"}));
       locationShell=svgEl("g",{class:"location-shell"});
       if(openedLocation){labelY=-26;locationShell.append(svgEl("circle",{cx:0,cy:0,r:17,class:"location-open-halo"}),svgEl("circle",{cx:0,cy:0,r:6.5,class:"location-open-dot"}));group.setAttribute("aria-label",`${shownName}, opened — ${childCount} place${childCount===1?"":"s"} shown, activate to close`);
       }else{labelY=-r-13;locationShell.append(svgEl("path",{d:roundedSquarePath(r,r*.42),class:"location-glyph"}),svgEl("path",{d:roundedSquarePath(r*.44,r*.22),class:"location-glyph-core"}));
         if(childCount){locationShell.append(svgEl("circle",{cx:r-1,cy:-r+1,r:9.5,class:"location-child-badge"}));const badge=svgEl("text",{x:r-1,y:-r+4.4,class:"location-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);group.setAttribute("aria-label",`${shownName}, contains ${childCount} place${childCount===1?"":"s"}`);}
       }
       group.appendChild(locationShell);
-    }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;nodeRadius=r+(appeared?17:9);group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));if(!appeared){group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:"ghost-ring"}),svgEl("circle",{cx:0,cy:0,r,class:`ghost-core ${state.gender==="female"?"core-female":"core-male"}`}));}else{const lifeClass=state.status==="dead"?"life-dead":state.status==="alive"?"life-alive":"life-unknown";group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:lifeClass}),svgEl("circle",{cx:0,cy:0,r,class:state.gender==="female"?"core-female":"core-male"}));if(cultivationReveal)group.appendChild(svgEl("circle",{cx:0,cy:0,r:r+11,class:"cultivation-reveal-pulse"}));const segmentAngle=360/CULTIVATION_LEVELS.length;for(let seg=0;seg<CULTIVATION_LEVELS.length;seg++){const start=-88+seg*segmentAngle,isOn=state.level>seg,wasOn=priorCultivationLevel>seg,isChanged=cultivationReveal&&isOn!==wasOn,isGain=isChanged&&isOn;group.appendChild(svgEl("path",{d:arcPath(0,0,r+(isChanged?21:15),start,start+segmentAngle*.76),class:`${isOn?"corona-on":"corona-off"}${isChanged?` cultivation-change-segment ${isGain?"cultivation-gain":"cultivation-loss"}`:""}`,...(isChanged?{pathLength:1,style:`--cultivation-delay:${Math.abs(seg-priorCultivationLevel)*55}ms`}:{})}));}if(cultivationReveal){const before=priorCultivationLevel?(priorCultivationState?.realm||priorCultivationState?.canonicalRealm||CULTIVATION_LEVELS[priorCultivationLevel-1]):"Unrevealed",after=state.realm||state.canonicalRealm,changeLabel=svgEl("text",{x:0,y:-r-35,class:"cultivation-change-label"});changeLabel.textContent=currentEvent.initial===true&&!priorCultivationLevel?`Cultivation revealed: ${after}`:before===after?after:`${before} → ${after}`;group.appendChild(changeLabel);}const gems=Math.min(7,state.aliases.length),gemR=r+27;for(let i=0;i<gems;i++){const angle=Math.PI+(i+1)*Math.PI/(gems+1);group.appendChild(svgEl("polygon",{points:diamondPoints(Math.cos(angle)*gemR,Math.sin(angle)*gemR,4),class:"alias-gem"}));}}}
-    physics.radii.set(item.id,nodeRadius);
+    }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));if(!appeared){group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:"ghost-ring"}),svgEl("circle",{cx:0,cy:0,r,class:`ghost-core ${state.gender==="female"?"core-female":"core-male"}`}));}else{const lifeClass=state.status==="dead"?"life-dead":state.status==="alive"?"life-alive":"life-unknown";group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:lifeClass}),svgEl("circle",{cx:0,cy:0,r,class:state.gender==="female"?"core-female":"core-male"}));if(cultivationReveal)group.appendChild(svgEl("circle",{cx:0,cy:0,r:r+11,class:"cultivation-reveal-pulse"}));const ladder=trackLevels(state.track),segmentAngle=360/ladder.length;for(let seg=0;seg<ladder.length;seg++){const start=-88+seg*segmentAngle,isOn=state.level>seg,wasOn=priorCultivationLevel>seg,isChanged=cultivationReveal&&isOn!==wasOn,isGain=isChanged&&isOn;group.appendChild(svgEl("path",{d:arcPath(0,0,r+(isChanged?21:15),start,start+segmentAngle*.76),class:`${isOn?"corona-on":"corona-off"}${isChanged?` cultivation-change-segment ${isGain?"cultivation-gain":"cultivation-loss"}`:""}`,...(isChanged?{pathLength:1,style:`--cultivation-delay:${Math.abs(seg-priorCultivationLevel)*55}ms`}:{})}));}if(cultivationReveal){const before=priorCultivationLevel?(priorCultivationState?.realm||priorCultivationState?.canonicalRealm||trackLevels(state.track)[priorCultivationLevel-1]):"Unrevealed",after=state.realm||state.canonicalRealm,changeLabel=svgEl("text",{x:0,y:-r-35,class:"cultivation-change-label"});changeLabel.textContent=currentEvent.initial===true&&!priorCultivationLevel?`Cultivation revealed: ${after}`:before===after?after:`${before} → ${after}`;group.appendChild(changeLabel);}const gems=Math.min(7,state.aliases.length),gemR=r+27;for(let i=0;i<gems;i++){const angle=Math.PI+(i+1)*Math.PI/(gems+1);group.appendChild(svgEl("polygon",{points:diamondPoints(Math.cos(angle)*gemR,Math.sin(angle)*gemR,4),class:"alias-gem"}));}}}
     // Labels live in their own layer above every shape, so a node can never be drawn over
     // another node's name, and so they can be culled independently when the graph gets dense.
     const labelGroup=svgEl("g",{class:`${group.getAttribute("class")} node-labels`,"data-id":item.id}),label=svgEl("text",{x:0,y:labelY,class:`node-label${item.kind==="location"?" location-region-label":""}`});label.textContent=shownName;labelGroup.appendChild(label);
-    if(item.kind==="location"){const tier=svgEl("text",{x:0,y:labelY-13,class:"location-tier-label"});tier.textContent=String(item.locationType||"Place").toUpperCase();labelGroup.appendChild(tier);}
+    if(item.kind==="location"||item.kind==="system"){const tier=svgEl("text",{x:0,y:labelY-13,class:`location-tier-label${item.kind==="system"?" system-tier-label":""}`});tier.textContent=item.kind==="system"?"SYSTEM":String(item.locationType||"Place").toUpperCase();labelGroup.appendChild(tier);}
+    if(rankLabel){const moved=svgEl("text",{x:0,y:rankLabel.y,class:`system-rank-label ${rankLabel.tone}`});moved.textContent=rankLabel.text;labelGroup.appendChild(moved);}
     if(mentionedOnly){const stateLabel=svgEl("text",{x:0,y:39,class:"node-state-label"});stateLabel.textContent="MENTIONED";labelGroup.appendChild(stateLabel);}
-    labelLayer.appendChild(labelGroup);labelEls.set(item.id,{group:labelGroup,text:label,offset:labelY,kind:item.kind,halfWidth:Math.min(150,Math.max(28,String(shownName).length*4.2)),halfHeight:9});
-    const selectNode=()=>{cancelChapterSequence();if(item.kind==="location"){activateLocation(item.id);return;}locationPovId=null;selectedId=selectedId===item.id?null:item.id;setMobilePanel("info");renderAll();};
+    labelLayer.appendChild(labelGroup);labelEls.set(item.id,{group:labelGroup,text:label,offset:labelY,kind:item.kind,tall:Boolean(rankLabel),halfWidth:Math.min(150,Math.max(28,String(shownName).length*4.2)),halfHeight:9});
+    const selectNode=()=>{cancelChapterSequence();if(item.kind==="location"){activateLocation(item.id);return;}if(item.kind==="system"){activateSystem(item.id);return;}locationPovId=null;selectedId=selectedId===item.id?null:item.id;setMobilePanel("info");renderAll();};
     // A character's name is drawn across the middle of its circle and lives in the layer above,
     // so the same gestures have to work from the label as from the shape — otherwise a press in
     // the middle of a node lands on the text and only the outer ring can start a drag.
@@ -811,7 +1309,29 @@ function renderGraph() {
   // Measure the names once they are all in the document. Guessing width from character count
   // under-read real text by about a third, which left the separation forces satisfied while
   // names still overlapped on screen. One pass after the loop keeps the layout thrash to one.
-  labelEls.forEach((entry,id)=>{const box=entry.text.getBBox();if(!box.width)return;entry.halfWidth=box.width/2;entry.halfHeight=box.height/2;entry.offset=box.y+box.height/2;physics.bounds.set(id,{ox:box.x+box.width/2,oy:entry.offset,hw:entry.halfWidth,hh:entry.halfHeight});});
+  // A system announcing a rank change reserves the whole strip — name above, movement below —
+  // so nothing else is placed across it for that beat.
+  labelEls.forEach((entry,id)=>{const box=(entry.tall?entry.group:entry.text).getBBox();if(!box.width)return;entry.halfWidth=box.width/2;entry.halfHeight=box.height/2;entry.offset=box.y+box.height/2;entry.box={ox:box.x+box.width/2,oy:entry.offset,hw:entry.halfWidth,hh:entry.halfHeight};physics.bounds.set(id,entry.box);});
+  // Small, name-free markers unless the system they belong to is the one selected — a swallowed
+  // system should be findable without competing with the systems still running.
+  systemSatellites.forEach((satellite,index)=>{
+    const anchorPoint=positions.get(satellite.anchor);if(!anchorPoint)return;
+    const item=entity(satellite.id);if(!item)return;
+    const named=selectedId===satellite.anchor||selectedId===satellite.id||sysView.expanded.has(satellite.anchor),
+      angle=-Math.PI/2+(index-(systemSatellites.length-1)/2)*.5,distance=58,
+      group=svgEl("g",{class:`system-satellite system-satellite-${satellite.mode}${selectedId===satellite.id?" satellite-selected":""}`,"data-id":satellite.id,role:"button",tabindex:0,"aria-label":`${item.name}, ${satellite.mode==="merged"?"merged away":"destroyed"} — open its history`});
+    group.append(svgEl("circle",{cx:0,cy:0,r:13,class:"system-satellite-hit"}),svgEl("circle",{cx:0,cy:0,r:6,class:"system-satellite-mark"}));
+    if(satellite.mode==="ended")group.append(svgEl("path",{d:"M -3.4 -3.4 L 3.4 3.4 M 3.4 -3.4 L -3.4 3.4",class:"system-satellite-cross"}));
+    if(named){const label=svgEl("text",{x:0,y:-13,class:"system-satellite-label"});label.textContent=item.name;group.appendChild(label);}
+    satelliteLayer.appendChild(group);
+    const place=()=>{const base=positions.get(satellite.anchor);if(!base)return;const x=base.x+Math.cos(angle)*distance,y=base.y+Math.sin(angle)*distance;physics.hubPos.set(satellite.id,{x,y});group.setAttribute("transform",`translate(${x.toFixed(2)},${y.toFixed(2)})`);};
+    place();edgeUpdaters.push(place);
+    const open=()=>{cancelChapterSequence();selectedId=selectedId===satellite.id?satellite.anchor:satellite.id;setMobilePanel("info");renderAll();};
+    group.addEventListener("pointerup",event=>{event.stopPropagation();open();});
+    group.addEventListener("keydown",event=>{if(event.key!=="Enter"&&event.key!==" ")return;event.preventDefault();open();});
+    noteEdge(satellite.id,satellite.anchor,satellite.from,satellite.mode==="merged"?"Merged into this system":satellite.reason||"Destroyed");
+    straightEdge(satellite.id,satellite.anchor,`edge system-satellite-edge`,satellite.id,satellite.anchor);
+  });
   renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius);
   applyGraphFocus(derived);
   updateLabelVisibility();
@@ -820,26 +1340,46 @@ function renderGraph() {
 // A location that is folded away inside a collapsed parent still deserves a moment on
 // screen when an action names it: it swells out of its visible ancestor as a round pod,
 // then sinks back into that ancestor once the action moves on.
-function renderLocationPods(view,currentEvent,positions,layer,glyphRadius){
-  const eventLocationIds=currentEvent?[currentEvent.location,currentEvent.type==="location_parent"?currentEvent.source:null].filter(Boolean).filter(id=>entity(id)?.kind==="location"):[],podIds=[...new Set(eventLocationIds)].filter(id=>view.present.has(id)&&!view.rendered.has(id)&&view.anchorOf.get(id)),podKey=podIds.join("|");
+function eventPodIds(view,currentEvent){
+  const named=currentEvent?[currentEvent.location,currentEvent.type==="location_parent"?currentEvent.source:null].filter(Boolean).filter(id=>entity(id)?.kind==="location"):[];
+  return [...new Set(named)].filter(id=>view.present.has(id)&&!view.rendered.has(id)&&view.anchorOf.get(id));
+}
+// Decide which pods are coming out and which are sinking back BEFORE the links are drawn, so a
+// link to a retracting pod stays attached and rides it home instead of snapping to the parent.
+function syncPodTransitions(view,currentEvent){
+  const podIds=eventPodIds(view,currentEvent),podKey=podIds.join("|");
   if(podKey!==activePodKey){
     const gone=activePodIds.filter(id=>!podIds.includes(id));
     activePodIds=podIds;activePodKey=podKey;
-    if(gone.length){retiringPodIds=gone;clearTimeout(podRetireTimer);podRetireTimer=setTimeout(()=>{retiringPodIds=[];podRetireTimer=null;renderGraph();},520);}
+    if(gone.length){retiringPodIds=gone;clearTimeout(podRetireTimer);podRetireTimer=setTimeout(()=>{retiringPodIds=[];podRetireTimer=null;renderGraph();},POD_TRAVEL_MS);}
   }
+  return podIds;
+}
+function renderLocationPods(view,currentEvent,positions,layer,glyphRadius){
+  const podIds=activePodIds;
+  const placedPods=[];
   const draw=(id,retiring)=>{
     const anchor=view.anchorOf.get(id),anchorPos=anchor&&positions.get(anchor);if(!anchorPos)return;
     const item=entity(id);if(!item)return;
     // Park the pod in the emptiest direction around its ancestor, leaning upward, so it does
     // not land on top of whichever characters happen to be clustered nearby.
-    const distance=glyphRadius(anchor)+112,angle=(()=>{let best=-Math.PI/2,bestScore=-Infinity;for(let step=0;step<16;step++){const candidate=-Math.PI+step*(Math.PI/8),x=anchorPos.x+Math.cos(candidate)*distance,y=anchorPos.y+Math.sin(candidate)*distance;let score=Math.sin(candidate)<0?90:0;positions.forEach((point,other)=>{if(other===anchor)return;score+=Math.min(170,Math.hypot(point.x-x,point.y-y));});if(score>bestScore){bestScore=score;best=candidate;}}return best;})(),
+    const distance=glyphRadius(anchor)+112,angle=(()=>{let best=-Math.PI/2,bestScore=-Infinity;for(let step=0;step<16;step++){const candidate=-Math.PI+step*(Math.PI/8),x=anchorPos.x+Math.cos(candidate)*distance,y=anchorPos.y+Math.sin(candidate)*distance;let score=Math.sin(candidate)<0?90:0;positions.forEach((point,other)=>{if(other===anchor)return;score+=Math.min(170,Math.hypot(point.x-x,point.y-y));});placedPods.forEach(point=>{score+=Math.min(170,Math.hypot(point.x-x,point.y-y))*2.5;});if(score>bestScore){bestScore=score;best=candidate;}}return best;})(),
       group=svgEl("g",{class:`location-pod${retiring?" pod-retracting":""}`,"data-id":id,role:"button",tabindex:0,"aria-label":`${item.name}, inside ${entity(anchor)?.name||anchor}`});
     const tether=svgEl("line",{class:"location-pod-tether"}),ring=svgEl("circle",{cx:0,cy:0,r:25,class:"location-pod-ring"}),core=svgEl("circle",{cx:0,cy:0,r:8,class:"location-pod-core"}),
       tier=svgEl("text",{x:0,y:-49,class:"location-pod-tier"}),label=svgEl("text",{x:0,y:-35,class:"location-pod-label"});
     tier.textContent=String(item.locationType||"Place").toUpperCase();label.textContent=item.name;
     const shell=svgEl("g",{class:"location-pod-shell"});shell.append(ring,core,tier,label);group.append(shell);
     layer.append(tether,group);
-    const place=()=>{const base=positions.get(anchor);if(!base)return;const x=base.x+Math.cos(angle)*distance,y=base.y+Math.sin(angle)*distance;group.setAttribute("transform",`translate(${x.toFixed(2)},${y.toFixed(2)})`);group.style.setProperty("--pod-origin-x",`${(base.x-x).toFixed(2)}px`);group.style.setProperty("--pod-origin-y",`${(base.y-y).toFixed(2)}px`);tether.setAttribute("x1",base.x);tether.setAttribute("y1",base.y);tether.setAttribute("x2",x);tether.setAttribute("y2",y);};
+    const bornAt=performance.now(),place=()=>{
+      const base=positions.get(anchor);if(!base)return;
+      const progress=Math.max(0,Math.min(1,(performance.now()-bornAt)/POD_TRAVEL_MS)),
+        reach=distance*(retiring?1-progress**3:1-(1-progress)**3),
+        x=base.x+Math.cos(angle)*reach,y=base.y+Math.sin(angle)*reach;
+      physics.podPos.set(id,{x,y});
+      group.setAttribute("transform",`translate(${x.toFixed(2)},${y.toFixed(2)})`);
+      tether.setAttribute("x1",base.x);tether.setAttribute("y1",base.y);tether.setAttribute("x2",x);tether.setAttribute("y2",y);
+    };
+    placedPods.push({x:anchorPos.x+Math.cos(angle)*distance,y:anchorPos.y+Math.sin(angle)*distance});
     place();edgeUpdaters.push(place);
     group.addEventListener("pointerup",event=>{event.stopPropagation();cancelChapterSequence();revealLocationPath(id);});
     group.addEventListener("keydown",event=>{if(event.key!=="Enter"&&event.key!==" ")return;event.preventDefault();cancelChapterSequence();revealLocationPath(id);});
@@ -858,6 +1398,32 @@ function activateLocation(id){
   if(selectedId===id&&(view.children.get(id)||[]).length){openLocation(id);return;}
   locationPovId=null;selectedId=selectedId===id?null:id;setMobilePanel("info");renderAll();
 }
+// A system opens and closes like a place. The one difference is upstream: picking its host opens
+// it for you, so opening one by hand never changes what is selected.
+function activateSystem(id){
+  const view=lastSystemView;
+  if(!view||!view.rendered.has(id)){selectedId=id;setMobilePanel("info");renderAll();return;}
+  if(view.expanded.has(id)){closeSystem(id);return;}
+  // Same three steps as a place: select it — which lists its own history, including everything
+  // merged into it — then open it into its subsystems, then close it again.
+  if(selectedId===id&&(view.children.get(id)||[]).length){openSystem(id);return;}
+  selectedId=id;setMobilePanel("info");renderAll();
+}
+function openSystem(id){
+  const view=lastSystemView,kids=view?.children.get(id)||[];if(!kids.length)return;
+  const origin=physics.pos.get(id);
+  expandedSystems.add(id);
+  kids.forEach((kid,index)=>{const angle=-Math.PI/2+index*(Math.PI*2/kids.length);physics.pos.set(kid,{x:(origin?.x??360)+Math.cos(angle)*4,y:(origin?.y??260)+Math.sin(angle)*4});physics.vel.set(kid,{x:Math.cos(angle)*3.2,y:Math.sin(angle)*3.2});});
+  emergingLocations=new Set(kids);clearTimeout(emergeTimer);emergeTimer=setTimeout(()=>{emergingLocations=new Set();emergeTimer=null;},760);
+  renderAll();toast(`${entity(id)?.name||id} opened — ${kids.length} subsystem${kids.length===1?"":"s"}`);
+}
+function closeSystem(id){
+  if(!lastSystemView?.expanded.has(id))return;
+  const subtree=renderedSubtree(id,lastSystemView);
+  expandedSystems.delete(id);
+  subtree.forEach(child=>{expandedSystems.delete(child);physics.pos.delete(child);physics.vel.delete(child);physics.bounds.delete(child);});
+  renderAll();
+}
 function openLocation(id){
   const view=lastLocationView,kids=view?.children.get(id)||[];if(!kids.length)return;
   const origin=physics.pos.get(id);
@@ -873,7 +1439,7 @@ function closeLocation(id){
   collapsingLocationId=id;renderAll();
   clearTimeout(locationCollapseTimer);
   locationCollapseTimer=setTimeout(()=>{
-    const subtree=lastLocationView?renderedLocationSubtree(id,lastLocationView):[];
+    const subtree=lastLocationView?renderedSubtree(id,lastLocationView):[];
     expandedLocations.delete(id);
     subtree.forEach(child=>{expandedLocations.delete(child);physics.pos.delete(child);physics.vel.delete(child);physics.bounds.delete(child);});
     if(selectedId&&subtree.includes(selectedId))selectedId=null;
@@ -891,6 +1457,34 @@ function revealLocationPath(id){
 
 // Obsidian-style hover focus: sweeping the pointer over a node lifts it and its links out of
 // the web without changing what is selected. A real selection or an action focus outranks it.
+// Every drawn link records when it last changed, so hovering one can answer the question the
+// graph otherwise leaves open: which chapter is this connection actually from?
+let edgeIndex = [];
+function distanceToSegment(point,a,b){
+  const dx=b.x-a.x,dy=b.y-a.y,lengthSq=dx*dx+dy*dy;
+  if(!lengthSq)return Math.hypot(point.x-a.x,point.y-a.y);
+  const t=Math.max(0,Math.min(1,((point.x-a.x)*dx+(point.y-a.y)*dy)/lengthSq));
+  return Math.hypot(point.x-(a.x+t*dx),point.y-(a.y+t*dy));
+}
+function edgeUnderPoint(point){
+  let best=null,bestDistance=15/Math.max(.2,view.scale);
+  edgeIndex.forEach(entry=>{
+    const a=pointFor(entry.a),b=pointFor(entry.b);if(!a||!b)return;
+    const distance=distanceToSegment(point,a,b);
+    if(distance<bestDistance){bestDistance=distance;best=entry;}
+  });
+  return best;
+}
+function showEdgeTip(entry,clientX,clientY){
+  const tip=$("#edge-tip"),card=tip.parentElement.getBoundingClientRect();
+  tip.innerHTML=`<strong>${escapeHtml(edgeEndpointName(entry.a))} — ${escapeHtml(edgeEndpointName(entry.b))}</strong><span>${escapeHtml(entry.note)}</span><b>Last changed · Chapter ${entry.chapter}</b>`;
+  tip.hidden=false;
+  const width=tip.offsetWidth,height=tip.offsetHeight;
+  tip.style.left=`${Math.max(6,Math.min(card.width-width-6,clientX-card.left-width/2))}px`;
+  tip.style.top=`${Math.max(6,clientY-card.top-height-14)}px`;
+}
+function edgeEndpointName(id){return String(id).startsWith("conversation:")?"this conversation":stateName(currentDerived(),id);}
+function hideEdgeTip(){const tip=$("#edge-tip");if(tip&&!tip.hidden)tip.hidden=true;}
 function setHoverNode(id){
   if(hoverId===id)return;hoverId=id;
   const neighbors=new Set(id?[id]:[]);
@@ -921,7 +1515,9 @@ function updateLabelVisibility(){
   // their label and earn it back on hover or selection. Small graphs keep every name.
   // A small graph has room for every name once the separation forces settle, so nothing is
   // hidden there; culling is for graphs where names genuinely cannot all fit.
-  const budget=labelBudget(entries.length),crowded=entries.length>10,placed=[];
+  // A rank announcement is transient and must not be overprinted, so its beat is treated as
+  // crowded even on a sparse graph, where names are otherwise all kept.
+  const budget=labelBudget(entries.length),crowded=entries.length>10||entries.some(item=>item.entry.tall),placed=[];
   let spent=0;
   entries.forEach(item=>{
     // What the reader is looking at keeps its name whatever happens. Its neighbours skip the
@@ -929,16 +1525,26 @@ function updateLabelVisibility(){
     let visible=item.focused||(item.linked||!zoomedOut||item.rank>=3)&&(item.linked||spent<budget);
     if(visible&&crowded&&!item.focused)visible=!placed.some(other=>Math.abs(other.x-item.x)<other.hw+item.hw&&Math.abs(other.y-item.y)<other.hh+item.hh);
     item.entry.group.classList.toggle("label-culled",!visible);
+    if(visible&&item.entry.box)physics.bounds.set(item.id,item.entry.box);else physics.bounds.delete(item.id);
     if(visible){placed.push(item);if(!item.focused&&!item.linked)spent++;}
   });
 }
-function applyGraphFocus(derived){if(!selectedId)return;const chosen=entity(selectedId),connected=new Set([selectedId]);document.querySelectorAll("#graph .edge").forEach(edge=>{const match=edge.dataset.a===selectedId||edge.dataset.b===selectedId;if(match){connected.add(edge.dataset.a);connected.add(edge.dataset.b);edge.classList.add("selected-connection");}else edge.classList.add("dim");});document.querySelectorAll("#graph .node").forEach(node=>{if(node.dataset.id===selectedId)node.classList.add("selected");else if(connected.has(node.dataset.id))node.classList.add("selected-neighbor");else node.classList.add("dim");});if(chosen?.kind==="organization"||chosen?.kind==="location")document.querySelectorAll("#graph .relation-edge").forEach(edge=>edge.classList.add("hidden"));}
+function applyGraphFocus(derived){if(!selectedId)return;const chosen=entity(selectedId),connected=new Set([selectedId]),revealedSystems=lastSystemView?lastSystemView.rendered:new Set();document.querySelectorAll("#graph .edge").forEach(edge=>{const match=edge.dataset.a===selectedId||edge.dataset.b===selectedId||revealedSystems.has(edge.dataset.a)||revealedSystems.has(edge.dataset.b)||String(edge.dataset.a).startsWith("conversation:")||String(edge.dataset.b).startsWith("conversation:");if(match){connected.add(edge.dataset.a);connected.add(edge.dataset.b);edge.classList.add("selected-connection");}else edge.classList.add("dim");});document.querySelectorAll("#graph .node").forEach(node=>{if(node.dataset.id===selectedId)node.classList.add("selected");else if(connected.has(node.dataset.id))node.classList.add("selected-neighbor");else node.classList.add("dim");});if(chosen?.kind==="organization"||chosen?.kind==="location")document.querySelectorAll("#graph .relation-edge").forEach(edge=>edge.classList.add("hidden"));}
 
 function summaryPills(items,limit=3){if(!items.length)return "";return `<div class="summary-pills">${items.slice(0,limit).map(item=>{const record=typeof item==="string"?{label:item}:item,label=record.label||item,url=record.id?entityWikiUrl(record.id):"";return url?`<a class="${escapeHtml(record.tone||"")}" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}<i aria-hidden="true">↗</i></a>`:`<span class="${escapeHtml(record.tone||"")}">${escapeHtml(label)}</span>`;}).join("")}${items.length>limit?`<span class="more">+${items.length-limit}</span>`:""}</div>`;}
 function summaryGroup(label,items,limit){return items.length?`<div class="summary-group"><span>${escapeHtml(label)}</span>${summaryPills(items,limit)}</div>`:"";}
 function renderSummary(){
   const box=$("#summary"),chosen=entity(selectedId),panelActive=box.classList.contains("mobile-active");if(!chosen){box.className=`side-card summary${panelActive?" mobile-active":""}`;box.innerHTML='<div class="empty">Select a character, organization, or location. Double-click a node for full details.</div>';return;}
   const d=currentDerived(),state=d.states.get(chosen.id),shownName=state.displayName||chosen.name,header=`<div class="summary-title"><div><strong>${entityNameLink(chosen.id,shownName)}</strong><small>${escapeHtml(activeVol().name)} · action ${currentActionIndex}</small></div><button class="button ghost" id="full-details">Show more</button></div>`;
+  if(chosen.kind==="system"){
+    const host=d.systemHosts.filter(link=>link.system===chosen.id).map(link=>({id:link.host,label:`${stateName(d,link.host)} · ${link.role}`})),
+      parent=d.systemParents.find(link=>link.child===chosen.id),
+      subsystems=d.systemParents.filter(link=>link.parent===chosen.id).map(link=>({id:link.child,label:stateName(d,link.child)})),
+      places=d.systemLocations.filter(link=>link.system===chosen.id).map(link=>({id:link.location,label:`${stateName(d,link.location)} · ${link.role}`}));
+    box.className=`side-card summary${panelActive?" mobile-active":""}`;
+    box.innerHTML=`${header}<div class="summary-stats"><article><span>Authority</span><strong>${Number.isFinite(Number(state.authority))?escapeHtml(String(state.authority)):"—"}</strong></article><article><span>Grade</span><strong>${state.grade?escapeHtml(String(state.grade)):"—"}</strong></article><article><span>Subsystems</span><strong>${subsystems.length}</strong></article><article><span>Places</span><strong>${places.length}</strong></article><article><span>Hosts</span><strong>${host.length}</strong></article></div><div class="summary-groups">${summaryGroup("Host",host,3)}${summaryGroup("Inside",parent?[{id:parent.parent,label:stateName(d,parent.parent)}]:[],1)}${summaryGroup("Subsystems",subsystems,6)}${summaryGroup("Operates at",places,6)}</div>${subsystems.length?`<p class="location-drill-hint">${lastSystemView?.expanded.has(chosen.id)?"Opened — click the dot to fold the subsystems back in.":`Click again on the graph to open ${subsystems.length} subsystem${subsystems.length===1?"":"s"}.`}</p>`:""}`;
+    $("#full-details").onclick=()=>openProfile(chosen.id);return;
+  }
   if(chosen.kind==="organization"){
     const members=d.memberships.filter(m=>m.organization===chosen.id).map(m=>({id:m.character,label:`${stateName(d,m.character)} · ${m.role}`})),places=d.organizationLocations.filter(link=>link.organization===chosen.id).map(link=>({id:link.location,label:`${stateName(d,link.location)} · ${link.role}`}));box.className=`side-card summary${panelActive?" mobile-active":""}`;box.innerHTML=`${header}<div class="summary-stats"><article><span>Active members</span><strong>${members.length}</strong></article><article><span>Locations</span><strong>${places.length}</strong></article><article><span>Introduced</span><strong>Ch. ${chosen.intro}</strong></article></div>${summaryGroup("Locations",places,5)}${summaryGroup("Members",members,5)}`;$("#full-details").onclick=()=>openProfile(chosen.id);return;
   }
@@ -947,15 +1553,80 @@ function renderSummary(){
   }
   const applied=appliedEvents(),unrevealed=state.appeared===null||state.appeared>currentChapter,relationItems=[...new Set(applied.filter(e=>e.type==="relationship"&&(e.source===chosen.id||e.target===chosen.id)).map(e=>pairKey(e.source,e.target)))].map(key=>{const [a,b]=key.split("|"),other=a===chosen.id?b:a,history=applied.filter(e=>e.type==="relationship"&&pairKey(e.source,e.target)===key),type=String(history.at(-1)?.value||"neutral").toLowerCase();return {id:other,label:stateName(d,other),tone:`tone-${type}`};}),meetingIds=[...new Set(applied.filter(e=>e.type==="meeting"&&(e.source===chosen.id||e.target===chosen.id)).map(e=>e.source===chosen.id?e.target:e.source))],meetings=meetingIds.map(id=>({id,label:stateName(d,id)})),awareOutIds=[...new Set(applied.filter(e=>e.type==="awareness"&&e.source===chosen.id).map(e=>e.target))],awareOut=awareOutIds.map(id=>({id,label:stateName(d,id)})),awareInIds=[...new Set(applied.filter(e=>e.type==="awareness"&&e.target===chosen.id).map(e=>e.source))],awareIn=awareInIds.map(id=>({id,label:stateName(d,id)})),aliases=state.aliases.map(alias=>({label:alias.value})),organizations=state.memberships.map(m=>({id:m.organization,label:`${stateName(d,m.organization)} · ${m.role}`})),identityParent=d.identityParents.find(link=>link.child===chosen.id),identityChildren=d.identityParents.filter(link=>link.parent===chosen.id).map(link=>({id:link.child,label:`${stateName(d,link.child)} · ${link.relation}`})),identityFamily=[...(identityParent?[{id:identityParent.parent,label:`${stateName(d,identityParent.parent)} · ${identityParent.relation} parent`}]:[]),...identityChildren];
   const currentPlace=d.locations.get(chosen.id),currentPlaces=currentPlace?[{id:currentPlace.location,label:entity(currentPlace.location)?.name||currentPlace.location}]:[],chapterPlaces=[...new Set(d.locationVisits.filter(visit=>visit.character===chosen.id&&visit.chapter===currentChapter).map(visit=>visit.location))].map(id=>({id,label:entity(id)?.name||id})),residences=d.residences.filter(link=>link.character===chosen.id).map(link=>({id:link.location,label:`${entity(link.location)?.name} · ${link.role}`}));
-  const stats=[{label:"State",value:unrevealed?"Mentioned":"Appeared"},!unrevealed&&state.realm!=="Unrevealed"?{label:"Cultivation",value:state.realm.toLowerCase()===state.canonicalRealm.toLowerCase()?state.realm:`${state.realm} · ${state.canonicalRealm}`} : null,!unrevealed&&state.status!=="unknown"?{label:"Status",value:state.status}:null].filter(Boolean);
+  const stats=[{label:"State",value:unrevealed?"Mentioned":"Appeared"},!unrevealed&&state.realm!=="Unrevealed"?{label:trackName(state.track),value:state.realm.toLowerCase()===state.canonicalRealm.toLowerCase()?state.realm:`${state.realm} · ${state.canonicalRealm}`} : null,!unrevealed&&state.status!=="unknown"?{label:"Status",value:state.status}:null].filter(Boolean);
   box.className=`side-card summary${panelActive?" mobile-active":""}${unrevealed?" muted":""}`;box.innerHTML=`${header}<div class="summary-stats">${stats.map(stat=>`<article><span>${escapeHtml(stat.label)}</span><strong>${escapeHtml(stat.value)}</strong></article>`).join("")}</div><div class="summary-groups">${summaryGroup("Identity family",identityFamily,4)}${summaryGroup("Current place",currentPlaces,1)}${summaryGroup("Homes / bases",residences,3)}${summaryGroup("Places this chapter",chapterPlaces,4)}${summaryGroup("Aliases",aliases,3)}${summaryGroup("Organizations",organizations,2)}${summaryGroup("Relations",relationItems,4)}${summaryGroup("Met",meetings,4)}${summaryGroup("Aware of",awareOut,4)}${summaryGroup("Known by",awareIn,4)}</div>`;$("#full-details").onclick=()=>openProfile(chosen.id);
 }
 
-function eventPanelRow(event,index,{current=false,related=false}={}){return `<li class="event-summary-row${current?" current-action":""}${related?" selection-related-event":""}"${index?` data-focus-action="${index}" title="Show this action on the graph"`:""}><div><div class="event-panel-meta"><span>Chapter ${event.chapter}</span><b class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type.replaceAll("_"," "))}</b></div><p>${richText(event.description||event.type)}${event.location?` <small>· ${escapeHtml(entity(event.location)?.name||event.location)}</small>`:""}</p></div>${eventOriginControl(event)}</li>`;}
-function bindEventPanelRows(){document.querySelectorAll("[data-focus-action]").forEach(row=>row.onclick=event=>{if(event.target.closest("button,a"))return;cancelChapterSequence();currentActionIndex=Number(row.dataset.focusAction);currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();});}
-function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),card=list.closest(".events-card");list.className="events-list";card.classList.toggle("selection-event-mode",Boolean(selectedId));card.classList.toggle("current-event-mode",Boolean(event&&!selectedId));if(!event){$("#events-title").textContent=`${activeVol().name} · Start`;$("#events-count").textContent="Action 0";list.innerHTML='<li class="slider-start-message"><strong>Use the slider to begin</strong><span>Each step reveals one story action in entry order.</span></li>';return;}if(selectedId){const chosen=entity(selectedId),actions=volumeActions().slice(0,currentActionIndex).map((item,index)=>({event:item,index:index+1})).filter(entry=>eventInvolves(entry.event,selectedId));$("#events-title").textContent=`${stateName(currentDerived(),selectedId)} · connected events`;$("#events-count").textContent=`${actions.length} shown`;list.innerHTML=`<li class="selection-event-note"><strong>Connection focus</strong><span>Click ${escapeHtml(chosen?.name||"this node")} again to return to the current event.</span></li>${actions.length?actions.slice().reverse().map(entry=>eventPanelRow(entry.event,entry.index,{current:entry.index===currentActionIndex,related:true})).join(""):'<li class="selection-event-empty">No connected event has been revealed yet.</li>'}`;bindEventPanelRows();return;}$("#events-title").textContent=`Chapter ${event.chapter} · Action ${currentActionIndex}`;$("#events-count").textContent=event.type;list.innerHTML=eventPanelRow(event,currentActionIndex,{current:true});bindEventPanelRows();}
+function eventPanelRow(event,index,{current=false,related=false,upcoming=false}={}){return `<li class="event-summary-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}"${index?` data-focus-action="${index}" title="Show this action on the graph"`:""}><div><div class="event-panel-meta"><span>Chapter ${event.chapter}</span><b class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type.replaceAll("_"," "))}</b></div>${canEditEvents()?`<input class="event-message-edit" data-id="${escapeHtml(event.id)}" value="${escapeHtml(event.description||"")}" placeholder="${escapeHtml(event.type)} — describe what happens" aria-label="Message for this action" />`:`<p>${richText(event.description||event.type)}</p>`}${event.location?`<p class="event-panel-place"><small>· ${escapeHtml(entity(event.location)?.name||event.location)}</small></p>`:""}</div>${eventOriginControl(event)}</li>`;}
+function canEditEvents(){return isUploadRoute&&adminAuthenticated;}
+function bindEventPanelRows(){
+  document.querySelectorAll(".event-message-edit").forEach(field=>{
+    field.onchange=()=>{const record=data.events.find(event=>event.id===field.dataset.id);if(!record)return;record.description=field.value.trim();saveData();renderAll();toast("Message updated");};
+    field.onkeydown=event=>{if(event.key==="Enter"){event.preventDefault();field.blur();}};
+    field.onclick=event=>event.stopPropagation();
+  });
+  document.querySelectorAll("[data-focus-action]").forEach(row=>row.onclick=event=>{if(event.target.closest("button,a,input"))return;cancelChapterSequence();currentActionIndex=Number(row.dataset.focusAction);currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();});}
+function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),card=list.closest(".events-card");list.className="events-list";card.classList.toggle("selection-event-mode",Boolean(selectedId));card.classList.toggle("current-event-mode",Boolean(event&&!selectedId));if(!event){$("#events-title").textContent=`${activeVol().name} · Start`;$("#events-count").textContent="Action 0";list.innerHTML='<li class="slider-start-message"><strong>Use the slider to begin</strong><span>Each step reveals one story action in entry order.</span></li>';return;}if(selectedId){const chosen=entity(selectedId),family=new Set([selectedId,...(entity(selectedId)?.kind==="system"?absorbedInto(selectedId,currentDerived()):[])]),actions=volumeActions().slice(0,currentActionIndex).map((item,index)=>({event:item,index:index+1})).filter(entry=>[...family].some(id=>eventInvolves(entry.event,id)));$("#events-title").textContent=`${stateName(currentDerived(),selectedId)} · connected events`;$("#events-count").textContent=`${actions.length} shown`;list.innerHTML=`<li class="selection-event-note"><strong>Connection focus</strong><span>Click ${escapeHtml(chosen?.name||"this node")} again to return to the current event.</span></li>${actions.length?actions.slice().reverse().map(entry=>eventPanelRow(entry.event,entry.index,{current:entry.index===currentActionIndex,related:true})).join(""):'<li class="selection-event-empty">No connected event has been revealed yet.</li>'}`;bindEventPanelRows();return;}$("#events-title").textContent=`Chapter ${event.chapter} · Action ${currentActionIndex}`;
+  // The whole chapter is listed, not just the action being played, so the reader can scroll
+  // back and forth through it at their own pace while the slider keeps its place.
+  const chapterRows=volumeActions().map((item,index)=>({event:item,index:index+1})).filter(entry=>entry.event.chapter===event.chapter);
+  $("#events-count").textContent=`${chapterRows.length} in chapter`;
+  list.innerHTML=chapterRows.map(entry=>eventPanelRow(entry.event,entry.index,{current:entry.index===currentActionIndex,upcoming:entry.index>currentActionIndex})).join("");
+  bindEventPanelRows();
+  if(!eventScrollHold)requestAnimationFrame(()=>list.querySelector(".current-action")?.scrollIntoView({block:"nearest"}));}
 
-function renderAll(){configureTimeline();renderGraph();renderSummary();renderEvents();renderAdmin();updateSuggestions();cacheActiveVolume();}
+// The quest tab shows the run of a quest, not just its terms: how far along it is, which
+// chapter each step landed in, and — for a chain — the quests inside it, each with its own
+// rewards. A settled quest drops out of the active list rather than crowding it.
+const expandedQuests=new Set(),openQuestChains=new Set();
+let questSettledOpen=false;
+function questProgressTone(run){return run.status==="failed"?"failed":run.status==="abandoned"?"abandoned":run.status==="complete"?"complete":run.progress>=67?"high":run.progress>=34?"middle":"low";}
+function questCardHtml(run,derived,children,depth){
+  const item=entity(run.quest);if(!item)return "";
+  const open=expandedQuests.has(run.quest),chainOpen=openQuestChains.has(run.quest),
+    kids=children.get(run.quest)||[],
+    holders=run.holders.map(id=>stateName(derived,id)).filter(Boolean),
+    lastUpdate=run.updates.at(-1),
+    facts=[
+      item.timeLimit?{label:"Time limit",value:item.timeLimit}:null,
+      holders.length?{label:holders.length>1?"Issued to":"Issued to",value:holders.join(", ")}:null,
+      item.rewards?.length?{label:"Rewards",value:item.rewards.join(", ")}:null,
+      item.achievements?.length?{label:"Achievements",value:item.achievements.join(", ")}:null,
+      item.failure?{label:"On failure",value:item.failure}:null,
+    ].filter(Boolean);
+  const statusWord=run.status==="complete"?"Completed":run.status==="failed"?"Failed":run.status==="abandoned"?"Abandoned":`${run.progress}%`;
+  return `<article class="quest-card tone-${questProgressTone(run)} depth-${Math.min(2,depth)}${open?" quest-open":""}" data-quest="${escapeHtml(run.quest)}" style="--quest-progress:${run.progress}%">
+    <div class="quest-fill" aria-hidden="true"></div>
+    <div class="quest-face">
+      <button class="quest-toggle" type="button" data-quest-toggle="${escapeHtml(run.quest)}" aria-expanded="${open}"><span class="quest-name">${escapeHtml(item.name)}</span><span class="quest-status">${escapeHtml(statusWord)}</span></button>
+      <div class="quest-chips">${item.questBadge?`<span class="quest-badge">${escapeHtml(item.questBadge)}</span>`:""}${item.rewardRank?`<span class="quest-rank">Reward ${escapeHtml(item.rewardRank)}</span>`:""}<span class="quest-chapter">${run.from?`Chapter ${run.from}`:"Unissued"}${run.to&&run.to!==run.from?` → ${run.to}`:""}</span></div>
+      ${kids.length?`<button class="quest-chain-toggle" type="button" data-quest-chain="${escapeHtml(run.quest)}" aria-expanded="${chainOpen}">${chainOpen?"▾":"▸"} ${kids.length} in this chain</button>`:""}
+    </div>
+    ${open?`<div class="quest-detail">${item.description?`<p class="quest-description">${richText(item.description)}</p>`:""}
+      ${facts.length?`<dl class="quest-facts">${facts.map(fact=>`<div><dt>${escapeHtml(fact.label)}</dt><dd>${richInline(fact.value)}</dd></div>`).join("")}</dl>`:""}
+      ${run.updates.length?`<ol class="quest-updates">${run.updates.slice().reverse().map(update=>`<li class="update-${escapeHtml(update.kind)}"><span class="quest-update-chapter">Ch ${update.chapter}</span><span class="quest-update-text">${escapeHtml(update.text||update.kind)}</span><span class="quest-update-progress">${update.progress}%</span></li>`).join("")}</ol>`:""}</div>`
+      :lastUpdate?`<p class="quest-latest">${escapeHtml(lastUpdate.text||"")}</p>`:""}
+    ${kids.length&&chainOpen?`<div class="quest-children">${kids.map(child=>questCardHtml(child,derived,children,depth+1)).join("")}</div>`:""}
+  </article>`;
+}
+function renderQuests(){
+  const box=$("#quests-list"),count=$("#quests-count");if(!box)return;
+  const derived=derive(currentChapter,revealedVolumeActions()),runs=new Map(derived.quests.map(run=>[run.quest,run])),
+    parentOf=new Map(derived.questChains.filter(link=>runs.has(link.child)&&runs.has(link.parent)).map(link=>[link.child,link.parent])),
+    children=new Map();
+  parentOf.forEach((parent,child)=>{if(!children.has(parent))children.set(parent,[]);children.get(parent).push(runs.get(child));});
+  const roots=derived.quests.filter(run=>!parentOf.has(run.quest)),
+    active=roots.filter(run=>run.status==="active"),settled=roots.filter(run=>run.status!=="active");
+  count.textContent=active.length?`${active.length} active`:derived.quests.length?"none active":"";
+  if(!derived.quests.length){box.innerHTML='<p class="quests-empty">No quest has been issued yet. Quests appear here as the chapters reveal them.</p>';return;}
+  box.innerHTML=`${active.length?`<div class="quest-group">${active.map(run=>questCardHtml(run,derived,children,0)).join("")}</div>`:'<p class="quests-empty">Nothing is running right now.</p>'}
+    ${settled.length?`<button class="quest-settled-toggle" type="button" id="quest-settled-toggle" aria-expanded="${questSettledOpen}">${questSettledOpen?"▾":"▸"} ${settled.length} settled</button>${questSettledOpen?`<div class="quest-group settled">${settled.map(run=>questCardHtml(run,derived,children,0)).join("")}</div>`:""}`:""}`;
+  box.querySelectorAll("[data-quest-toggle]").forEach(button=>button.addEventListener("click",event=>{event.stopPropagation();const id=button.dataset.questToggle;if(expandedQuests.has(id))expandedQuests.delete(id);else expandedQuests.add(id);renderQuests();}));
+  box.querySelectorAll("[data-quest-chain]").forEach(button=>button.addEventListener("click",event=>{event.stopPropagation();const id=button.dataset.questChain;if(openQuestChains.has(id))openQuestChains.delete(id);else openQuestChains.add(id);renderQuests();}));
+  $("#quest-settled-toggle")?.addEventListener("click",()=>{questSettledOpen=!questSettledOpen;renderQuests();});
+}
+
+function renderAll(){configureTimeline();renderGraph();renderSummary();renderEvents();renderQuests();renderAdmin();updateSuggestions();cacheActiveVolume();}
 
 function setMobilePanel(name){
   document.querySelectorAll(".mobile-panel-tab").forEach(tab=>tab.classList.toggle("active",tab.dataset.panel===name));
@@ -1027,7 +1698,7 @@ async function openProfile(id,focusChapter=null){
   const biography=profile.history?profileSection("profile-biography",item.kind==="character"?"Biography":"History",`<p>${richText(profile.history)}</p>`,"Story"):"";
   const appearance=item.kind==="character"&&profile.appearance?profileSection("profile-appearance","Appearance",`<p>${richText(profile.appearance)}</p>`,"Physical description"):"";
   const personality=item.kind==="character"&&profile.personality?profileSection("profile-personality","Personality",`<p>${richText(profile.personality)}</p>`,"Characterization"):"";
-  const powerOrPurpose=item.kind==="character"?(cultivation.length||profile.abilities?.length?profileSection("profile-cultivation","Cultivation & abilities",`${cultivationBody}${profile.abilities?.length?`<h3>Known abilities</h3>${proseList(profile.abilities)}`:""}`,"Progression"):""):(profile.purpose||profile.traits?.length?profileSection("profile-purpose",item.kind==="location"?"Description & features":"Purpose & identity",`${profile.purpose?`<p>${richText(profile.purpose)}</p>`:""}${profile.traits?.length?`<h3>${item.kind==="location"?"Notable features":"Defining traits"}</h3>${chipList(profile.traits)}`:""}`,item.kind==="location"?"Location":"Organization"):"");
+  const powerOrPurpose=item.kind==="character"?(cultivation.length||profile.abilities?.length?profileSection("profile-cultivation",`${trackName(state.track)} & abilities`,`${cultivationBody}${profile.abilities?.length?`<h3>Known abilities</h3>${proseList(profile.abilities)}`:""}`,"Progression"):""):(profile.purpose||profile.traits?.length?profileSection("profile-purpose",item.kind==="location"?"Description & features":"Purpose & identity",`${profile.purpose?`<p>${richText(profile.purpose)}</p>`:""}${profile.traits?.length?`<h3>${item.kind==="location"?"Notable features":"Defining traits"}</h3>${chipList(profile.traits)}`:""}`,item.kind==="location"?"Location":"Organization"):"");
   const affiliations=activeMemberships.length||membershipEvents.length?profileSection("profile-affiliations","Affiliations",`${chipList(organizationNames)}${membershipBody}`,"Organizations"):"";
   const relationships=relationIds.length?profileSection("profile-relationships","Relationships",`<div class="relation-grid">${relationCards}</div>`,"Connections"):"";
   const chronology=profileEvents.length?profileSection("profile-chronology","Complete chronology",`<div class="chronology-scroll"><ol class="profile-timeline">${timeline}</ol></div>`,`${profileEvents.length} recorded events`):"";
@@ -1104,12 +1775,90 @@ function isAutomaticCreationDescription(record){
 }
 
 let renderedChapterSources=undefined;
+let orderChapter = null, orderDragRow = null;
+function chaptersWithEvents(){return [...new Set(data.events.map(event=>Number(event.chapter)))].filter(Number.isFinite).sort((a,b)=>a-b);}
+function commitEventOrder(ids){
+  ids.forEach((id,index)=>{const record=data.events.find(event=>event.id===id);if(record)record.order=index+1;});
+  saveData();renderAll();
+}
+function stepOrderChapter(direction){
+  const chapters=chaptersWithEvents();if(!chapters.length)return;
+  const at=chapters.indexOf(orderChapter),next=at<0?0:Math.max(0,Math.min(chapters.length-1,at+direction));
+  orderChapter=chapters[next];renderOrderEditor();
+}
+// Reordering is scoped to one chapter because that is the only place order has any meaning:
+// events sort by chapter first. So the list never grows with the size of the novel.
+function trackRowMarkup(track){
+  return `<div class="track-row" data-id="${escapeHtml(track.id)}"><label class="field"><span>Track name</span><input class="track-name" value="${escapeHtml(track.name||"")}" placeholder="Authority" /></label><label class="field"><span>Ranks, lowest first — one per line</span><textarea class="track-levels" rows="6" placeholder="G&#10;F&#10;E&#10;S-&#10;S&#10;S+&#10;Divine">${escapeHtml((track.levels||[]).join("\n"))}</textarea></label><button type="button" class="button ghost track-remove">Remove this track</button></div>`;
+}
+function renderTrackEditor(){
+  const host=$("#track-rows");if(!host)return;
+  host.innerHTML=progressionTracks().map(trackRowMarkup).join("");
+  host.querySelectorAll(".track-remove").forEach(button=>button.onclick=()=>{
+    if(host.querySelectorAll(".track-row").length<2){toast("Keep at least one track");return;}
+    button.closest(".track-row").remove();
+  });
+}
+function collectTrackRows(){
+  return [...document.querySelectorAll("#track-rows .track-row")].map(row=>{
+    const name=row.querySelector(".track-name").value.trim(),
+      levels=row.querySelector(".track-levels").value.split("\n").map(line=>line.trim()).filter(Boolean);
+    return {id:row.dataset.id||slugForTrack(name),name:name||"Progression",levels};
+  }).filter(track=>track.levels.length);
+}
+function slugForTrack(name){const base=String(name||"track").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"track";let id=base,n=2;while(progressionTracks().some(track=>track.id===id))id=`${base}-${n++}`;return id;}
+function renderOrderEditor(){
+  const list=$("#order-list");if(!list)return;
+  const chapters=chaptersWithEvents();
+  $("#order-count").textContent=`${chapters.length} chapter${chapters.length===1?"":"s"} with events`;
+  if(!chapters.length){list.innerHTML='<li class="order-empty">No events yet.</li>';$("#order-position").textContent="";return;}
+  if(orderChapter===null||!chapters.includes(orderChapter))orderChapter=chapters.includes(currentChapter)?currentChapter:chapters[0];
+  const field=$("#order-chapter");if(field&&document.activeElement!==field)field.value=orderChapter;
+  const rows=orderedEvents().filter(event=>Number(event.chapter)===orderChapter),at=chapters.indexOf(orderChapter);
+  $("#order-prev").disabled=at<=0;$("#order-next").disabled=at>=chapters.length-1;
+  $("#order-position").textContent=`Chapter ${orderChapter} — ${rows.length} action${rows.length===1?"":"s"} · ${at+1} of ${chapters.length} chapters that have events`;
+  list.innerHTML=rows.map((event,index)=>`<li class="order-row${event.ghost?" order-row-ghost":""}" data-id="${escapeHtml(event.id)}"><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i><input class="order-message" data-id="${escapeHtml(event.id)}" value="${escapeHtml(event.description||"")}" placeholder="${escapeHtml(event.type)} — describe what happens" aria-label="Message for this action" /></div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===rows.length-1?" disabled":""}>↓</button></div></li>`).join("");
+  // Every action's message is editable in place, whatever produced it — including the ones the
+  // identity form generates, which otherwise had no obvious way in.
+  list.querySelectorAll(".order-message").forEach(field=>{
+    field.onchange=()=>{const record=data.events.find(event=>event.id===field.dataset.id);if(!record)return;record.description=field.value.trim();saveData();renderAll();toast("Message updated");};
+    field.onkeydown=event=>{if(event.key==="Enter"){event.preventDefault();field.blur();}};
+  });
+  list.querySelectorAll(".order-edit").forEach(button=>button.onclick=()=>loadEventEditor(button.dataset.id));
+  list.querySelectorAll(".order-ghost").forEach(button=>button.onclick=()=>{const record=data.events.find(event=>event.id===button.dataset.id);if(!record)return;if(record.ghost)delete record.ghost;else record.ghost=true;saveData();renderAll();toast(record.ghost?"Ghost action — its effects stay, it leaves the list":"Back in the list");});
+  const idsInOrder=()=>[...list.querySelectorAll(".order-row")].map(row=>row.dataset.id);
+  const swap=(id,direction)=>{const ids=idsInOrder(),from=ids.indexOf(id),to=from+direction;if(from<0||to<0||to>=ids.length)return;ids.splice(to,0,ids.splice(from,1)[0]);commitEventOrder(ids);};
+  list.querySelectorAll(".order-up").forEach(button=>button.onclick=()=>swap(button.dataset.id,-1));
+  list.querySelectorAll(".order-down").forEach(button=>button.onclick=()=>swap(button.dataset.id,1));
+  // The drag listens on the window rather than capturing the handle: reordering moves the row —
+  // and the handle inside it — through the DOM, which drops a pointer capture mid-drag.
+  list.querySelectorAll(".order-grip").forEach(grip=>{
+    grip.addEventListener("pointerdown",event=>{
+      if(event.button!==undefined&&event.button!==0)return;
+      event.preventDefault();
+      orderDragRow=grip.closest(".order-row");orderDragRow.classList.add("order-dragging");
+      const move=moveEvent=>{
+        if(!orderDragRow)return;
+        const others=[...list.querySelectorAll(".order-row:not(.order-dragging)")],
+          before=others.find(row=>{const box=row.getBoundingClientRect();return moveEvent.clientY<box.top+box.height/2;});
+        if(before)list.insertBefore(orderDragRow,before);else list.appendChild(orderDragRow);
+      };
+      const finish=()=>{
+        window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",finish);window.removeEventListener("pointercancel",finish);
+        if(!orderDragRow)return;
+        orderDragRow.classList.remove("order-dragging");orderDragRow=null;commitEventOrder(idsInOrder());
+      };
+      window.addEventListener("pointermove",move);window.addEventListener("pointerup",finish);window.addEventListener("pointercancel",finish);
+    });
+  });
+}
 function renderAdmin(){
   renderVolumeEditor();
   const templateField=$("#chapter-url-template");if(templateField&&document.activeElement!==templateField)templateField.value=data.chapterUrlTemplate||"";
   const sourcesField=$("#chapter-sources-text");if(sourcesField&&document.activeElement!==sourcesField&&renderedChapterSources!==data.chapterSources){sourcesField.value=chapterSourcesToText(data.chapterSources);renderedChapterSources=data.chapterSources;}
   const missingBox=$("#missing-chapter-links");if(missingBox){const missing=referencedChaptersWithoutLinks();missingBox.hidden=!missing.length;if(missing.length)missingBox.querySelector("span").textContent=`Chapter${missing.length===1?"":"s"} ${missing.join(", ")} ${missing.length===1?"is":"are"} referenced somewhere but ${missing.length===1?"has":"have"} no saved link yet.`;}
   const sorted=[...data.events].sort((a,b)=>a.chapter-b.chapter||(a.order||0)-(b.order||0)||String(a.type).localeCompare(String(b.type)));$("#data-count").textContent=`${data.events.length} events`;$("#entity-count").textContent=`${data.entities.length} identities`;$("#entity-table").innerHTML=[...data.entities].sort((a,b)=>a.name.localeCompare(b.name)).map(item=>{const connected=data.events.filter(event=>eventInvolves(event,item.id)).length,intro=item.kind==="character"?(firstMention(item)||firstAppearance(item)||item.intro):item.intro;return `<tr class="${connected?"":"orphan-identity"}"><td><strong>${escapeHtml(item.name)}</strong>${connected?"":'<small class="orphan-warning">Not yet visible on graph</small>'}</td><td><span class="chip">${escapeHtml(item.kind)}</span></td><td>${intro?`Chapter ${intro}`:"—"}</td><td>${connected||'<span class="orphan-warning">0 — repair needed</span>'}</td><td><div class="table-actions"><button class="button ghost edit-identity" data-id="${escapeHtml(item.id)}">Edit identity</button><button class="button ghost delete-identity-row" data-id="${escapeHtml(item.id)}">Delete</button></div></td></tr>`;}).join("");$("#event-table").innerHTML=sorted.map(e=>{const creationManaged=isCreationManagedEvent(e);return `<tr data-event-id="${escapeHtml(e.id)}" data-event-owner="${creationManaged?"identity":"chapter"}"><td>${e.chapter}</td><td><span class="chip">${escapeHtml(e.type)}</span>${creationManaged?'<small class="table-location">creation record</small>':""}</td><td>${escapeHtml([entity(e.source)?.name,e.target?entity(e.target)?.name:null].filter(Boolean).join(" → "))}${e.location?`<small class="table-location">at ${escapeHtml(entity(e.location)?.name||e.location)}</small>`:""}</td><td>${escapeHtml(e.description||"")}</td><td><div class="table-actions"><button class="button ghost edit-event" data-id="${escapeHtml(e.id)}">${creationManaged?"Edit creation":"Edit event"}</button><button class="button ghost delete-event" data-id="${escapeHtml(e.id)}">Delete</button></div></td></tr>`;}).join("");
+  renderOrderEditor();renderTrackEditor();
   document.querySelectorAll(".edit-identity").forEach(button=>button.onclick=()=>loadEntityEditor(button.dataset.id));
   document.querySelectorAll(".delete-identity-row").forEach(button=>button.onclick=()=>deleteIdentity(button.dataset.id));
   document.querySelectorAll(".edit-event").forEach(button=>button.onclick=()=>loadEventEditor(button.dataset.id));
@@ -1122,11 +1871,11 @@ function renderVolumeEditor(){const rows=$("#volume-rows");if(!rows)return;rows.
 function collectVolumeRows(){return [...document.querySelectorAll("#volume-rows .volume-row")].map(row=>({id:row.dataset.volumeId||`volume-${crypto.randomUUID()}`,name:row.querySelector('[name="volumeName"]').value.trim(),from:Number(row.querySelector('[name="volumeFrom"]').value),to:Number(row.querySelector('[name="volumeTo"]').value)}));}
 function validateVolumes(volumes){if(!volumes.length)return "Add at least one volume.";const names=new Set();for(let index=0;index<volumes.length;index++){const volume=volumes[index];if(!volume.name)return `Enter a name for volume ${index+1}.`;if(!Number.isInteger(volume.from)||!Number.isInteger(volume.to)||volume.from<1||volume.to<1)return `${volume.name}: chapter numbers must be whole numbers starting from 1.`;if(volume.from>volume.to)return `${volume.name}: the first chapter cannot be after the last chapter.`;const key=volume.name.toLowerCase();if(names.has(key))return `Two volumes cannot both be named “${volume.name}”.`;names.add(key);if(index&&volume.from<=volumes[index-1].to)return `${volume.name} overlaps ${volumes[index-1].name}. Start it after chapter ${volumes[index-1].to}.`;}return "";}
 
-function updateEntityFormFields(){const form=$("#entity-form"),kind=form.elements.kind.value,isCharacter=kind==="character",isLocation=kind==="location";$("#entity-gender-field").hidden=!isCharacter;$("#entity-location-type-field").hidden=!isLocation;$("#entity-mentioned-field").hidden=!isCharacter;$("#entity-initial-cultivation-field").hidden=!isCharacter;$("#entity-initial-cultivation-alias-field").hidden=!isCharacter;$("#entity-appeared-label").textContent=isCharacter?"First appearance chapter (optional)":"Introduction chapter";form.elements.appeared.placeholder=isCharacter?"Leave blank if they have not appeared yet":`When this ${kind} becomes known`;form.elements.appeared.required=!isCharacter;$("#entity-help").textContent=isCharacter?"Presence and cultivation are separate facts. Use the cultivation fields above only for a level confirmed when the character is introduced. Leave Unknown when it has not been revealed; later breakthroughs belong in chapter events.":isLocation?"Choose the place's scale once. Use a hierarchy event to place it inside its direct parent; use movement for travel and residence for long-term homes or bases.":"Create the organization once. Membership and headquarters or branch changes are recorded chapter by chapter.";}
+function updateEntityFormFields(){const form=$("#entity-form"),kind=form.elements.kind.value,isCharacter=kind==="character",isLocation=kind==="location";$("#entity-gender-field").hidden=!isCharacter;$("#entity-location-type-field").hidden=!isLocation;$("#entity-mentioned-field").hidden=!isCharacter;$("#entity-initial-cultivation-field").hidden=!isCharacter;$("#entity-initial-track-field").hidden=!isCharacter;const isSystem=kind==="system",isQuest=kind==="quest";$("#entity-authority-field").hidden=!isSystem;$("#entity-grade-field").hidden=!isSystem;["badge","reward-rank","time-limit","rewards","achievements","failure"].forEach(name=>{$(`#entity-quest-${name}-field`).hidden=!isQuest;});$("#entity-initial-cultivation-alias-field").hidden=!isCharacter;$("#entity-appeared-label").textContent=isCharacter?"First appearance chapter (optional)":isQuest?"Chapter the quest first exists":"Introduction chapter";form.elements.appeared.placeholder=isCharacter?"Leave blank if they have not appeared yet":`When this ${kind} becomes known`;form.elements.appeared.required=!isCharacter;$("#entity-help").textContent=isCharacter?"Presence and cultivation are separate facts. Use the cultivation fields above only for a level confirmed when the character is introduced. Leave Unknown when it has not been revealed; later breakthroughs belong in chapter events.":isLocation?"Choose the place's scale once. Use a hierarchy event to place it inside its direct parent; use movement for travel and residence for long-term homes or bases.":isQuest?"Write the quest once — its terms do not change. Issuing it, moving it along, settling it, and putting it inside a chain are all chapter actions, so the quest tab shows only as much as the reader has read.":"Create the organization once. Membership and headquarters or branch changes are recorded chapter by chapter.";}
 function resetEntityEditor(){const form=$("#entity-form");form.reset();form.elements.editingId.value="";form.elements.editingCreationEventId.value="";$("#creation-edit-note").hidden=true;$("#entity-creation-description-field").hidden=true;$("#entity-form-title").textContent="Create character, organization, or location";$("#save-entity").textContent="Create and add to graph";$("#delete-entity").hidden=true;$("#cancel-entity-edit").hidden=true;$("#manage-entity").value="";updateEntityFormFields();}
-function loadEntityEditor(id=null,{scroll=true,creationEventId=""}={}){const item=id?entity(id):resolveEntity($("#manage-entity").value);if(!item){toast("Choose an existing identity");return;}const form=$("#entity-form"),initialCultivation=item.kind==="character"?orderedEvents().find(event=>event.type==="cultivation"&&event.source===item.id&&event.initial===true):null,managedEvents=creationEventsFor(item),selectedCreationEvent=managedEvents.find(event=>event.id===creationEventId)||null,commonSourceUrl=selectedCreationEvent?.sourceUrl||managedEvents.find(event=>event.sourceUrl)?.sourceUrl||"";$("#manage-entity").value=item.name;form.elements.editingId.value=item.id;form.elements.editingCreationEventId.value=selectedCreationEvent?.id||"";form.elements.kind.value=item.kind;form.elements.name.value=item.name;form.elements.gender.value=item.gender||"unknown";form.elements.locationType.value=item.locationType||"Other";form.elements.mentioned.value=item.kind==="character"?(firstMention(item)||""):"";form.elements.appeared.value=item.kind==="character"?(firstAppearance(item)||""):(item.intro||"");form.elements.initialLevel.value=initialCultivation?.level||"";form.elements.initialCultivationAlias.value=initialCultivation&&cultivationDisplay(initialCultivation).toLowerCase()!==cultivationCanonical(initialCultivation).toLowerCase()?cultivationDisplay(initialCultivation):"";form.elements.creationSourceUrl.value=commonSourceUrl;form.elements.creationEventDescription.value=selectedCreationEvent?.description||"";form.elements.description.value=item.description||"";updateEntityFormFields();$("#creation-edit-note").hidden=!selectedCreationEvent;$("#entity-creation-description-field").hidden=!selectedCreationEvent;$("#entity-form-title").textContent=selectedCreationEvent?`Edit creation record — ${item.name}`:`Edit ${item.name}`;$("#save-entity").textContent=selectedCreationEvent?"Update linked creation record":"Save identity";$("#delete-entity").hidden=false;$("#cancel-entity-edit").hidden=false;if(scroll){form.scrollIntoView({behavior:"smooth",block:"start"});(selectedCreationEvent?form.elements.creationEventDescription:form.elements.name).focus({preventScroll:true});}toast(selectedCreationEvent?`Editing the original creation record for ${item.name}`:`${item.name} loaded in the identity form`);}
+function loadEntityEditor(id=null,{scroll=true,creationEventId=""}={}){const item=id?entity(id):resolveEntity($("#manage-entity").value);if(!item){toast("Choose an existing identity");return;}const form=$("#entity-form"),initialCultivation=item.kind==="character"?orderedEvents().find(event=>event.type==="cultivation"&&event.source===item.id&&event.initial===true):null,managedEvents=creationEventsFor(item),selectedCreationEvent=managedEvents.find(event=>event.id===creationEventId)||null,commonSourceUrl=selectedCreationEvent?.sourceUrl||managedEvents.find(event=>event.sourceUrl)?.sourceUrl||"";$("#manage-entity").value=item.name;form.elements.editingId.value=item.id;form.elements.editingCreationEventId.value=selectedCreationEvent?.id||"";form.elements.kind.value=item.kind;form.elements.name.value=item.name;form.elements.gender.value=item.gender||"unknown";form.elements.locationType.value=item.locationType||"Other";form.elements.authority.value=item.authority??"";form.elements.grade.value=item.grade||"";form.elements.questBadge.value=item.questBadge||"";form.elements.rewardRank.value=item.rewardRank||"";form.elements.timeLimit.value=item.timeLimit||"";form.elements.rewards.value=(item.rewards||[]).join(", ");form.elements.achievements.value=(item.achievements||[]).join(", ");form.elements.failure.value=item.failure||"";form.elements.mentioned.value=item.kind==="character"?(firstMention(item)||""):"";form.elements.appeared.value=item.kind==="character"?(firstAppearance(item)||""):(item.intro||"");form.elements.initialLevel.value=initialCultivation?.level||"";form.elements.initialCultivationAlias.value=initialCultivation&&cultivationDisplay(initialCultivation).toLowerCase()!==cultivationCanonical(initialCultivation).toLowerCase()?cultivationDisplay(initialCultivation):"";form.elements.creationSourceUrl.value=commonSourceUrl;form.elements.creationEventDescription.value=selectedCreationEvent?.description||"";form.elements.description.value=item.description||"";updateEntityFormFields();$("#creation-edit-note").hidden=!selectedCreationEvent;$("#entity-creation-description-field").hidden=!selectedCreationEvent;$("#entity-form-title").textContent=selectedCreationEvent?`Edit creation record — ${item.name}`:`Edit ${item.name}`;$("#save-entity").textContent=selectedCreationEvent?"Update linked creation record":"Save identity";$("#delete-entity").hidden=false;$("#cancel-entity-edit").hidden=false;if(scroll){form.scrollIntoView({behavior:"smooth",block:"start"});(selectedCreationEvent?form.elements.creationEventDescription:form.elements.name).focus({preventScroll:true});}toast(selectedCreationEvent?`Editing the original creation record for ${item.name}`:`${item.name} loaded in the identity form`);}
 function resetEventEditor(){const form=$("#event-form");form.reset();form.elements.editingId.value="";form.elements.chapter.value=eventDrafts[0]?.chapter||currentChapter;$("#event-edit-mode-note").hidden=true;$("#event-form-title").textContent="Add chapter changes";$("#save-event").textContent="Save this change";$("#cancel-event-edit").hidden=true;$("#queue-event").hidden=false;updateEventHelp();}
-function loadEventEditor(id){const record=data.events.find(event=>event.id===id);if(!record)return;if(isCreationManagedEvent(record)){resetEventEditor();loadEntityEditor(record.source,{creationEventId:record.id});return;}const form=$("#event-form"),isCanonicalCultivationName=record.type==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===String(record.value||"").trim().toLowerCase());form.elements.editingId.value=record.id;form.elements.type.value=record.type;form.elements.chapter.value=record.chapter;form.elements.source.value=entity(record.source)?.name||record.source;form.elements.location.value=record.location?(entity(record.location)?.name||record.location):"";form.elements.target.value=record.target?(entity(record.target)?.name||record.target):"";form.elements.value.value=isCanonicalCultivationName?"":record.value||"";form.elements.level.value=record.level||"";form.elements.description.value=record.description||"";form.elements.sourceUrl.value=record.sourceUrl||"";updateEventHelp();const defaults={organization_location:"open",residency:"begin",location_parent:"add",identity_parent:"add",membership:"reveal"};form.elements.action.value=record.action||defaults[record.type]||"join";$("#event-edit-mode-note").hidden=false;$("#event-form-title").textContent=`Edit this exact chapter ${record.chapter} event`;$("#save-event").textContent="Replace this event";$("#cancel-event-edit").hidden=false;$("#queue-event").hidden=true;form.scrollIntoView({behavior:"smooth",block:"start"});form.elements.type.focus({preventScroll:true});toast(`Editing only the selected chapter ${record.chapter} event`);}
+function loadEventEditor(id){const record=data.events.find(event=>event.id===id);if(!record)return;if(isCreationManagedEvent(record)){resetEventEditor();loadEntityEditor(record.source,{creationEventId:record.id});return;}const form=$("#event-form"),isCanonicalCultivationName=record.type==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===String(record.value||"").trim().toLowerCase());form.elements.editingId.value=record.id;form.elements.type.value=record.type;form.elements.chapter.value=record.chapter;form.elements.source.value=entity(record.source)?.name||record.source;form.elements.location.value=record.location?(entity(record.location)?.name||record.location):"";form.elements.target.value=record.target?(entity(record.target)?.name||record.target):"";form.elements.characters.value=(record.characters||[]).filter(id=>id!==record.source).map(id=>entity(id)?.name||id).join(", ");form.elements.ghost.checked=record.ghost===true;form.elements.progress.value=record.progress??"";form.elements.authority.value=record.authority??"";form.elements.grade.value=record.grade||"";form.elements.value.value=isCanonicalCultivationName?"":record.value||"";fillTrackSelect(form.elements.track,trackIdOf(record));fillLevelSelect(form.elements.level,trackIdOf(record),record.level||"");form.elements.description.value=record.description||"";form.elements.sourceUrl.value=record.sourceUrl||"";updateEventHelp();const defaults={organization_location:"open",residency:"begin",location_parent:"add",identity_parent:"add",membership:"reveal",system_host:"add",system_parent:"add",system_location:"open",system_merge:"add",system_end:"add"};form.elements.action.value=record.action||defaults[record.type]||"join";$("#event-edit-mode-note").hidden=false;$("#event-form-title").textContent=`Edit this exact chapter ${record.chapter} event`;$("#save-event").textContent="Replace this event";$("#cancel-event-edit").hidden=false;$("#queue-event").hidden=true;form.scrollIntoView({behavior:"smooth",block:"start"});form.elements.type.focus({preventScroll:true});toast(`Editing only the selected chapter ${record.chapter} event`);}
 function syncPresenceFromEvents(id,type){if(!["mention","appearance","corpse_appearance"].includes(type))return;const item=entity(id);if(!item||item.kind!=="character")return;const field=type==="mention"?"mentioned":"appeared",types=field==="appeared"?["appearance","corpse_appearance"]:["mention"],chapters=data.events.filter(event=>event.source===id&&types.includes(event.type)).map(event=>event.chapter);item[field]=earliestChapter(chapters);}
 
 function listFromText(value,commas=false){return String(value||"").split(commas?/[,\n]/:/\n/).map(item=>item.trim()).filter(Boolean);}
@@ -1139,25 +1888,42 @@ async function fillProfileEditor(){
   form.elements.roles.value=(profile.roles||[]).join(", ");form.elements.abilities.value=(profile.abilities||[]).join("\n");form.elements.achievements.value=(profile.achievements||[]).map(achievementLine).join("\n");form.elements.traits.value=(profile.traits||[]).join("\n");form.elements.trivia.value=(profile.trivia||[]).join("\n");form.elements.facts.value=(profile.facts||[]).map(item=>`${item.label}: ${item.value}`).join("\n");setProfileEditorMode(item.kind);toast(`${item.name}'s wiki profile loaded`);
 }
 function updateEventHelp(){
-  const form=$("#event-form"),type=form.elements.type.value,isOrgLocation=type==="organization_location",isResidence=type==="residency",isHierarchy=type==="location_parent",isIdentityHierarchy=type==="identity_parent",needsTarget=["awareness","meeting","relationship","membership","identity_parent"].includes(type),showsTarget=needsTarget||type==="note",needsValue=["alias","display_name","status","gender","age","relationship","organization_location","residency","identity_parent"].includes(type),showsValue=needsValue||type==="membership"||type==="cultivation",usesAction=["membership","organization_location","residency","location_parent","identity_parent"].includes(type),help={mention:"Use this when an identity is referred to without physically appearing. Status remains unknown.",appearance:"A normal physical appearance also proves that the character is alive at this action.",corpse_appearance:"Use when a dead body is the character's first physical appearance. This sets appearance and dead status together.",display_name:"Changes the public label from this exact action onward. Add another display-name event later to end a spy name or restore an earlier name.",identity_parent:"Keeps clones, avatars, incarnations, split souls, and their original identity close together in the graph.",movement:"Records travel and changes the character's current physical position.",residency:"Records a home, permanent residence, long-term stay, camp, or personal domain.",location_parent:"Places one location directly inside another. The graph only draws the outermost place — a realm at most — until you open it.",alias:"Adds another searchable name without changing the main displayed label.",cultivation:"Choose the canonical tier by name; an equivalent path title remains synchronized.",status:"Use this for later changes or uncertain states such as missing and presumed dead.",gender:"Use this for a later reveal or an actual change — not needed if it was already set when the character was created.",age:"Use this whenever an age is stated or changes in-story — an exact number, a range, or a description.",awareness:"The first character knows the second exists.",meeting:"Records that two characters meet.",relationship:"Choose a second character and enter friendly, neutral, or hostile.",membership:"Choose whether the membership begins now, was already true but is only revealed now, or ends here.",organization_location:"Connect an organization to a headquarters, branch, base, territory, or outpost.",note:"A general story event."};
-  $("#event-target-field").hidden=!showsTarget;$("#event-value-field").hidden=!showsValue;$("#event-level-field").hidden=type!=="cultivation";$("#event-action-field").hidden=!usesAction;
-  form.elements.target.required=needsTarget;form.elements.value.required=needsValue;form.elements.location.required=["movement","organization_location","residency","location_parent"].includes(type);
+  const form=$("#event-form"),type=form.elements.type.value,isOrgLocation=type==="organization_location",isResidence=type==="residency",isHierarchy=type==="location_parent",isIdentityHierarchy=type==="identity_parent",needsTarget=["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge","quest_chain"].includes(type),showsTarget=needsTarget||type==="note"||type==="quest_issue",needsValue=["alias","display_name","status","gender","age","relationship","organization_location","residency","identity_parent"].includes(type),showsSystemValue=["system_host","system_location"].includes(type),showsValue=needsValue||showsSystemValue||type==="membership"||type==="cultivation",usesAction=["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end","quest_issue","quest_end","quest_chain"].includes(type),help={mention:"Use this when an identity is referred to without physically appearing. Status remains unknown.",appearance:"A normal physical appearance also proves that the character is alive at this action.",corpse_appearance:"Use when a dead body is the character's first physical appearance. This sets appearance and dead status together.",display_name:"Changes the public label from this exact action onward. Add another display-name event later to end a spy name or restore an earlier name.",identity_parent:"Keeps clones, avatars, incarnations, split souls, and their original identity close together in the graph.",movement:"Records travel and changes the character's current physical position.",residency:"Records a home, permanent residence, long-term stay, camp, or personal domain.",location_parent:"Places one location directly inside another. The graph only draws the outermost place — a realm at most — until you open it.",alias:"Adds another searchable name without changing the main displayed label.",cultivation:"Choose the canonical tier by name; an equivalent path title remains synchronized.",status:"Use this for later changes or uncertain states such as missing and presumed dead.",gender:"Use this for a later reveal or an actual change — not needed if it was already set when the character was created.",age:"Use this whenever an age is stated or changes in-story — an exact number, a range, or a description.",awareness:"The first character knows the second exists.",meeting:"Records that two characters meet.",conversation:"One action for a whole conversation, however many characters are in it. Everyone listed counts as having met.",relationship:"Choose a second character and enter friendly, neutral, or hostile.",membership:"Choose whether the membership begins now, was already true but is only revealed now, or ends here.",organization_location:"Connect an organization to a headquarters, branch, base, territory, or outpost.",system_host:"Bind a system to the character who carries it. A system can have no host, and a host can carry more than one.",system_parent:"Place one system inside another — the taverns and resorts that belong to a larger system.",system_location:"A system operates at this place. A system can operate at many places at once.",system_rank:"A system rises or falls. Fill in whichever of authority or grade changed — the other keeps its current value. Write unknown in a field to take that rank away, for a system that loses its grade or whose number was never known.",system_merge:"One system is swallowed by another. It keeps its own history, shown as a small marker on the system that took it.",system_end:"The system is destroyed. It stays on the graph as a small marker so its history is still reachable.",quest_issue:"A quest is handed out. Name the character who receives it if the story says who — a quest can be issued to nobody in particular.",quest_progress:"How far along the quest is, as a percentage. Record one of these each time the story moves it, and the quest tab fills its card to match.",quest_end:"The quest is settled. A completed quest leaves the active list; a failed one carries whatever punishment the quest itself names.",quest_chain:"Put this quest inside a chain. The chain shows as one card in the quest tab that opens to reveal the quests within it, each with its own rewards.",note:"A general story event."};
+  $("#event-target-field").hidden=!showsTarget;$("#event-characters-field").hidden=type!=="conversation";$("#event-authority-field").hidden=type!=="system_rank";$("#event-grade-field").hidden=type!=="system_rank";$("#event-progress-field").hidden=type!=="quest_progress";$("#event-value-field").hidden=!showsValue;$("#event-level-field").hidden=type!=="cultivation";$("#event-action-field").hidden=!usesAction;
+  form.elements.target.required=needsTarget;form.elements.value.required=needsValue;form.elements.location.required=["movement","organization_location","residency","location_parent","system_location"].includes(type);
   $("#event-location-label").textContent=type==="movement"?"Destination":isOrgLocation?"Headquarters / branch location":isResidence?"Home / long-term location":isHierarchy?"Direct parent location":"Where this happened (optional)";
-  $("#event-source-label").textContent=type==="movement"?"Character travelling":isOrgLocation?"Organization":isResidence?"Resident character":isHierarchy?"Child location":isIdentityHierarchy?"Clone / avatar / child identity":type==="note"?"Main character, organization, or location":"Identity / source";
-  $("#event-target-label").textContent=type==="membership"?"Organization":isIdentityHierarchy?"Original / parent identity":type==="note"?"Related identity (optional)":"Second character";
+  $("#event-source-label").textContent=String(type).startsWith("quest_")?"Quest":type==="movement"?"Character travelling":isOrgLocation?"Organization":isResidence?"Resident character":isHierarchy?"Child location":isIdentityHierarchy?"Clone / avatar / child identity":type==="note"?"Main character, organization, or location":"Identity / source";
+  $("#event-target-label").textContent=type==="quest_issue"?"Issued to (optional)":type==="quest_chain"?"Chain this belongs to":type==="membership"?"Organization":isIdentityHierarchy?"Original / parent identity":type==="note"?"Related identity (optional)":"Second character";
   $("#event-value-label").textContent=type==="display_name"?"New public display name":type==="identity_parent"?"Identity relationship":type==="alias"?"New alias":type==="cultivation"?"Equivalent path name (optional)":type==="status"?"New status":type==="gender"?"Gender":type==="age"?"Age":type==="relationship"?"Relationship (friendly, neutral, or hostile)":isOrgLocation?"Organization location role":isResidence?"Residence type":"Role or title (optional)";
-  form.elements.target.placeholder=type==="membership"?"Type an organization name":isIdentityHierarchy?"Original character or parent clone":type==="note"?"Optional":"Type a character name or alias";
+  form.elements.target.placeholder=type==="quest_issue"?"Character who receives it":type==="quest_chain"?"The chain quest this sits inside":type==="membership"?"Type an organization name":isIdentityHierarchy?"Original character or parent clone":type==="note"?"Optional":"Type a character name or alias";
   form.elements.value.placeholder=type==="display_name"?"Name readers see from this action":type==="identity_parent"?"Clone / Avatar / Incarnation / Split soul":type==="alias"?"E.g. The Innkeeper":type==="cultivation"?"E.g. Earthen Deity":type==="status"?"Unknown / Alive / Dead / Missing":type==="gender"?"E.g. Male, Female, Unknown, Nonbinary":type==="age"?"E.g. 17, Early twenties, Over 900 years":type==="relationship"?"friendly / neutral / hostile":isOrgLocation?"Headquarters / Branch / Base / Outpost":isResidence?"Home / Permanent resident / Camp":"E.g. Founder or member";
   if(isOrgLocation)form.elements.value.setAttribute("list","location-role-options");else if(isResidence)form.elements.value.setAttribute("list","residence-role-options");else form.elements.value.removeAttribute("list");
-  const action=form.elements.action;if(isOrgLocation){action.innerHTML='<option value="open">Establishes / opens here</option><option value="close">Closes / leaves this location</option>';$("#event-action-label").textContent="Organization location change";}else if(isResidence){action.innerHTML='<option value="begin">Residence begins</option><option value="end">Residence ends</option>';$("#event-action-label").textContent="Residence change";}else if(isHierarchy){action.innerHTML='<option value="add">Place inside parent</option><option value="remove">Remove from parent</option>';$("#event-action-label").textContent="Location hierarchy change";}else if(isIdentityHierarchy){action.innerHTML='<option value="add">Connect to parent identity</option><option value="remove">Separate from parent identity</option>';$("#event-action-label").textContent="Identity hierarchy change";}else{action.innerHTML='<option value="reveal">Existing membership is revealed</option><option value="join">Joins in this chapter</option><option value="leave">Leaves / membership ends</option>';$("#event-action-label").textContent="Organization membership knowledge";}
+  const action=form.elements.action;
+  if(type==="system_host"){action.innerHTML='<option value="add">Bonds to this host</option><option value="remove">Bond ends</option>';$("#event-action-label").textContent="System host change";}
+  else if(type==="system_parent"){action.innerHTML='<option value="add">Becomes a subsystem</option><option value="remove">No longer a subsystem</option>';$("#event-action-label").textContent="Subsystem change";}
+  else if(type==="system_location"){action.innerHTML='<option value="open">Starts operating here</option><option value="close">Withdraws from here</option>';$("#event-action-label").textContent="System location change";}
+  else if(type==="system_merge"){action.innerHTML='<option value="add">Merges into it</option><option value="remove">Merge undone</option>';$("#event-action-label").textContent="System merge";}
+  else if(type==="system_end"){action.innerHTML='<option value="add">Destroyed</option><option value="remove">Destruction undone</option>';$("#event-action-label").textContent="System end";}
+  else if(type==="quest_issue"){action.innerHTML='<option value="issue">Issued</option><option value="withdraw">Withdrawn before it ran</option>';$("#event-action-label").textContent="Quest issue";}
+  else if(type==="quest_end"){action.innerHTML='<option value="complete">Completed</option><option value="fail">Failed</option><option value="abandon">Abandoned</option><option value="reopen">Reopened</option>';$("#event-action-label").textContent="Quest outcome";}
+  else if(type==="quest_chain"){action.innerHTML='<option value="add">Part of this chain</option><option value="remove">Removed from the chain</option>';$("#event-action-label").textContent="Quest chain change";}
+  else if(isOrgLocation){action.innerHTML='<option value="open">Establishes / opens here</option><option value="close">Closes / leaves this location</option>';$("#event-action-label").textContent="Organization location change";}else if(isResidence){action.innerHTML='<option value="begin">Residence begins</option><option value="end">Residence ends</option>';$("#event-action-label").textContent="Residence change";}else if(isHierarchy){action.innerHTML='<option value="add">Place inside parent</option><option value="remove">Remove from parent</option>';$("#event-action-label").textContent="Location hierarchy change";}else if(isIdentityHierarchy){action.innerHTML='<option value="add">Connect to parent identity</option><option value="remove">Separate from parent identity</option>';$("#event-action-label").textContent="Identity hierarchy change";}else{action.innerHTML='<option value="reveal">Existing membership is revealed</option><option value="join">Joins in this chapter</option><option value="leave">Leaves / membership ends</option>';$("#event-action-label").textContent="Organization membership knowledge";}
   $("#event-help").textContent=`${help[type]||"Record a story change."} Add a wiki link inside details as [[visible text|https://full-link]].`;
 }
 
-function generatedEventDescription(type,source,target,location,value,level,action,initial=false){
+// A rank action can raise a system, lower it, or take a rank away altogether, and the sentence
+// has to read properly in all three cases.
+function rankPhrase(source,rankAuthority,rankGrade){
+  const parts=[];
+  if(rankAuthority)parts.push(meansUnknown(rankAuthority)?"no longer has a known authority":`is now authority ${String(rankAuthority).trim()}`);
+  if(rankGrade)parts.push(meansUnknown(rankGrade)?"is left ungraded":`is now grade ${String(rankGrade).trim()}`);
+  return `${source.name} ${parts.join(" and ")||"is re-ranked"}.`;
+}
+function generatedEventDescription(type,source,target,location,value,level,action,initial=false,trackId=DEFAULT_TRACK_ID,participants=[],rankAuthority="",rankGrade="",progress=""){
   const other=target?.name;
-  const canonical=CULTIVATION_LEVELS[(Number(level)||1)-1]||"unknown tier",cultivationText=value?`${value}, equivalent to ${canonical}`:canonical;
+  const canonical=trackLevels(trackId)[(Number(level)||1)-1]||"unknown rank",cultivationText=value?`${value}, equivalent to ${canonical}`:canonical;
   const membershipText=action==="leave"?`${source.name} leaves ${other}${value?` (${value})`:""}.`:action==="reveal"?`${source.name} is revealed to already be part of ${other}${value?` as ${value}`:""}.`:`${source.name} joins ${other}${value?` as ${value}`:""}.`;
-  return {mention:`${source.name} is mentioned.`,appearance:`${source.name} appears alive.`,corpse_appearance:`${source.name}'s dead body appears.`,display_name:`${source.name} is now publicly known as ${value}.`,identity_parent:action==="remove"?`${source.name} is separated from ${other}.`:`${source.name} is connected to ${other} as ${value||"a clone"}.`,movement:`${source.name} travels to ${location?.name}.`,residency:action==="end"?`${source.name}'s ${value||"residence"} at ${location?.name} ends.`:`${source.name} begins using ${location?.name} as ${value||"a residence"}.`,location_parent:action==="remove"?`${source.name} is no longer recorded inside ${location?.name}.`:`${source.name} is inside ${location?.name}.`,alias:`${value} is revealed as an alias of ${source.name}.`,cultivation:initial?`${source.name}'s cultivation is revealed as ${cultivationText}.`:`${source.name} reaches ${cultivationText}.`,status:`${source.name}'s status changes to ${value}.`,awareness:`${source.name} becomes aware that ${other} exists.`,meeting:`${source.name} meets ${other}.`,relationship:`${source.name} and ${other}'s relationship becomes ${value}.`,membership:membershipText,organization_location:action==="close"?`${source.name} closes its ${value||"location"} at ${location?.name}.`:`${location?.name} becomes ${source.name}'s ${value||"branch"}.`,note:`A story event involving ${source.name}.`}[type]||`${source.name}: ${type}.`;
+  return {mention:`${source.name} is mentioned.`,appearance:`${source.name} appears alive.`,corpse_appearance:`${source.name}'s dead body appears.`,display_name:`${source.name} is now publicly known as ${value}.`,identity_parent:action==="remove"?`${source.name} is separated from ${other}.`:`${source.name} is connected to ${other} as ${value||"a clone"}.`,movement:`${source.name} travels to ${location?.name}.`,residency:action==="end"?`${source.name}'s ${value||"residence"} at ${location?.name} ends.`:`${source.name} begins using ${location?.name} as ${value||"a residence"}.`,location_parent:action==="remove"?`${source.name} is no longer recorded inside ${location?.name}.`:`${source.name} is inside ${location?.name}.`,alias:`${value} is revealed as an alias of ${source.name}.`,cultivation:initial?`${source.name}'s cultivation is revealed as ${cultivationText}.`:`${source.name} reaches ${cultivationText}.`,status:`${source.name}'s status changes to ${value}.`,awareness:`${source.name} becomes aware that ${other} exists.`,meeting:`${source.name} meets ${other}.`,conversation:`${source.name} talks with ${(participants||[]).filter(name=>name!==source.name).join(", ")||"others"}.`,relationship:`${source.name} and ${other}'s relationship becomes ${value}.`,membership:membershipText,system_host:action==="remove"?`${source.name} unbinds from ${other}.`:`${source.name} bonds to ${other}${value?` as ${value}`:""}.`,system_parent:action==="remove"?`${source.name} is no longer a subsystem of ${other}.`:`${source.name} becomes a subsystem of ${other}.`,system_location:action==="close"?`${source.name} withdraws from ${location?.name}.`:`${source.name} operates at ${location?.name}${value?` as ${value}`:""}.`,system_rank:rankPhrase(source,rankAuthority,rankGrade),system_merge:action==="remove"?`${source.name} separates from ${other} again.`:`${source.name} merges into ${other}.`,system_end:action==="remove"?`${source.name} is restored.`:`${source.name} is destroyed${value?` — ${value}`:""}.`,organization_location:action==="close"?`${source.name} closes its ${value||"location"} at ${location?.name}.`:`${location?.name} becomes ${source.name}'s ${value||"branch"}.`,quest_issue:action==="withdraw"?`${source.name} is withdrawn${other?` from ${other}`:""}.`:`${source.name} is issued${other?` to ${other}`:""}.`,quest_progress:`${source.name} stands at ${String(progress).trim()||"0"}%.`,quest_end:action==="fail"?`${source.name} is failed.`:action==="abandon"?`${source.name} is abandoned.`:action==="reopen"?`${source.name} is reopened.`:`${source.name} is completed.`,quest_chain:action==="remove"?`${source.name} leaves the ${other} chain.`:`${source.name} is part of the ${other} chain.`,note:`A story event involving ${source.name}.`}[type]||`${source.name}: ${type}.`;
 }
 
 function isAutomaticCultivationDescription(description,previous){if(!previous||previous.type!=="cultivation")return false;const text=String(description||""),oldNames=[cultivationDisplay(previous),cultivationCanonical(previous)].filter(Boolean);return /\b(cultivation is revealed as|reaches|is introduced at)\b/i.test(text)&&oldNames.some(name=>text.toLowerCase().includes(name.toLowerCase()));}
@@ -1173,6 +1939,12 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   if(sourceUrl&&!safeExternalUrl(sourceUrl)){toast("The chapter citation must be a complete http:// or https:// URL");return null;}
   if(type==="residency"&&!location){toast("Choose the home or long-term location");return null;}
   if(type==="residency"&&source.kind!=="character"){toast("Choose the character who resides there");return null;}
+  if(type==="system_host"&&(source.kind!=="system"||location?.kind==="location"||target?.kind!=="character")){toast("A host bond needs a system and a character");return null;}
+  if(type==="system_parent"&&(source.kind!=="system"||target?.kind!=="system")){toast("A subsystem link needs two systems");return null;}
+  if(type==="system_parent"&&source.id===target?.id){toast("A system cannot be its own subsystem");return null;}
+  if(type==="system_location"&&(source.kind!=="system"||!location||location.kind!=="location")){toast("A system location needs a system and a place");return null;}
+  if(type==="system_merge"&&(source.kind!=="system"||target?.kind!=="system"||source.id===target.id)){toast("A merge needs two different systems");return null;}
+  if(type==="system_end"&&source.kind!=="system"){toast("Only a system can be destroyed this way");return null;}
   if(type==="location_parent"&&!location){toast("Choose the direct parent location");return null;}
   if(type==="location_parent"&&(source.kind!=="location"||location.kind!=="location")){toast("Hierarchy requires a child location and a parent location");return null;}
   if(type==="location_parent"&&source.id===location.id){toast("A location cannot contain itself");return null;}
@@ -1190,14 +1962,41 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   if(["alias","display_name","identity_parent","status","gender","age","relationship","organization_location","residency"].includes(type)&&!value){toast(`Enter the ${$("#event-value-label").textContent.toLowerCase()}`);return null;}
   if(type==="cultivation"&&!level){toast("Choose the canonical cultivation tier");return null;}
   if(type==="relationship"&&!Object.keys(COLORS).includes(value.toLowerCase())){toast("Relationship must be friendly, neutral, or hostile");return null;}
-  const previous=data.events.find(event=>event.id===id),enteredDescription=String(form.get("description")||"").trim(),previousGenerated=previous?generatedEventDescription(previous.type,entity(previous.source),entity(previous.target),entity(previous.location),previous.value,previous.level,previous.action,previous.initial===true):"",useGenerated=!enteredDescription||enteredDescription===previousGenerated||isAutomaticCultivationDescription(enteredDescription,previous),description=useGenerated?generatedEventDescription(type,source,target,location,value,level,action,previous?.initial===true):enteredDescription,order=previous?.chapter===chapter&&previous?.order?previous.order:nextEventOrder(chapter,eventDrafts),record={id,chapter,order,type,source:source.id,description,...(sourceUrl?{sourceUrl:safeExternalUrl(sourceUrl)}:{})};
+  const previous=data.events.find(event=>event.id===id),enteredDescription=String(form.get("description")||"").trim(),previousGenerated=previous?generatedEventDescription(previous.type,entity(previous.source),entity(previous.target),entity(previous.location),previous.value,previous.level,previous.action,previous.initial===true,trackIdOf(previous),(previous.characters||[]).map(id=>entity(id)?.name).filter(Boolean),previous.authority??"",previous.grade||"",previous.progress??""):"",useGenerated=!enteredDescription||enteredDescription===previousGenerated||isAutomaticCultivationDescription(enteredDescription,previous),description=useGenerated?generatedEventDescription(type,source,target,location,value,level,action,previous?.initial===true,String(form.get("track")||progressionTracks()[0].id),String(form.get("characters")||"").split(",").map(part=>part.trim()).filter(Boolean).map(part=>resolveEntity(part)?.name).filter(Boolean),String(form.get("authority")||"").trim(),String(form.get("grade")||"").trim(),String(form.get("progress")||"").trim()):enteredDescription,order=previous?.chapter===chapter&&previous?.order?previous.order:nextEventOrder(chapter,eventDrafts),record={id,chapter,order,type,source:source.id,description,...(sourceUrl?{sourceUrl:safeExternalUrl(sourceUrl)}:{})};
   if(location)record.location=location.id;
   if(["awareness","meeting","relationship","membership","identity_parent"].includes(type)||(type==="note"&&target))record.target=target?.id;
   if(["alias","display_name","identity_parent","cultivation","status","relationship","membership","organization_location","residency"].includes(type)&&value)record.value=["relationship","status"].includes(type)?value.toLowerCase():value;
-  if(type==="cultivation"){record.level=level;if(!value)record.value=CULTIVATION_LEVELS[level-1];}
+  if(type==="cultivation"){record.track=String(form.get("track")||progressionTracks()[0].id);record.level=level;if(!value)record.value=trackLevels(record.track)[level-1];}
   if(previous?.initial===true&&type==="cultivation")record.initial=true;
   if(previous?.identityIntro===true)record.identityIntro=true;
-  if(["membership","organization_location","residency","location_parent","identity_parent"].includes(type))record.action=action;
+  if(type==="conversation"){
+    const named=String(form.get("characters")||"").split(",").map(part=>part.trim()).filter(Boolean).map(resolveEntity),
+      talkers=[...new Set([source.id,...named.filter(item=>item?.kind==="character").map(item=>item.id)])];
+    if(named.some(item=>!item)){toast("One of the conversation names does not match an identity");return null;}
+    if(talkers.length<2){toast("A conversation needs at least two characters");return null;}
+    record.characters=talkers;
+  }
+  if(String(type).startsWith("quest_")){
+    if(source.kind!=="quest"){toast("A quest action needs a quest as its subject");return null;}
+    if(type==="quest_chain"&&(target?.kind!=="quest"||target.id===source.id)){toast("A chain needs two different quests");return null;}
+    if(type==="quest_issue"&&target&&target.kind!=="character"){toast("A quest is issued to a character");return null;}
+    if(type==="quest_progress"){
+      const percent=String(form.get("progress")||"").trim();
+      if(!percent||!Number.isFinite(Number(percent))||Number(percent)<0||Number(percent)>100){toast("Progress is a number between 0 and 100");return null;}
+      record.progress=Number(percent);
+    }
+  }
+  if(type==="system_rank"){
+    if(source.kind!=="system"){toast("Only a system has an authority and a grade");return null;}
+    const rankAuthority=String(form.get("authority")||"").trim(),rankGrade=String(form.get("grade")||"").trim();
+    if(!rankAuthority&&!rankGrade){toast("Give the new authority, the new grade, or both — or write unknown to take one away");return null;}
+    if(!authorityIsValid(rankAuthority)){toast("Authority is a plain number, or unknown to take it away");return null;}
+    if(rankGrade&&!gradeIsValid(rankGrade)){toast("A grade is one to three letters with an optional + or −, one of Divine, Death, Life, or unknown to take it away");return null;}
+    if(rankAuthority)record.authority=meansUnknown(rankAuthority)?null:Number(rankAuthority);
+    if(rankGrade)record.grade=meansUnknown(rankGrade)?null:rankGrade;
+  }
+  if(form.get("ghost"))record.ghost=true;
+  if(["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end","quest_issue","quest_end","quest_chain"].includes(type))record.action=action;
   return record;
 }
 
@@ -1223,7 +2022,10 @@ $("#entity-form").addEventListener("submit",event=>{
   event.preventDefault();const form=new FormData(event.currentTarget),parsedName=parseIdentityName(form.get("name")),name=parsedName.name,existingName=resolveEntity(name);let editingId=String(form.get("editingId")||"");if(!name){toast("Enter a public name or descriptor");return;}if(existingName&&existingName.id!==editingId){const hasEvents=data.events.some(storyEvent=>eventInvolves(storyEvent,existingName.id));if(!editingId&&!hasEvents){editingId=existingName.id;toast(`${existingName.name} existed without a graph event; repairing it now`);}else{$("#manage-entity").value=existingName.name;loadEntityEditor();toast(`${existingName.name} already exists and has been loaded for editing`);return;}}
   const kind=String(form.get("kind")),mentioned=validChapter(form.get("mentioned")),appeared=validChapter(form.get("appeared")),initialLevel=Number(form.get("initialLevel"))||0,initialCultivationAlias=String(form.get("initialCultivationAlias")||"").trim(),creationSourceUrl=String(form.get("creationSourceUrl")||"").trim(),editingCreationEventId=String(form.get("editingCreationEventId")||""),creationEventDescription=String(form.get("creationEventDescription")||"").trim();if(kind==="character"&&!mentioned&&!appeared){toast("Enter either a first mention or a first appearance");return;}if(kind!=="character"&&!appeared){toast(`${kind==="location"?"Locations":"Organizations"} need an introduction chapter`);return;}if(initialCultivationAlias&&!initialLevel){toast("Choose the canonical cultivation tier for that equivalent path title");return;}if(initialCultivationAlias&&CULTIVATION_LEVELS.some(tier=>tier.toLowerCase()===initialCultivationAlias.toLowerCase())){toast("An equivalent path title cannot be another canonical tier. Clear it or choose that tier above.");return;}if(creationSourceUrl&&!safeExternalUrl(creationSourceUrl)){toast("The introduction citation must be a complete http:// or https:// URL");return;}
   let id=editingId;if(!id){id=slugify(name);let suffix=2;while(entity(id))id=slugify(name)+"-"+suffix++;}
-  const record=editingId?entity(editingId):{id},managedBefore=data.events.filter(storyEvent=>storyEvent.source===id&&isCreationManagedEvent(storyEvent)),selectedBefore=managedBefore.find(storyEvent=>storyEvent.id===editingCreationEventId),initialCultivationEvent=managedBefore.find(storyEvent=>storyEvent.type==="cultivation"&&storyEvent.initial===true);Object.assign(record,{kind,name,gender:kind==="character"?String(form.get("gender")):undefined,locationType:kind==="location"?String(form.get("locationType")||"Other"):undefined,mentioned:kind==="character"?mentioned:null,appeared:kind==="character"?appeared:null,intro:kind!=="character"?appeared:(mentioned||appeared),description:String(form.get("description")||"")});if(parsedName.wikiUrl)record.profile={...(record.profile||{}),wikiUrl:parsedName.wikiUrl};if(!editingId)data.entities.push(record);
+  if(kind==="system"&&!gradeIsValid(form.get("grade"))){toast("A grade is one to three letters with an optional + or −, one of Divine, Death, Life, or left blank");return null;}
+  if(kind==="system"&&!authorityIsValid(form.get("authority"))){toast("Authority is a plain number, or left blank");return null;}
+  if(kind==="quest"&&!gradeIsValid(form.get("rewardRank"))){toast("A reward rank is one to three letters with an optional + or −, one of Divine, Death, Life, or left blank");return null;}
+  const record=editingId?entity(editingId):{id},managedBefore=data.events.filter(storyEvent=>storyEvent.source===id&&isCreationManagedEvent(storyEvent)),selectedBefore=managedBefore.find(storyEvent=>storyEvent.id===editingCreationEventId),initialCultivationEvent=managedBefore.find(storyEvent=>storyEvent.type==="cultivation"&&storyEvent.initial===true);Object.assign(record,{kind,name,gender:kind==="character"?String(form.get("gender")):undefined,locationType:kind==="location"?String(form.get("locationType")||"Other"):undefined,authority:kind==="system"?(String(form.get("authority")||"").trim()===""||meansUnknown(form.get("authority"))?undefined:Number(form.get("authority"))):undefined,grade:kind==="system"?(meansUnknown(form.get("grade"))?undefined:String(form.get("grade")||"").trim()||undefined):undefined,questBadge:kind==="quest"?(String(form.get("questBadge")||"").trim()||undefined):undefined,rewardRank:kind==="quest"?(meansUnknown(form.get("rewardRank"))?undefined:String(form.get("rewardRank")||"").trim()||undefined):undefined,timeLimit:kind==="quest"?(String(form.get("timeLimit")||"").trim()||undefined):undefined,rewards:kind==="quest"?(listFromText(form.get("rewards"),true).length?listFromText(form.get("rewards"),true):undefined):undefined,achievements:kind==="quest"?(listFromText(form.get("achievements"),true).length?listFromText(form.get("achievements"),true):undefined):undefined,failure:kind==="quest"?(String(form.get("failure")||"").trim()||undefined):undefined,mentioned:kind==="character"?mentioned:null,appeared:kind==="character"?appeared:null,intro:kind!=="character"?appeared:(mentioned||appeared),description:String(form.get("description")||"")});if(parsedName.wikiUrl)record.profile={...(record.profile||{}),wikiUrl:parsedName.wikiUrl};if(!editingId)data.entities.push(record);
   const sourceFields=creationSourceUrl?{sourceUrl:safeExternalUrl(creationSourceUrl)}:{};
   const creationDescription=(previous,generated)=>previous?.id===selectedBefore?.id&&creationEventDescription&&!(creationEventDescription===previous?.description&&isAutomaticCreationDescription(previous))?creationEventDescription:isAutomaticCreationDescription(previous)?generated:(previous?.description||generated);
   if(kind==="character"){
@@ -1231,7 +2033,7 @@ $("#entity-form").addEventListener("submit",event=>{
     data.events=data.events.filter(storyEvent=>!(storyEvent.source===id&&isCreationManagedEvent(storyEvent)&&["mention","appearance"].includes(storyEvent.type)));
     if(mentioned){const previous=previousPresence.find(storyEvent=>storyEvent.type==="mention"),sameChapter=previous?.chapter===mentioned,generated=`${name} is mentioned for the first time.`;data.events.push({id:previous?.id||"ev-"+crypto.randomUUID(),chapter:mentioned,order:sameChapter&&previous?.order?previous.order:nextEventOrder(mentioned),type:"mention",source:id,creationManaged:true,description:creationDescription(previous,generated),...sourceFields});}
     if(appeared){const previous=previousPresence.find(storyEvent=>storyEvent.type==="appearance"),sameChapter=previous?.chapter===appeared,generated=`${name} appears for the first time.`;data.events.push({id:previous?.id||"ev-"+crypto.randomUUID(),chapter:appeared,order:sameChapter&&previous?.order?previous.order:nextEventOrder(appeared),type:"appearance",source:id,creationManaged:true,description:creationDescription(previous,generated),...sourceFields});}
-    const cultivationChapter=appeared||mentioned;if(initialLevel){const cultivationRecord=initialCultivationEvent||{id:"ev-"+crypto.randomUUID(),type:"cultivation",source:id},presenceEvent=data.events.filter(storyEvent=>storyEvent.source===id&&storyEvent.creationManaged===true&&["mention","appearance"].includes(storyEvent.type)&&storyEvent.chapter===cultivationChapter).sort((a,b)=>(a.order||0)-(b.order||0)).at(-1),sameChapter=cultivationRecord.chapter===cultivationChapter,cultivationOrder=sameChapter&&cultivationRecord.order?cultivationRecord.order:presenceEvent?(Number(presenceEvent.order)||1)+.01:nextEventOrder(cultivationChapter),generated=initialCultivationAlias?`${name}'s cultivation is revealed as ${initialCultivationAlias}, equivalent to ${CULTIVATION_LEVELS[initialLevel-1]}.`:`${name}'s cultivation is revealed as ${CULTIVATION_LEVELS[initialLevel-1]}.`;Object.assign(cultivationRecord,{chapter:cultivationChapter,order:cultivationOrder,creationManaged:true,initial:true,level:initialLevel,value:initialCultivationAlias||CULTIVATION_LEVELS[initialLevel-1],description:creationDescription(initialCultivationEvent,generated),...sourceFields});if(!creationSourceUrl)delete cultivationRecord.sourceUrl;if(!initialCultivationEvent)data.events.push(cultivationRecord);}else if(initialCultivationEvent)data.events=data.events.filter(storyEvent=>storyEvent.id!==initialCultivationEvent.id);
+    const cultivationChapter=appeared||mentioned;if(initialLevel){const cultivationRecord=initialCultivationEvent||{id:"ev-"+crypto.randomUUID(),type:"cultivation",track:String(form.get("initialTrack")||progressionTracks()[0].id),source:id},presenceEvent=data.events.filter(storyEvent=>storyEvent.source===id&&storyEvent.creationManaged===true&&["mention","appearance"].includes(storyEvent.type)&&storyEvent.chapter===cultivationChapter).sort((a,b)=>(a.order||0)-(b.order||0)).at(-1),sameChapter=cultivationRecord.chapter===cultivationChapter,cultivationOrder=sameChapter&&cultivationRecord.order?cultivationRecord.order:presenceEvent?(Number(presenceEvent.order)||1)+.01:nextEventOrder(cultivationChapter),generated=initialCultivationAlias?`${name}'s cultivation is revealed as ${initialCultivationAlias}, equivalent to ${CULTIVATION_LEVELS[initialLevel-1]}.`:`${name}'s cultivation is revealed as ${CULTIVATION_LEVELS[initialLevel-1]}.`;Object.assign(cultivationRecord,{chapter:cultivationChapter,order:cultivationOrder,creationManaged:true,initial:true,level:initialLevel,value:initialCultivationAlias||CULTIVATION_LEVELS[initialLevel-1],description:creationDescription(initialCultivationEvent,generated),...sourceFields});if(!creationSourceUrl)delete cultivationRecord.sourceUrl;if(!initialCultivationEvent)data.events.push(cultivationRecord);}else if(initialCultivationEvent)data.events=data.events.filter(storyEvent=>storyEvent.id!==initialCultivationEvent.id);
   }else{data.events=data.events.filter(storyEvent=>!(storyEvent.source===id&&isCreationManagedEvent(storyEvent)&&["mention","appearance"].includes(storyEvent.type)));const introEvent=managedBefore.find(storyEvent=>storyEvent.type==="note"),generated=`${name} is introduced.`;if(introEvent){const sameChapter=introEvent.chapter===appeared;introEvent.chapter=appeared;introEvent.order=sameChapter&&introEvent.order?introEvent.order:nextEventOrder(appeared);introEvent.creationManaged=true;introEvent.identityIntro=true;introEvent.description=creationDescription(introEvent,generated);if(creationSourceUrl)introEvent.sourceUrl=safeExternalUrl(creationSourceUrl);else delete introEvent.sourceUrl;if(kind==="location")introEvent.location=id;else delete introEvent.location;}else data.events.push({id:"ev-"+crypto.randomUUID(),chapter:appeared,order:nextEventOrder(appeared),type:"note",source:id,creationManaged:true,identityIntro:true,...sourceFields,...(kind==="location"?{location:id}:{}),description:generated});}
   saveData();resetEntityEditor();renderAll();toast(`${name} ${editingId?"updated":"created"}`);
 });
@@ -1242,6 +2044,8 @@ $("#delete-entity").onclick=()=>deleteIdentity($("#entity-form").elements.editin
 
 $("#event-form").addEventListener("submit",event=>{event.preventDefault();const editingId=event.currentTarget.elements.editingId.value,previous=editingId?data.events.find(item=>item.id===editingId):null,record=buildEventRecord(event.currentTarget,editingId||undefined);if(!record)return;if(editingId){const index=data.events.findIndex(item=>item.id===editingId);if(index>=0)data.events[index]=record;}else data.events.push(record);if(previous)syncPresenceFromEvents(previous.source,previous.type);syncPresenceFromEvents(record.source,record.type);saveData();resetEventEditor();renderAll();toast(`Change ${editingId?"updated":"saved"}; graph updated`);});
 $("#event-form").elements.type.addEventListener("change",updateEventHelp);
+$("#event-form").elements.track.addEventListener("change",event=>{const form=$("#event-form");fillLevelSelect(form.elements.level,event.target.value,"");form.elements.value.value="";});
+$("#entity-form").elements.initialTrack.addEventListener("change",event=>{const form=$("#entity-form");fillLevelSelect(form.elements.initialLevel,event.target.value,"");});
 $("#event-form").elements.level.addEventListener("change",()=>{const form=$("#event-form"),value=form.elements.value.value.trim().toLowerCase();if(form.elements.type.value==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===value))form.elements.value.value="";});
 function installWikiLinkHelpers(){document.querySelectorAll("#admin-view textarea").forEach(textarea=>{if(textarea.parentElement.querySelector(".inline-link-helper"))return;const button=document.createElement("button");button.type="button";button.className="inline-link-helper";button.textContent="＋ Link selected text to a wiki page";button.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd,label=textarea.value.slice(start,end).trim()||prompt("Text readers should see (for example: Protos Energy)");if(!label)return;const url=prompt("Paste the full webpage URL");if(!safeExternalUrl(url)){if(url)toast("Use a complete http:// or https:// link");return;}const chapterInput=prompt("Also cite a chapter for this? Enter a chapter number, or leave blank to skip."),chapter=validChapter(chapterInput);if(chapterInput&&!chapter){toast("Enter a whole chapter number greater than 0 — link added without a chapter citation");}textarea.setRangeText(chapter?`[[${label}|${url.trim()}|${chapter}]]`:`[[${label}|${url.trim()}]]`,start,end,"end");textarea.focus();};const chapterButton=document.createElement("button");chapterButton.type="button";chapterButton.className="inline-link-helper chapter-mark-helper";chapterButton.textContent="＋ Mark chapter for selected text";chapterButton.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd;if(start===end){toast("Select the sentence or passage this chapter reference belongs to first");return;}const selectedText=textarea.value.slice(start,end);const input=prompt("Which chapter does this belong to?"),chapter=validChapter(input);if(!chapter){if(input!==null)toast("Enter a whole chapter number greater than 0");return;}if(!chapterUrl(chapter)){const urlInput=prompt(`No link is saved for chapter ${chapter} yet. Paste its URL to save it once — every future reference to chapter ${chapter} anywhere will use it automatically. Leave blank to skip.`);const savedUrl=urlInput?safeExternalUrl(urlInput.trim()):"";if(urlInput&&!savedUrl)toast("That wasn't a complete http:// or https:// link — marker added without one");if(savedUrl){data.chapterSources={...(data.chapterSources||{}),[chapter]:savedUrl};saveData();}}textarea.setRangeText(`[[cite:${chapter}]]${selectedText}[[/cite]]`,start,end,"end");textarea.focus();};textarea.insertAdjacentElement("afterend",button);button.insertAdjacentElement("afterend",chapterButton);});}
 document.addEventListener("click",event=>{const link=event.target.closest("[data-open-event]");if(!link)return;event.preventDefault();event.stopPropagation();openProfile(link.dataset.openEvent,Number(link.dataset.eventChapter));});
@@ -1270,7 +2074,7 @@ $("#export-data").onclick=()=>{const blob=new Blob([JSON.stringify(data,null,2)]
 $("#publish-data").onclick=publishData;
 $("#import-data").addEventListener("change",async event=>{const file=event.target.files[0];if(!file)return;try{const parsed=JSON.parse(await file.text());if(!Array.isArray(parsed.entities)||!Array.isArray(parsed.events)||!Array.isArray(parsed.volumes)||validateVolumes(parsed.volumes))throw new Error();data=parsed;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;saveData();selectedId=null;locationPovId=null;configure();renderAll();toast("Data imported");}catch{toast("That JSON file is not valid graph data");}event.target.value="";});
 $("#reset-data").onclick=()=>{if(!confirm("Reset this browser's demo data to the original sample?"))return;cancelChapterSequence();expandedChapter=null;data=deepClone(sampleData);saveData();selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=activeVol().from;configure();renderAll();toast("Sample data restored");};
-$("#clear-all-data").onclick=()=>{const answer=prompt("This permanently deletes every character, organization, location, profile, and event from the published graph. Your volume structure will remain. Type DELETE to continue.");if(answer!=="DELETE"){if(answer!==null)toast("Nothing was deleted");return;}cancelChapterSequence();expandedChapter=null;data={schemaVersion:6,novel:data.novel||"Living Story Graph",volumes:deepClone(data.volumes?.length?data.volumes:sampleData.volumes),cultivationLevels:deepClone(CULTIVATION_LEVELS),chapterUrlTemplate:data.chapterUrlTemplate||"",chapterSources:deepClone(data.chapterSources||{}),entities:[],events:[]};eventDrafts=[];selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;physics.pos.clear();physics.vel.clear();lastAutoFitSignature="";saveData();resetEntityEditor();resetEventEditor();renderEventBatch();configure();renderAll();toast("All story data deleted");};
+$("#clear-all-data").onclick=()=>{const answer=prompt("This permanently deletes every character, organization, location, profile, and event from the published graph. Your volume structure will remain. Type DELETE to continue.");if(answer!=="DELETE"){if(answer!==null)toast("Nothing was deleted");return;}cancelChapterSequence();expandedChapter=null;data={schemaVersion:11,novel:data.novel||"Living Story Graph",volumes:deepClone(data.volumes?.length?data.volumes:sampleData.volumes),cultivationLevels:deepClone(CULTIVATION_LEVELS),progressionTracks:deepClone(data.progressionTracks?.length?data.progressionTracks:sampleData.progressionTracks),chapterUrlTemplate:data.chapterUrlTemplate||"",chapterSources:deepClone(data.chapterSources||{}),entities:[],events:[]};eventDrafts=[];selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;physics.pos.clear();physics.vel.clear();lastAutoFitSignature="";saveData();resetEntityEditor();resetEventEditor();renderEventBatch();configure();renderAll();toast("All story data deleted");};
 
 function toast(message){const el=$("#toast");el.textContent=message;el.classList.add("show");clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove("show"),2200);}
 
@@ -1288,8 +2092,51 @@ document.addEventListener("click",event=>{if(!document.body.classList.contains("
 document.addEventListener("keydown",event=>{if(event.key==="Alt"&&!event.repeat){event.preventDefault();toggleChapterRefs();}});
 graph.addEventListener("wheel",event=>{event.preventDefault();const {x:ux,y:uy}=toSvgPoint(event.clientX,event.clientY);zoomBy(event.deltaY>0?0.9:1.11,ux,uy);},{passive:false});
 graph.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;const p=toSvgPoint(event.clientX,event.clientY);panStart={ux:p.x,uy:p.y,viewX:view.x,viewY:view.y};graph.setPointerCapture(event.pointerId);});
-graph.addEventListener("pointermove",event=>{if(!panStart)return;viewPinnedByUser=true;const p=toSvgPoint(event.clientX,event.clientY);view.x=panStart.viewX+(p.x-panStart.ux);view.y=panStart.viewY+(p.y-panStart.uy);applyViewTransform();});
+graph.addEventListener("pointermove",event=>{if(!panStart)return;viewPinnedByUser=true;viewTween=null;const p=toSvgPoint(event.clientX,event.clientY);view.x=panStart.viewX+(p.x-panStart.ux);view.y=panStart.viewY+(p.y-panStart.uy);applyViewTransform();});
 const endPan=()=>{panStart=null;};graph.addEventListener("pointerup",endPan);graph.addEventListener("pointercancel",endPan);
+// Hit-testing the links in script rather than widening their strokes: a thin line stays thin,
+// and the reachable band around it does not add an element per edge.
+graph.addEventListener("pointermove",event=>{
+  if(physics.dragId||panStart||event.target.closest(".node,.location-pod")){hideEdgeTip();return;}
+  const found=edgeUnderPoint(toContentPoint(event.clientX,event.clientY));
+  if(found)showEdgeTip(found,event.clientX,event.clientY);else hideEdgeTip();
+});
+graph.addEventListener("pointerleave",hideEdgeTip);
+// Hovering the chapter list holds the auto-advance so the reader can scroll it without the
+// slider moving under them. It resumes only if it was actually playing when they arrived.
+const eventsCard=$("#events-list")?.closest(".events-card");
+if(eventsCard){
+  const hold=()=>{if(eventScrollHold)return;eventScrollHold=true;autoplayHeldByHover=Boolean(chapterAutoplayTimer);cancelChapterSequence();eventsCard.classList.add("events-holding");$("#events-hold").hidden=!autoplayHeldByHover;};
+  const release=()=>{if(!eventScrollHold)return;eventScrollHold=false;eventsCard.classList.remove("events-holding");$("#events-hold").hidden=true;if(autoplayHeldByHover){autoplayHeldByHover=false;scheduleChapterSequence();}};
+  eventsCard.addEventListener("pointerenter",hold);
+  eventsCard.addEventListener("pointerleave",release);
+  eventsCard.addEventListener("focusin",hold);
+  eventsCard.addEventListener("focusout",event=>{if(!eventsCard.contains(event.relatedTarget))release();});
+}
+$("#add-track").onclick=()=>{const host=$("#track-rows");host.insertAdjacentHTML("beforeend",trackRowMarkup({id:"",name:"",levels:[]}));renderTrackEditorBindings();};
+function renderTrackEditorBindings(){$("#track-rows").querySelectorAll(".track-remove").forEach(button=>button.onclick=()=>{if($("#track-rows").querySelectorAll(".track-row").length<2){toast("Keep at least one track");return;}button.closest(".track-row").remove();});}
+$("#track-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  const tracks=collectTrackRows();
+  if(!tracks.length){toast("A track needs at least one rank");return;}
+  // Ranks are re-read by name so an event keeps pointing at the same rung when a ladder is
+  // reordered or renamed; a rung that disappears clamps to the closest one that remains.
+  const before=new Map(progressionTracks().map(track=>[track.id,track.levels]));
+  data.progressionTracks=tracks;
+  data.events.filter(record=>record.type==="cultivation").forEach(record=>{
+    const oldLadder=before.get(trackIdOf(record))||[],name=oldLadder[(Number(record.level)||1)-1],ladder=trackLevels(trackIdOf(record));
+    const moved=name?ladder.indexOf(name):-1;
+    record.level=moved>=0?moved+1:Math.min(Math.max(1,Number(record.level)||1),ladder.length);
+    if(record.value&&oldLadder.includes(record.value))record.value=ladder[record.level-1];
+  });
+  saveData();configure();renderAll();toast("Progression tracks saved");
+});
+$("#order-prev").onclick=()=>stepOrderChapter(-1);
+$("#order-next").onclick=()=>stepOrderChapter(1);
+$("#order-chapter").addEventListener("change",event=>{const wanted=Number(event.target.value);if(!Number.isFinite(wanted))return;const chapters=chaptersWithEvents();if(!chapters.length)return;
+  // Land on the nearest chapter that actually has events rather than showing an empty list.
+  orderChapter=chapters.includes(wanted)?wanted:chapters.reduce((best,chapter)=>Math.abs(chapter-wanted)<Math.abs(best-wanted)?chapter:best,chapters[0]);
+  renderOrderEditor();});
 $("#zoom-in").onclick=()=>zoomBy(1.25);$("#zoom-out").onclick=()=>zoomBy(1/1.25);$("#zoom-reset").onclick=()=>{viewPinnedByUser=false;fitGraphToContent();};
 requestAnimationFrame(tickGraph);
 

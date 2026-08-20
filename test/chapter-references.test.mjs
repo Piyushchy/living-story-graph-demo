@@ -315,7 +315,7 @@ test("the timeline position and open profile (not just the selected volume) are 
   assert.match(restoreBody, /inRange=vol&&Number\.isFinite\(cached\.currentChapter\)&&cached\.currentChapter>=vol\.from&&cached\.currentChapter<=vol\.to/);
   assert.match(restoreBody, /currentChapter=inRange\?cached\.currentChapter:\(vol\?\.from\|\|1\)/);
   assert.match(restoreBody, /openProfileId=typeof cached\.openProfileId==="string"&&entity\(cached\.openProfileId\)\?cached\.openProfileId:null/);
-  assert.match(source, /function renderAll\(\)\{configureTimeline\(\);renderGraph\(\);renderSummary\(\);renderEvents\(\);renderAdmin\(\);updateSuggestions\(\);cacheActiveVolume\(\);\}/);
+  assert.match(source, /function renderAll\(\)\{configureTimeline\(\);renderGraph\(\);renderSummary\(\);renderEvents\(\);renderQuests\(\);renderAdmin\(\);updateSuggestions\(\);cacheActiveVolume\(\);\}/);
 });
 
 test("closing the profile modal clears the persisted open-profile state, and starting the app reopens whatever profile was persisted", () => {
@@ -428,7 +428,8 @@ function locationView({ entities, parents, expanded = [], visible }) {
     functionBody("isLocationRoot"),
     functionBody("locationParentOf"),
     functionBody("buildLocationView"),
-    functionBody("renderedLocationSubtree"),
+    functionBody("buildDrillView"),
+    functionBody("renderedSubtree"),
     functionBody("locationGlyphRadius"),
   ].join("\n");
   const ctx = { __entities: entities, __parents: parents, __expanded: expanded };
@@ -480,7 +481,7 @@ test("every place folded inside a closed parent reports through that parent, so 
   assert.equal(view.anchorOf.inn, "realm", "a place four levels down still connects through the realm on screen");
   const body = functionBody("renderGraph");
   assert.match(body, /const resolveLocationId=id=>entity\(id\)\?\.kind==="location"\?\(locView\.anchorOf\.get\(id\)\|\|id\):id;/);
-  assert.match(body, /const target=resolveLocationId\(to\);if\(!target\|\|from===target\)return;/);
+  assert.match(body, /const target=edgeLocationId\(to\);if\(!target\|\|from===target\)return;/);
 });
 
 test("opening a place moves the drill-down one level down: its children are drawn and now carry the connections that used to roll up to it", () => {
@@ -498,7 +499,7 @@ test("opening a place moves the drill-down one level down: its children are draw
 test("a place with no revealed children is never drawn as a dot, and closing a parent takes its whole opened subtree with it", () => {
   const view = locationView({ ...NESTED_WORLD, expanded: ["realm", "world", "city"] });
   assert.deepEqual(view.opened, ["city", "realm", "world"]);
-  assert.deepEqual(view.read('renderedLocationSubtree("realm",view).sort()'), ["city", "inn", "world"]);
+  assert.deepEqual(view.read('renderedSubtree("realm",view).sort()'), ["city", "inn", "world"]);
   const leafOpen = locationView({ ...NESTED_WORLD, expanded: ["inn"], visible: ["realm", "inn"] });
   assert.deepEqual(leafOpen.opened, [], "opening a place that contains nothing revealed is a no-op");
 });
@@ -539,11 +540,11 @@ test("children scale out of the dot when a place opens and shrink back into it w
 
 test("an action that names a place hidden inside a closed parent pops it out as a round pod, which sinks back into that parent once the action moves on", () => {
   const body = functionBody("renderLocationPods");
-  assert.match(body, /podIds=\[\.\.\.new Set\(eventLocationIds\)\]\.filter\(id=>view\.present\.has\(id\)&&!view\.rendered\.has\(id\)&&view\.anchorOf\.get\(id\)\)/);
-  assert.match(body, /if\(gone\.length\)\{retiringPodIds=gone;clearTimeout\(podRetireTimer\);podRetireTimer=setTimeout\(\(\)=>\{retiringPodIds=\[\];podRetireTimer=null;renderGraph\(\);\},520\);\}/);
+  assert.match(functionBody("eventPodIds"), /return \[\.\.\.new Set\(named\)\]\.filter\(id=>view\.present\.has\(id\)&&!view\.rendered\.has\(id\)&&view\.anchorOf\.get\(id\)\);/);
+  assert.match(functionBody("syncPodTransitions"), /if\(gone\.length\)\{retiringPodIds=gone;clearTimeout\(podRetireTimer\);podRetireTimer=setTimeout\(\(\)=>\{retiringPodIds=\[\];podRetireTimer=null;renderGraph\(\);\},POD_TRAVEL_MS\);\}/);
   assert.match(body, /retiringPodIds\.filter\(id=>!podIds\.includes\(id\)\)\.forEach\(id=>draw\(id,true\)\);/);
-  assert.match(styleSource, /@keyframes pod-emerge\{0%\{transform:translate\(var\(--pod-origin-x,0px\),var\(--pod-origin-y,0px\)\) scale\(\.02\);opacity:0\}/);
-  assert.match(styleSource, /@keyframes pod-retract\{0%\{transform:translate\(0,0\) scale\(1\);opacity:1\}100%\{transform:translate\(var\(--pod-origin-x,0px\),var\(--pod-origin-y,0px\)\) scale\(\.02\);opacity:0\}\}/);
+  assert.match(styleSource, /@keyframes pod-emerge\{0%\{transform:scale\(\.02\);opacity:0\}100%\{transform:scale\(1\);opacity:1\}\}/, "the swell is CSS; the travel is JS so an attached line rides with it");
+  assert.match(styleSource, /@keyframes pod-retract\{0%\{transform:scale\(1\);opacity:1\}100%\{transform:scale\(\.05\);opacity:0\}\}/);
 });
 
 function pureSandbox(names) {
@@ -555,18 +556,18 @@ function pureSandbox(names) {
 
 test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /const edgeLayer=svgEl\("g"\),nodeLayer=svgEl\("g"\),labelLayer=svgEl\("g",\{class:"node-label-layer"\}\),podLayer=svgEl\("g",\{class:"location-pod-layer"\}\);viewportGroup\.append\(edgeLayer,nodeLayer,labelLayer,podLayer\);/);
-  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,halfWidth:/);
-  assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=entry\.text\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
+  assert.match(body, /viewportGroup\.append\(edgeLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation and system markers");
+  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,tall:Boolean\(rankLabel\),halfWidth:/);
+  assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=\(entry\.tall\?entry\.group:entry\.text\)\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
   assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
   assert.match(styleSource, /\.node-label-layer \{ pointer-events: none; \}/);
 });
 
 test("shapes are pushed apart by their real radii, not just by inverse-square repulsion which let them settle on top of each other", () => {
   const body = functionBody("stepPhysics");
-  assert.match(body, /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+22;/);
+  assert.match(body, /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+SEPARATION_GAP;/);
   assert.match(body, /if\(d<clearance\)\{const push=Math\.min\(6,\(clearance-d\)\*\.24\);/);
-  assert.match(functionBody("renderGraph"), /physics\.radii\.set\(item\.id,nodeRadius\);/);
+  assert.match(functionBody("renderGraph"), /visible\.forEach\(item=>physics\.radii\.set\(item\.id,nodeRadiusFor\(item,derived\.states\.get\(item\.id\),locView,currentChapter,sysView\)\)\);/);
 });
 
 test("label text keeps a readable size across the zoom range instead of ballooning when zoomed out", () => {
@@ -612,7 +613,7 @@ test("hovering a node lifts it and its links out of the web, and outranks the ac
 test("once the simulation settles the view fits the real layout, and any zoom or pan by the reader stops it moving under them", () => {
   const body = functionBody("fitGraphToContent");
   assert.match(body, /scale=Math\.max\(\.3,Math\.min\(1\.3,Math\.min\(\(720-padding\*2\)\/width,\(520-padding\*2\)\/height\)\)\)/);
-  assert.match(body, /view\.x=360-\(minX\+maxX\)\/2\*scale;view\.y=260-\(minY\+maxY\)\/2\*scale;/);
+  assert.match(body, /target=\{scale,x:360-\(minX\+maxX\)\/2\*scale,y:260-\(minY\+maxY\)\/2\*scale\}/);
   assert.match(functionBody("scheduleAutoFit"), /if\(!viewPinnedByUser&&!physics\.dragId\)fitGraphToContent\(\)/);
   assert.match(source, /function zoomBy\(factor, atX = 360, atY = 260\) \{\n  viewPinnedByUser = true;/);
   assert.match(source, /if\(!panStart\)return;viewPinnedByUser=true;/);
@@ -623,10 +624,386 @@ test("a name never settles on top of another node's shape, which is what still r
   assert.match(body, /const clearLabelOfShape=\(labelPos,labelBox,shapePos,shapeRadius,labelForce,shapeForce\)=>\{/);
   assert.match(body, /overlapX=labelBox\.hw\+shapeRadius\+14-Math\.abs\(dx\),overlapY=labelBox\.hh\+shapeRadius\+12-Math\.abs\(dy\)/);
   assert.match(body, /clearLabelOfShape\(a,ab,b,rb,fa,fb\);clearLabelOfShape\(b,bb,a,ra,fb,fa\);/, "both directions, so neither node's name camps on the other");
-  assert.match(body, /push=Math\.min\(3\.5,Math\.max\(\.7,\.055\*overlapX\)\)/, "with a floor, so a shallow overlap still clears instead of stalling against the springs");
+  assert.match(body, /push=Math\.min\(3\.5,\.085\*overlapX\)/, "proportional, with no constant floor — a floor never reaches zero and the layout trembles instead of settling");
 });
 
 test("two names that meet in the gap between their nodes slide apart sideways, because separating them vertically would drag the shapes together and the clearance force would just undo it", () => {
   const body = functionBody("stepPhysics");
   assert.match(body, /const opposed=\(a\.y-b\.y\)\*labelDy<0;if\(opposed\|\|overlapX<overlapY\)\{const direction=labelDx>=0\?1:-1/);
+});
+
+test("spring rest lengths clear both nodes, so a link can never pull two shapes inside the distance the separation force insists on — the tug of war between them was the source of the shivering", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const restLength=\(a,b,desired\)=>Math\.max\(desired,\(physics\.radii\.get\(a\)\|\|24\)\+\(physics\.radii\.get\(b\)\|\|24\)\+SEPARATION_GAP\+8\)/);
+  assert.match(body, /addSpring=\(a,b,desired,strength\)=>\{[^}]*const length=restLength\(a,b,desired\)/);
+  assert.match(functionBody("stepPhysics"), /if \(Math\.abs\(v\.x\) < REST_SPEED && Math\.abs\(v\.y\) < REST_SPEED\) \{ v\.x = 0; v\.y = 0; return; \}/, "and near-zero motion is snapped to rest so the graph stops moving entirely");
+});
+
+test("a place a character is standing in keeps the line while it is popped out, and the line rides back into the parent as the pod retracts rather than snapping across", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const podIds=syncPodTransitions\(locView,currentEvent\),podSet=new Set\(\[\.\.\.podIds,\.\.\.retiringPodIds\]\)/, "retracting pods stay valid endpoints so the line can follow them home");
+  assert.ok(body.indexOf("syncPodTransitions(locView") < body.indexOf("const straightEdge="), "and the transition is decided before any link is drawn, or the line snaps home a render early");
+  assert.match(body, /const edgeLocationId=id=>entity\(id\)\?\.kind!=="location"\?id:\(podSet\.has\(id\)\?id:\(locView\.anchorOf\.get\(id\)\|\|id\)\)/);
+  assert.match(body, /const aPos=pointFor\(a\),bPos=pointFor\(b\)/, "edges resolve pod positions as well as physics positions");
+  assert.match(functionBody("renderLocationPods"), /reach=distance\*\(retiring\?1-progress\*\*3:1-\(1-progress\)\*\*3\)/, "the travel is driven in JS so an attached line moves with it");
+  assert.match(functionBody("pointFor"), /return physics\.pos\.get\(id\)\|\|physics\.podPos\.get\(id\)\|\|physics\.hubPos\.get\(id\)\|\|null;/);
+});
+
+test("an action that merely names a place — a meeting, a note — still draws everyone it involves to that place while it is showing", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /if\(currentEvent\?\.location&&entity\(currentEvent\.location\)\?\.kind==="location"&&!\["movement","residency","organization_location","location_parent"\]\.includes\(currentEvent\.type\)\)/, "the link types that already draw their own line are left alone");
+  assert.match(body, /locationCharacterIds\(currentEvent\)\.forEach\(who=>\{noteEdge\(who,place,currentEvent\.chapter,"Here for this action"\);straightEdge\(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place\);\}\)/);
+});
+
+test("the view eases into a new framing instead of jumping, and a reader's own zoom or pan drops the tween immediately", () => {
+  assert.match(functionBody("glideViewTo"), /viewTween=\{from:\{x:view\.x,y:view\.y,scale:view\.scale\},to:target,start:performance\.now\(\),duration\}/);
+  assert.match(functionBody("stepViewTween"), /eased=progress<\.5\?4\*progress\*\*3:1-\(-2\*progress\+2\)\*\*3\/2/);
+  assert.match(functionBody("fitGraphToContent"), /if\(Math\.abs\(target\.scale-view\.scale\)<\.015&&Math\.hypot\(target\.x-view\.x,target\.y-view\.y\)<12\)return;/, "and a framing that barely moved is left alone rather than animated");
+  assert.match(source, /viewPinnedByUser = true; viewTween = null;/);
+  assert.match(source, /if\(!panStart\)return;viewPinnedByUser=true;viewTween=null;/);
+  assert.match(functionBody("tickGraph"), /stepViewTween\(\);/);
+});
+
+test("hovering a link answers which chapter that connection last changed in, hit-tested in script so a thin line stays thin", () => {
+  assert.match(functionBody("edgeUnderPoint"), /let best=null,bestDistance=15\/Math\.max\(\.2,view\.scale\)/, "the reachable band is in screen terms, so it does not shrink as you zoom out");
+  assert.match(functionBody("showEdgeTip"), /Last changed · Chapter \$\{entry\.chapter\}/);
+  assert.match(source, /if\(physics\.dragId\|\|panStart\|\|event\.target\.closest\("\.node,\.location-pod"\)\)\{hideEdgeTip\(\);return;\}/, "dragging, panning and hovering a node all suppress it");
+  const body = functionBody("renderGraph");
+  assert.match(body, /const noteEdge=\(a,b,chapter,note\)=>\{if\(a&&b&&a!==b&&chapter\)edgeIndex\.push\(\{a,b,chapter:Number\(chapter\),note\}\);\}/);
+  assert.match(body, /locationEdge\(character,visit\.location,"location-edge",[^,]*,visit\.chapter,"Travelled here"\)/, "travel");
+  assert.match(body, /noteEdge\(m\.character,m\.organization,m\.from/, "membership");
+  assert.match(body, /noteEdge\(child,parent,link\.from,"Sits inside"\)/, "location nesting");
+  assert.match(source, /pair\.from = event\.chapter;/, "awareness had no chapter of its own to report until now");
+});
+
+test("event order is edited one chapter at a time, which is what keeps it usable at a couple of thousand chapters", () => {
+  const body = functionBody("renderOrderEditor");
+  assert.match(body, /const rows=orderedEvents\(\)\.filter\(event=>Number\(event\.chapter\)===orderChapter\)/, "never lists more than one chapter");
+  assert.match(functionBody("chaptersWithEvents"), /\[\.\.\.new Set\(data\.events\.map\(event=>Number\(event\.chapter\)\)\)\]/, "and steps through only the chapters that have events");
+  assert.match(body, /grip\.addEventListener\("pointerdown"/, "drag by handle");
+  assert.match(body, /before=others\.find\(row=>\{const box=row\.getBoundingClientRect\(\);return moveEvent\.clientY<box\.top\+box\.height\/2;\}\)/, "dropping is decided by row midpoints");
+  assert.match(body, /window\.addEventListener\("pointermove",move\);window\.addEventListener\("pointerup",finish\)/, "tracked on the window — reordering moves the handle through the DOM, which drops a pointer capture");
+  assert.match(body, /list\.querySelectorAll\("\.order-up"\)\.forEach\(button=>button\.onclick=\(\)=>swap\(button\.dataset\.id,-1\)\)/, "with arrow buttons as the keyboard-reachable path");
+  assert.match(functionBody("commitEventOrder"), /ids\.forEach\(\(id,index\)=>\{const record=data\.events\.find\(event=>event\.id===id\);if\(record\)record\.order=index\+1;\}\)/);
+});
+
+test("a node's radius is settled once, before the springs and the separation force need it — clearing the map after filling it left every shape asking for the fallback size, so big characters walked straight through each other", () => {
+  const body = functionBody("renderGraph");
+  const filled = body.indexOf("visible.forEach(item=>physics.radii.set(item.id,nodeRadiusFor(");
+  assert.ok(filled > 0, "radii are filled from the same rule the renderer draws with");
+  assert.ok(body.indexOf("const restLength=") > filled, "springs read them");
+  assert.equal(body.split("physics.radii.clear()").length - 1, 1, "and nothing clears the map a second time");
+  assert.match(functionBody("stepPhysics"), /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+SEPARATION_GAP;/);
+});
+
+test("a crowd sharing one place gets a ring wide enough to hold it, rather than everyone being pulled onto a circle with no room", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /hubMembers\.forEach\(\(members,hub\)=>\{[\s\S]*?circumference\+=2\*\(physics\.radii\.get\(id\)\|\|24\)\+SEPARATION_GAP;[\s\S]*?hubRing\.set\(hub,circumference\/\(2\*Math\.PI\)\)/);
+  assert.match(body, /hubLinks\.forEach\(link=>addSpring\(link\.member,link\.hub,Math\.max\(link\.desired,hubRing\.get\(link\.hub\)\|\|0\),link\.strength\)\)/);
+});
+
+test("the chapter's actions are all listed and scrollable, and hovering the list holds the auto-advance so it can be read at the reader's pace", () => {
+  const body = functionBody("renderEvents");
+  assert.match(body, /const chapterRows=volumeActions\(\)\.map\(\(item,index\)=>\(\{event:item,index:index\+1\}\)\)\.filter\(entry=>entry\.event\.chapter===event\.chapter\)/);
+  assert.match(body, /upcoming:entry\.index>currentActionIndex/, "actions not yet reached are shown but marked");
+  assert.match(body, /if\(!eventScrollHold\)requestAnimationFrame\(\(\)=>list\.querySelector\("\.current-action"\)\?\.scrollIntoView\(\{block:"nearest"\}\)\)/, "and the list does not yank itself while the reader is in it");
+  assert.match(functionBody("scheduleChapterSequence"), /if\(expandedChapter!==null\|\|eventScrollHold\)return;/);
+  assert.match(source, /autoplayHeldByHover=Boolean\(chapterAutoplayTimer\);cancelChapterSequence\(\)/, "only resumes if it was actually playing when the pointer arrived");
+  assert.match(source, /eventsCard\.addEventListener\("pointerleave",release\)/);
+  assert.match(styleSource, /\.events-list \{[^}]*overflow-y: auto/);
+  assert.match(styleSource, /\.events-list > \.upcoming-action \{ opacity: \.5; \}/);
+});
+
+test("progression ladders are data the author types in, not a hardcoded tier list — a story can run cultivation, an authority grade from G to S, or both at once", () => {
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext([
+    "var data={progressionTracks:[{id:'cultivation',name:'Cultivation',levels:['Mortal','Qi Training']},{id:'authority',name:'Authority',levels:['G','F','S-','S','S+','Divine']}]};",
+    "function deepClone(v){return JSON.parse(JSON.stringify(v));}",
+    "var CULTIVATION_LEVELS=['Mortal'];",
+    functionBody("progressionTracks"),
+    functionBody("trackFor"),
+    functionBody("trackLevels"),
+    functionBody("trackName"),
+    functionBody("trackIdOf"),
+    functionBody("cultivationCanonical"),
+    functionBody("radius"),
+  ].join("\n"), ctx);
+  const run = expression => JSON.parse(vm.runInContext(`JSON.stringify(${expression})`, ctx));
+  assert.deepEqual(run("trackLevels('authority')"), ["G","F","S-","S","S+","Divine"]);
+  assert.equal(run("cultivationCanonical({track:'authority',level:6})"), "Divine");
+  assert.equal(run("cultivationCanonical({track:'cultivation',level:2})"), "Qi Training");
+  assert.equal(run("trackIdOf({track:'nope'})"), "cultivation", "an unknown track falls back rather than breaking");
+  const top = run("radius({track:'authority',level:6})"), topShort = run("radius({track:'cultivation',level:2})");
+  assert.equal(top, topShort, "the top of any ladder draws the same size, however many rungs it has");
+  assert.ok(run("radius({track:'authority',level:1})") < top);
+  assert.match(source, /record\.track=String\(form\.get\("track"\)\|\|progressionTracks\(\)\[0\]\.id\)/, "and the chosen track is stored on the event");
+});
+
+test("renaming or reordering a ladder keeps existing events pointing at the same rung by name", () => {
+  assert.match(source, /const oldLadder=before\.get\(trackIdOf\(record\)\)\|\|\[\],name=oldLadder\[\(Number\(record\.level\)\|\|1\)-1\],ladder=trackLevels\(trackIdOf\(record\)\)/);
+  assert.match(source, /record\.level=moved>=0\?moved\+1:Math\.min\(Math\.max\(1,Number\(record\.level\)\|\|1\),ladder\.length\)/, "a rung that disappears clamps instead of dangling");
+});
+
+test("every action's message can be edited where the actions are listed, including the ones the identity form generates", () => {
+  const body = functionBody("renderOrderEditor");
+  assert.match(body, /<input class="order-message" data-id="\$\{escapeHtml\(event\.id\)\}"/);
+  assert.match(body, /field\.onchange=\(\)=>\{const record=data\.events\.find\(event=>event\.id===field\.dataset\.id\);if\(!record\)return;record\.description=field\.value\.trim\(\);saveData\(\)/);
+  assert.match(body, /list\.querySelectorAll\("\.order-edit"\)\.forEach\(button=>button\.onclick=\(\)=>loadEventEditor\(button\.dataset\.id\)\)/);
+});
+
+test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
+  assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
+});
+
+test("a system stands on the graph as soon as the story touches it, but the places it runs at wait until it or its host is picked out", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /queue=\[\.\.\.visibleIds\]\.filter\(id=>entity\(id\)\?\.kind==="system"\)/, "no selection needed — an action that names a system puts it on screen");
+  assert.match(body, /derived\.systemHosts\.forEach\(link=>\{if\(visibleIds\.has\(link\.host\)\)queue\.push\(link\.system\);\}\)/, "and a host on screen brings whatever they carry");
+  assert.match(body, /derived\.systemHosts\.filter\(link=>link\.host===selectedId\)\.forEach\(link=>\{queue\.push\(link\.system\);focusSystems\.add\(link\.system\);autoOpenSystems\.add\(link\.system\);\}\)/, "picking the host is what opens the system out — subsystems become nodes and their places come with them");
+  assert.match(body, /if\(cursor&&entity\(cursor\)\?\.kind==="system"\)\{queue\.push\(cursor\);focusSystems\.add\(cursor\);\}/, "selecting a system — even one that was swallowed — keeps its line up");
+  assert.match(body, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\|\|kind==="quest"\)return false;/, "a system still comes in through the system view, so the drill-down holds — and a quest is a record, never a node");
+  assert.match(body, /sysView\.rendered\.forEach\(id=>renderIds\.add\(id\)\)/);
+  assert.match(body, /focusSystems\.forEach\(id=>\{if\(revealedSystems\.has\(id\)\)derived\.systemLocations\.filter\(link=>link\.system===id\)\.forEach\(link=>visibleIds\.add\(link\.location\)\)\;\}\)/, "the places it operates at are the part that stays folded away");
+  assert.match(body, /derived\.systemLocations\.forEach\(link=>\{if\(!focusSystems\.has\(link\.system\)\)return;/, "and those lines are not drawn either, unlike a place's, which show whenever anyone connected is up");
+});
+
+test("a system drills down exactly like a place, sharing one tree builder, and opening one never disturbs the selection that revealed it", () => {
+  assert.match(functionBody("buildLocationView"), /return buildDrillView\(\[\.\.\.visibleIds\]\.filter\(id=>entity\(id\)\?\.kind==="location"\),id=>locationParentOf\(id,derived\),expandedLocations\)/);
+  assert.match(functionBody("buildSystemView"), /return buildDrillView\(\[\.\.\.systemIds\],id=>parentOf\.get\(id\)\|\|null,expanded\)/);
+  assert.match(functionBody("buildSystemView"), /expanded=alsoExpanded&&alsoExpanded\.size\?new Set\(\[\.\.\.expandedSystems,\.\.\.alsoExpanded\]\):expandedSystems/, "a subsystem acting this beat is shown for it, then folds back on its own");
+  assert.match(functionBody("renderGraph"), /const sysView=buildSystemView\(derived,revealedSystems,autoOpenSystems\)/);
+  const activate = functionBody("activateSystem");
+  assert.match(activate, /if\(view\.expanded\.has\(id\)\)\{closeSystem\(id\);return;\}/);
+  assert.match(activate, /if\(selectedId===id&&\(view\.children\.get\(id\)\|\|\[\]\)\.length\)\{openSystem\(id\);return;\}/);
+  assert.match(activate, /selectedId=id;setMobilePanel\("info"\);renderAll\(\);/, "the first click selects it, which is how its own history is reached");
+  assert.match(functionBody("renderGraph"), /if\(item\.kind==="system"\)\{activateSystem\(item\.id\);return;\}/);
+});
+
+test("a system subtree revealed by a selection counts as part of that focus, so its links to places are not dimmed away", () => {
+  assert.match(functionBody("applyGraphFocus"), /revealedSystems=lastSystemView\?lastSystemView\.rendered:new Set\(\)/);
+  assert.match(functionBody("applyGraphFocus"), /revealedSystems\.has\(edge\.dataset\.a\)\|\|revealedSystems\.has\(edge\.dataset\.b\)/);
+});
+
+test("systems carry a host, a parent system and any number of places, and are drawn as something no other kind looks like", () => {
+  assert.match(source, /if\(event\.type==="system_host"&&source\?\.kind==="system"&&states\.get\(event\.target\)\?\.kind==="character"\)/);
+  assert.match(source, /if\(event\.type==="system_parent"&&source\?\.kind==="system"&&states\.get\(event\.target\)\?\.kind==="system"\)/);
+  assert.match(source, /if\(event\.type==="system_location"&&source\?\.kind==="system"&&states\.get\(event\.location\)\?\.kind==="location"\)/, "many places per system — keyed by system and place together");
+  assert.match(source, /<option value="system">System<\/option>/);
+  assert.match(functionBody("renderGraph"), /class:"system-shape"/);
+  assert.match(styleSource, /\.system-shape \{ fill: rgba\(46,28,78,\.92\); stroke: #b98cff/);
+  assert.match(source, /if\(type==="system_parent"&&source\.id===target\?\.id\)\{toast\("A system cannot be its own subsystem"\)/);
+});
+
+test("a conversation is one action covering everyone in it, not a pile of pairwise meetings", () => {
+  assert.match(source, /<option value="conversation">Conversation between characters<\/option>/);
+  assert.match(source, /const talkers=\[\.\.\.new Set\(\[event\.source,\.\.\.\(event\.characters\|\|\[\]\)\]\)\]\.filter\(id=>states\.get\(id\)\?\.kind==="character"\)/);
+  assert.match(source, /talkers\.forEach\(\(a,index\)=>talkers\.slice\(index\+1\)\.forEach\(b=>\{if\(!meetings\.has\(pairKey\(a,b\)\)\)meetings\.set\(pairKey\(a,b\),event\)/, "everyone in it counts as having met everyone else");
+  const record = functionBody("buildEventRecord");
+  assert.match(record, /if\(talkers\.length<2\)\{toast\("A conversation needs at least two characters"\);return null;\}/);
+  assert.match(record, /if\(named\.some\(item=>!item\)\)\{toast\("One of the conversation names does not match an identity"\)/, "a name that matches nothing is refused rather than silently dropped");
+  assert.match(functionBody("renderGraph"), /derived\.conversations\.filter\(convo=>currentEvent\?\.id===convo\.id\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)\)/, "and the whole group is drawn joined up");
+});
+
+test("the demo story exercises systems and conversations, so both are visible without building a story first", () => {
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("function deepClone"));
+  assert.match(sample, /id: "inn-system", kind: "system"/);
+  assert.match(sample, /id: "inn-taverns", kind: "system"/);
+  assert.match(sample, /type: "system_host", source: "inn-system", target: "lex"/);
+  assert.match(sample, /type: "system_location", source: "inn-taverns", location: "inn-lobby"/);
+  assert.match(sample, /type: "system_location", source: "inn-taverns", location: "stonevale"/, "one subsystem across two different places");
+  assert.match(sample, /type: "conversation", source: "lex", characters: \["lex","mary","gerald"\]/);
+  assert.match(source, /sampleData\.events\.filter\(event=>\/\^\(sys-\|talk-\)\/\.test\(event\.id\)&&!eventIds\.has\(event\.id\)\)/, "and a stored copy of the demo picks them up");
+});
+
+test("two pods out at once keep away from each other, since nothing in the layout holds them apart", () => {
+  const body = functionBody("renderLocationPods");
+  assert.match(body, /placedPods\.forEach\(point=>\{score\+=Math\.min\(170,Math\.hypot\(point\.x-x,point\.y-y\)\)\*2\.5;\}\)/);
+  assert.match(body, /placedPods\.push\(\{x:anchorPos\.x\+Math\.cos\(angle\)\*distance,y:anchorPos\.y\+Math\.sin\(angle\)\*distance\}\)/);
+});
+
+test("three or more in a conversation meet at one marker joined to each, rather than a line between every pair", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /if\(talkers\.length===2\)\{noteEdge\(talkers\[0\],talkers\[1\],convo\.chapter,"In conversation"\);straightEdge\(talkers\[0\],talkers\[1\],edgeClass,talkers\[0\],talkers\[1\]\);return;\}/, "two people still just get a line");
+  assert.match(body, /const hubId=`conversation:\$\{convo\.id\}`,centre=\(\)=>\{const points=talkers\.map\(pointFor\)/, "the marker rides the middle of everyone in it");
+  assert.match(body, /count\.textContent=String\(talkers\.length\)/, "and says how many were in it");
+  assert.match(body, /talkers\.forEach\(id=>\{noteEdge\(id,hubId,convo\.chapter,convo\.description\|\|"In this conversation"\);straightEdge\(id,hubId,edgeClass,id,hubId\)/);
+  assert.match(functionBody("pointFor"), /physics\.hubPos\.get\(id\)/, "so links can end on it");
+});
+
+test("a conversation can be found again after the slider moves on — selecting anyone who was in it brings it back, and it counts as part of that focus", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /currentEvent\?\.id===convo\.id\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)/);
+  assert.match(functionBody("applyGraphFocus"), /String\(edge\.dataset\.a\)\.startsWith\("conversation:"\)\|\|String\(edge\.dataset\.b\)\.startsWith\("conversation:"\)/, "so the other spokes are not dimmed away from the one that touches the selection");
+  assert.match(functionBody("edgeEndpointName"), /String\(id\)\.startsWith\("conversation:"\)\?"this conversation"/, "and hovering a spoke names it rather than printing an id");
+});
+
+test("a ghost action changes the world without taking a turn: no stop on the slider, not in the list, but everything it does is in force — and it replays in story order, not after everything else", () => {
+  assert.match(functionBody("volumeActions"), /&&!event\.ghost\);/, "never a stop");
+  assert.match(functionBody("ghostActions"), /event\.ghost&&event\.chapter>=volume\.from&&event\.chapter<=volume\.to&&event\.chapter<=chapter/, "in force from its chapter onward");
+  assert.match(functionBody("revealedVolumeActions"), /const chosen=new Set\(\[\.\.\.volumeActions\(\)\.slice\(0,currentActionIndex\),\.\.\.ghostActions\(\)\]\.map\(event=>event\.id\)\);\s*return orderedEvents\(\)\.filter\(event=>chosen\.has\(event\.id\)\);/);
+  assert.match(functionBody("appliedEvents"), /const volume=activeVol\(\),selected=new Set\(revealedVolumeActions\(\)\.map\(event=>event\.id\)\)/, "so derivation sees it too");
+  assert.match(source, /if\(form\.get\("ghost"\)\)record\.ghost=true;/);
+  assert.match(functionBody("renderOrderEditor"), /if\(record\.ghost\)delete record\.ghost;else record\.ghost=true;/, "and it can be toggled where the actions are managed");
+});
+
+test("a system's grade is letters with an optional plus or minus, or one of the named gradings — and authority is a plain number, never a letter", () => {
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext(source.slice(source.indexOf("const SPECIAL_GRADES"), source.indexOf("function progressionTracks")), ctx);
+  const run = expression => JSON.parse(vm.runInContext(`JSON.stringify(${expression})`, ctx));
+  assert.equal(run('gradeIsValid("S")'), true);
+  assert.equal(run('gradeIsValid("A+")'), true);
+  assert.equal(run('gradeIsValid("SS")'), true, "double letter");
+  assert.equal(run('gradeIsValid("SSS")'), true, "triple letter");
+  assert.equal(run('gradeIsValid("SSS-")'), true, "triple letter with a minus");
+  assert.equal(run('gradeIsValid("SSSS")'), false, "four letters is too many");
+  assert.equal(run('gradeIsValid("7")'), false, "a number is authority, not a grade");
+  assert.equal(run('gradeIsValid("Divine")'), true);
+  assert.equal(run('gradeIsValid("Death")'), true);
+  assert.equal(run('gradeIsValid("life")'), true);
+  assert.match(styleSource, /\.node\.system-death \.system-shape \{ fill: rgba\(48,18,58,\.94\); stroke: #c471e8; \}/, "Death is graded, not destroyed, so it does not borrow the danger red");
+  assert.match(styleSource, /\.system-grade-special\.grade-len-6 \{ font-size: 7\.5px/, "and a long named grade shrinks to fit rather than being clipped");
+  assert.equal(run('gradeIsValid("")'), true, "a system may simply have no grade");
+  assert.equal(run('gradeIsValid("unknown")'), true, "or one nobody has been told");
+  assert.equal(run('authorityIsValid("7")'), true);
+  assert.equal(run('authorityIsValid("")'), true, "authority is optional in the same way");
+  assert.equal(run('authorityIsValid("unknown")'), true);
+  assert.equal(run('authorityIsValid("S")'), false, "a letter is a grade, not an authority");
+  assert.match(functionBody("systemGlyphRadius"), /const authority=Number\(state\?\.authority\)/, "authority reads as size, since it is an unbounded number");
+  assert.doesNotMatch(source, /name: "Authority", levels:/, "authority is a system property, not a character progression ladder");
+});
+
+test("the progression track picker belongs to characters only — it was showing on every kind, including systems, which have nothing to do with it", () => {
+  assert.match(functionBody("updateEntityFormFields"), /\$\("#entity-initial-track-field"\)\.hidden=!isCharacter;/);
+  assert.match(functionBody("updateEntityFormFields"), /const isSystem=kind==="system",isQuest=kind==="quest";\$\("#entity-authority-field"\)\.hidden=!isSystem;\$\("#entity-grade-field"\)\.hidden=!isSystem;/);
+});
+
+test("a system that was merged away or destroyed shrinks to a small marker on whatever succeeded it, named only when that system is the one being looked at", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const retired=new Set\(\[\.\.\.derived\.systemMerges\.map\(link=>link\.absorbed\),\.\.\.derived\.systemEnds\.map\(link=>link\.system\)\]\)/);
+  assert.match(body, /entity\(id\)\?\.kind!=="system"\|\|\(retired\.has\(id\)&&id!==actionSystem\)\)continue;/, "it stops being a node of its own, except for the action that retires it");
+  assert.match(body, /const named=selectedId===satellite\.anchor\|\|selectedId===satellite\.id\|\|sysView\.expanded\.has\(satellite\.anchor\)/);
+  assert.match(body, /if\(selectedId&&!renderIds\.has\(selectedId\)&&!systemSatellites\.some\(item=>item\.id===selectedId\)\)selectedId=null;/, "and selecting one is not thrown away just because it is not a node");
+  assert.match(styleSource, /\.system-satellite-mark \{ fill: rgba\(46,28,78,\.96\); stroke: #8f74c4/);
+});
+
+test("a merged system's history also belongs to the system that took it, and the merge itself shows there", () => {
+  assert.match(functionBody("absorbedInto"), /\(derived\.systemMerges\|\|\[\]\)\.filter\(link=>link\.into===current\)/, "following the chain, so a merge of a merge still reports upward");
+  assert.match(functionBody("renderEvents"), /family=new Set\(\[selectedId,\.\.\.\(entity\(selectedId\)\?\.kind==="system"\?absorbedInto\(selectedId,currentDerived\(\)\):\[\]\)\]\)/);
+  assert.match(functionBody("renderEvents"), /\[\.\.\.family\]\.some\(id=>eventInvolves\(entry\.event,id\)\)/);
+});
+
+test("a system is selected on the first click and opened on the second, the same as a place, so its own history is reachable", () => {
+  const body = functionBody("activateSystem");
+  assert.match(body, /if\(view\.expanded\.has\(id\)\)\{closeSystem\(id\);return;\}/);
+  assert.match(body, /if\(selectedId===id&&\(view\.children\.get\(id\)\|\|\[\]\)\.length\)\{openSystem\(id\);return;\}/);
+  assert.match(body, /selectedId=id;setMobilePanel\("info"\);renderAll\(\);/);
+});
+
+test("an action's message is editable where it is read in the editor, and stays plain prose on the public graph", () => {
+  assert.match(functionBody("canEditEvents"), /return isUploadRoute&&adminAuthenticated;/);
+  assert.match(functionBody("eventPanelRow"), /\$\{canEditEvents\(\)\?`<input class="event-message-edit"/);
+  assert.match(functionBody("bindEventPanelRows"), /record\.description=field\.value\.trim\(\);saveData\(\)/);
+  assert.match(functionBody("bindEventPanelRows"), /if\(event\.target\.closest\("button,a,input"\)\)return;/, "so typing in it does not also jump the graph");
+});
+
+test("the demo carries a merged system, a destroyed one, and graded systems, and a stored copy picks them up even if its novel was renamed", () => {
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("function deepClone"));
+  assert.match(sample, /id: "hearth-system", kind: "system"[^}]*grade: "C"/);
+  assert.match(sample, /id: "ash-system", kind: "system"[^}]*grade: "B"/, "the destroyed system is not also the one carrying a named grade — those are separate ideas");
+  assert.match(sample, /type: "system_merge", source: "hearth-system", target: "inn-system"/);
+  assert.match(sample, /type: "system_end", source: "ash-system"/);
+  assert.match(sample, /id: "inn-system"[^}]*authority: 7, grade: "S"/);
+  assert.match(source, /const isBundledDemo=\["lex","eclipse","inn-lobby"\]\.every\(id=>migrated\.entities\.some\(item=>item\.id===id\)\)/, "identified by its cast, not its title");
+});
+
+test("the demo exercises every action type the editor offers, so nothing ships without something in the sample that shows it working", () => {
+  const typeSelect = source.slice(source.indexOf("<span>Event type</span>"), source.indexOf("</select>", source.indexOf("<span>Event type</span>")));
+  const offered = [...typeSelect.matchAll(/value="([a-z_]+)"/g)].map(match => match[1]);
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  const used = new Set([...sample.matchAll(/type: "([a-z_]+)"/g)].map(match => match[1]));
+  const missing = offered.filter(type => !used.has(type));
+  assert.deepEqual(missing, [], `the demo never shows: ${missing.join(", ")}`);
+  assert.ok(offered.length >= 25, "and the list of types is the one being checked against");
+});
+
+test("a system's authority and grade both move over time, in the demo and independently of each other", () => {
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  assert.match(sample, /type: "system_rank", source: "inn-system", grade: "S\+"/, "a grade change on its own");
+  assert.match(sample, /type: "system_rank", source: "inn-system", authority: 11/, "an authority change on its own");
+  assert.match(sample, /type: "system_rank", source: "ash-system", authority: 2, grade: "D"/, "and both falling together");
+  assert.match(sample, /type: "system_rank", source: "warden-system", authority: 9, grade: "Death"/, "and both rising together — a named grade is a high rank, not an ending");
+  assert.match(sample, /ghost: true/, "a structural fact is still carried as a ghost");
+  assert.match(source, /if\(!rankAuthority&&!rankGrade\)\{toast\("Give the new authority, the new grade, or both — or write unknown to take one away"\)/);
+  assert.match(source, /source\.previousAuthority=source\.authority;source\.previousGrade=source\.grade;/, "what it was is kept so the move can be shown");
+});
+
+test("neither a number nor a grade is compulsory: a system can start without one, be given one later, or have one taken away", () => {
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  assert.match(sample, /id: "inn-taverns", kind: "system", name: "Midnight Taverns", intro: 12, description:/, "founded with neither, because nobody has said");
+  assert.match(sample, /type: "system_rank", source: "inn-taverns", authority: 3, grade: "B"/, "and rated for the first time later on");
+  assert.match(sample, /type: "system_rank", source: "hearth-system", grade: null/, "a system swallowed by a bigger one can lose its grade outright");
+  assert.match(source, /if\(event\.grade===null\)source\.grade=undefined;else if\(event\.grade\)source\.grade=String\(event\.grade\)\.trim\(\);/, "null takes it away; blank leaves it alone");
+  assert.match(source, /if\(event\.authority===null\)source\.authority=undefined;/);
+  assert.match(source, /if\(rankGrade\)record\.grade=meansUnknown\(rankGrade\)\?null:rankGrade;/, "which is what writing unknown in the editor records");
+  assert.match(source, /if\(rankAuthority\)record\.authority=meansUnknown\(rankAuthority\)\?null:Number\(rankAuthority\);/);
+  assert.match(functionBody("rankWord"), /return text===""\?"none":text;/, "an absent rank and an unknown one read the same on the graph");
+  assert.match(source, /<span>Authority \(optional\)<\/span>/);
+  assert.match(source, /<span>Grade \(optional\)<\/span>/);
+  assert.match(source, /<article><span>Authority<\/span><strong>\$\{Number\.isFinite\(Number\(state\.authority\)\)\?escapeHtml\(String\(state\.authority\)\):"—"\}/, "the panel says so plainly rather than inventing a value");
+  assert.match(source, /migrated\.schemaVersion=12;/, "and readers already holding the demo are brought along");
+});
+
+test("a quest is a record with a run of its own: issued, inched forward chapter by chapter, and settled", () => {
+  assert.match(source, /<option value="quest_issue">Quest is issued<\/option><option value="quest_progress">Quest progress changes<\/option><option value="quest_end">Quest completed, failed, or abandoned<\/option><option value="quest_chain">Quest belongs to a chain<\/option>/);
+  assert.match(source, /<option value="quest">Quest<\/option>/, "and a quest is its own kind of identity, with its own terms");
+  const derived = functionBody("derive");
+  assert.match(derived, /if\(String\(event\.type\)\.startsWith\("quest_"\)&&source\?\.kind==="quest"\)/);
+  assert.match(derived, /run\.status=outcome==="fail"\?"failed":outcome==="abandon"\?"abandoned":"complete"/);
+  assert.match(derived, /if\(!run\.explicitProgress&&kids\.length\)run\.progress=Math\.round\(total\/kids\.length\)/, "a chain with no figure of its own reads as how far through its parts it is");
+  assert.match(derived, /if\(questRuns\.has\(link\.child\)&&!questRuns\.has\(link\.parent\)\)questRun\(link\.parent\)/, "and a chain whose first part is issued still gets a header");
+  assert.match(functionBody("renderQuests"), /active=roots\.filter\(run=>run\.status==="active"\),settled=roots\.filter\(run=>run\.status!=="active"\)/, "a settled quest drops out of the active list rather than crowding it");
+  assert.match(functionBody("questCardHtml"), /style="--quest-progress:\$\{run\.progress\}%"/, "the card is filled by how far along the quest is");
+  assert.match(functionBody("questCardHtml"), /data-quest-chain="\$\{escapeHtml\(run\.quest\)\}"/, "and a chain opens and closes to show the quests inside it");
+  assert.match(styleSource, /\.quest-fill \{ position: absolute; inset: 0 auto 0 0; width: var\(--quest-progress,0%\)/);
+  assert.match(source, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\|\|kind==="quest"\)return false;/, "quests never become graph nodes");
+  assert.match(source, /if\(knownIds\.has\(item\.id\)&&item\.kind!=="quest"\)/, "nor graph search results");
+});
+
+test("a quest carries the terms the story states — and any of them may be missing", () => {
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  assert.match(sample, /id: "q-hearth", kind: "quest"[^}]*questBadge: "Chain"[^}]*rewardRank: "A"[^}]*timeLimit:[^}]*rewards:[^}]*achievements:[^}]*failure:/, "one quest states every term");
+  assert.match(sample, /id: "q-ledger", kind: "quest", name: "Balance the Winter Ledger", intro: 30, timeLimit: "Before the spring audit", description:/, "and another states almost none");
+  assert.match(sample, /type: "quest_chain", source: "q-stock", target: "q-hearth"/);
+  assert.match(sample, /type: "quest_progress", source: "q-winter", progress: 72/);
+  assert.match(sample, /type: "quest_end", source: "q-envoy", action: "fail"/);
+  assert.match(source, /if\(kind==="quest"&&!gradeIsValid\(form\.get\("rewardRank"\)\)\)/, "a reward rank is checked the same way a system grade is");
+  assert.match(source, /if\(!percent\|\|!Number\.isFinite\(Number\(percent\)\)\|\|Number\(percent\)<0\|\|Number\(percent\)>100\)/, "and progress has to be a percentage");
+  assert.match(source, /migrated\.schemaVersion=13;/, "readers already holding the demo are brought along");
+});
+
+test("a rank change is visible when it happens: the system comes up for its own action even with no host selected, and says which way it moved", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const actionSystem=currentEvent&&String\(currentEvent\.type\)\.startsWith\("system_"\)\?\[currentEvent\.source,currentEvent\.target\]\.find\(id=>entity\(id\)\?\.kind==="system"\):null/);
+  assert.match(body, /if\(actionSystem\)\{queue\.push\(actionSystem\);focusSystems\.add\(actionSystem\);\}/);
+  assert.match(body, /\(retired\.has\(id\)&&id!==actionSystem\)/, "a system destroyed by the very action being played is still drawn for that beat");
+  assert.match(body, /moves\.push\(`\$\{rankWord\(state\.previousGrade\)\} → \$\{rankWord\(state\.grade\)\}`\)/);
+  assert.match(body, /moves\.push\(`authority \$\{rankWord\(state\.previousAuthority\)\} → \$\{rankWord\(state\.authority\)\}`\)/);
+  assert.match(body, /rankLabel=\{text:moves\.join\(" · "\),y:r\+\(Number\.isFinite\(now\)\?26:19\),tone:fell\?"rank-fell":"rank-rose"\}/, "the movement is written under the diamond, clear of the system's own name above it");
+  assert.match(body, /if\(rankLabel\)\{const moved=svgEl\("text",\{x:0,y:rankLabel\.y,class:`system-rank-label \$\{rankLabel\.tone\}`\}\);.*labelGroup\.appendChild\(moved\);\}/, "and it sits in the label layer, where nothing else can be drawn over it");
+  assert.match(body, /const box=\(entry\.tall\?entry\.group:entry\.text\)\.getBBox\(\)/, "reserving the whole strip so no other name is placed across it");
+  assert.match(styleSource, /\.system-rank-label\.rank-rose \{ fill: #8de7b0; \}/);
+  assert.match(styleSource, /\.system-authority-text \{ fill: #d9c2ff/, "the number has its own pip under the diamond");
+});
+
+test("a character's panel and profile name whichever ladder they are on, rather than always saying cultivation", () => {
+  assert.match(source, /!unrevealed&&state\.realm!=="Unrevealed"\?\{label:trackName\(state\.track\),value:/);
+  assert.match(source, /profileSection\("profile-cultivation",`\$\{trackName\(state\.track\)\} & abilities`/);
+});
+
+test("a failed migration keeps the reader's own story rather than silently replacing it with the demo", () => {
+  const body = functionBody("loadLocalData");
+  assert.match(body, /let stored = null;/);
+  assert.match(body, /catch \(error\) \{ console\.error\("Story data could not be brought up to date; keeping it as it was\.", error\); return stored \|\| deepClone\(sampleData\); \}/);
 });
