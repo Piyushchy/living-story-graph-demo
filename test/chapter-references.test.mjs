@@ -1030,6 +1030,20 @@ test("a publish failure says what is actually wrong, rather than quoting the sto
   assert.match(api, /error: describe\(error, "Hosted data unavailable"\)/);
 });
 
+test("an identity link may join a character to a system, because a character merged into one is the same fact told over time", () => {
+  assert.match(source, /const IDENTITY_KINDS = new Set\(\["character","system"\]\);/);
+  assert.match(functionBody("derive"), /if\(event\.type==="identity_parent"&&IDENTITY_KINDS\.has\(source\?\.kind\)&&IDENTITY_KINDS\.has\(states\.get\(event\.target\)\?\.kind\)\)/);
+  assert.match(source, /if\(type==="identity_parent"&&!\(IDENTITY_KINDS\.has\(source\.kind\)&&IDENTITY_KINDS\.has\(target\.kind\)\)\)\{toast\("An identity link joins two characters, or a character and a system"\)/, "and says which pairings are allowed rather than naming only characters");
+});
+
+test("ending something does not demand the wording of what it was — the form silently refused every removal", () => {
+  assert.match(source, /const REMOVAL_ACTIONS = new Set\(\["remove","end","close","withdraw"\]\);/);
+  assert.match(functionBody("updateEventHelp"), /form\.elements\.value\.required=needsValue&&!removing;/, "a required empty field made the browser refuse to submit at all, with no message");
+  assert.match(source, /\.includes\(type\)&&!value&&!REMOVAL_ACTIONS\.has\(action\)\)\{toast\(`Enter the/);
+  assert.match(functionBody("updateEventHelp"), /if\(\[\.\.\.action\.options\]\.some\(option=>option\.value===keepAction\)\)action\.value=keepAction;/, "and rebuilding the options must not throw away the action that was chosen");
+  assert.match(source, /\$\("#event-form"\)\.elements\.action\.addEventListener\("change",updateEventHelp\);/);
+});
+
 test("a quest never becomes a node, but carrying one shows on the character and the handing over shows on the graph", () => {
   const body = functionBody("renderGraph");
   assert.match(body, /derived\.quests\.filter\(run=>run\.status==="active"\)\.forEach\(run=>run\.holders\.forEach/, "who is carrying what, right now");
