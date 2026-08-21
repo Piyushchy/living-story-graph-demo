@@ -2242,7 +2242,9 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   if(sourceUrl&&!safeExternalUrl(sourceUrl)){toast("The chapter citation must be a complete http:// or https:// URL");return null;}
   if(type==="residency"&&!location){toast("Choose the home or long-term location");return null;}
   if(type==="residency"&&source.kind!=="character"){toast("Choose the character who resides there");return null;}
-  if(type==="system_host"&&(source.kind!=="system"||location?.kind==="location"||target?.kind!=="character")){toast("A host bond needs a system and a character");return null;}
+  // "Where this happened" is optional on every action, this one included. A stray clause here
+  // rejected the bond whenever a place was named, which is exactly when it is worth recording.
+  if(type==="system_host"&&(source.kind!=="system"||target?.kind!=="character")){toast("A host bond needs a system and a character");return null;}
   if(type==="system_parent"&&(source.kind!=="system"||target?.kind!=="system")){toast("A subsystem link needs two systems");return null;}
   if(type==="system_parent"&&source.id===target?.id){toast("A system cannot be its own subsystem");return null;}
   if(type==="system_location"&&(source.kind!=="system"||!location||location.kind!=="location")){toast("A system location needs a system and a place");return null;}
