@@ -1338,6 +1338,20 @@ function renderGraph() {
         systemSatellites.push({id:link.system,anchor,mode:"ended",from:link.from,reason:link.reason});
     });
   }
+  // Quests are records rather than actors, so they never become nodes — but who is carrying one
+  // is a fact about that character, and the moment one is handed over is worth seeing.
+  const questHolders=new Map();
+  derived.quests.filter(run=>run.status==="active").forEach(run=>run.holders.forEach(id=>{
+    if(!questHolders.has(id))questHolders.set(id,[]);
+    questHolders.get(id).push(stateName(derived,run.quest)||entity(run.quest)?.name||run.quest);
+  }));
+  // Only an issue names who it is going to. Everything after that — progress, completion, a
+  // failure — belongs to whoever is already carrying the quest, so the beat is marked on them.
+  const questBeat=currentEvent&&String(currentEvent.type).startsWith("quest_")&&currentEvent.type!=="quest_part"
+    ?{quest:currentEvent.source,name:entity(currentEvent.source)?.name||"",type:currentEvent.type,action:currentEvent.action||"",
+      who:new Set([currentEvent.target,...(currentEvent.characters||[]),
+        ...(derived.quests.find(run=>run.quest===currentEvent.source)?.holders||[])].filter(Boolean))}
+    :null;
   const locView=buildLocationView(derived,visibleIds);lastLocationView=locView;
   // A system acting this beat has to be on screen for it, even when it normally sits folded
   // inside a bigger one.
@@ -1472,13 +1486,22 @@ function renderGraph() {
     const place=edgeLocationId(currentEvent.location);
     locationCharacterIds(currentEvent).forEach(who=>{noteEdge(who,place,currentEvent.chapter,"Here for this action");straightEdge(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place);});
   }
+  // On the beat a quest is handed over, draw the handing over: from whoever issued it to whoever
+  // took it. It lasts only for that action, like the quest notice itself.
+  if(questBeat&&questBeat.type==="quest_issue"&&questBeat.action!=="withdraw"){
+    const issuer=entity(questBeat.quest)?.issuer;
+    if(issuer)questBeat.who.forEach(holder=>{
+      if(positions.get(issuer)&&positions.get(holder))
+        straightEdge(issuer,holder,"edge quest-issue-edge newly-revealed-edge",issuer,holder);
+    });
+  }
   derived.systemHosts.forEach(link=>{noteEdge(link.system,link.host,link.from,`${link.role} of this system`);straightEdge(link.system,link.host,`edge system-host-edge${currentEvent?.type==="system_host"&&currentEvent.source===link.system&&currentEvent.target===link.host?" newly-revealed-edge":""}`,link.system,link.host);});
   derived.systemLocations.forEach(link=>{if(!focusSystems.has(link.system))return;const place=edgeLocationId(link.location);noteEdge(link.system,place,link.from,`${link.role} here`);straightEdge(link.system,place,`edge system-location-edge${currentEvent?.type==="system_location"&&currentEvent.source===link.system&&currentEvent.location===link.location?" newly-revealed-edge":""}`,link.system,place);});
   derived.systemParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,"Subsystem of");straightEdge(link.child,link.parent,`edge system-parent-edge${currentEvent?.type==="system_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent);});
   derived.identityParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,link.relation);return straightEdge(link.child,link.parent,`edge identity-edge${currentEvent?.type==="identity_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent);});
   const activeIds=new Set(currentEvent?[currentEvent.source,currentEvent.target,currentEvent.location,...(currentEvent.characters||[])].filter(Boolean).map(edgeLocationId):[]);
   const retractingIds=collapsingLocationId?new Set([...renderedSubtree(collapsingLocationId,locView)]):new Set();
-  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null;
+  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null,questNotice=null;
     if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));
     }else if(item.kind==="system"){const opened=sysView.expanded.has(item.id),childCount=(sysView.children.get(item.id)||[]).length,r=systemGlyphRadius(state),
         rankMoved=currentEvent?.type==="system_rank"&&currentEvent.source===item.id;
@@ -1516,14 +1539,36 @@ function renderGraph() {
         if(childCount){locationShell.append(svgEl("circle",{cx:r-1,cy:-r+1,r:9.5,class:"location-child-badge"}));const badge=svgEl("text",{x:r-1,y:-r+4.4,class:"location-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);group.setAttribute("aria-label",`${shownName}, contains ${childCount} place${childCount===1?"":"s"}`);}
       }
       group.appendChild(locationShell);
-    }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));if(!appeared){group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:"ghost-ring"}),svgEl("circle",{cx:0,cy:0,r,class:`ghost-core ${state.gender==="female"?"core-female":"core-male"}`}));}else{const lifeClass=state.status==="dead"?"life-dead":state.status==="alive"?"life-alive":"life-unknown";group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:lifeClass}),svgEl("circle",{cx:0,cy:0,r,class:state.gender==="female"?"core-female":"core-male"}));if(cultivationReveal)group.appendChild(svgEl("circle",{cx:0,cy:0,r:r+11,class:"cultivation-reveal-pulse"}));const ladder=trackLevels(state.track),segmentAngle=360/ladder.length;for(let seg=0;seg<ladder.length;seg++){const start=-88+seg*segmentAngle,isOn=state.level>seg,wasOn=priorCultivationLevel>seg,isChanged=cultivationReveal&&isOn!==wasOn,isGain=isChanged&&isOn;group.appendChild(svgEl("path",{d:arcPath(0,0,r+(isChanged?21:15),start,start+segmentAngle*.76),class:`${isOn?"corona-on":"corona-off"}${isChanged?` cultivation-change-segment ${isGain?"cultivation-gain":"cultivation-loss"}`:""}`,...(isChanged?{pathLength:1,style:`--cultivation-delay:${Math.abs(seg-priorCultivationLevel)*55}ms`}:{})}));}if(cultivationReveal){const before=priorCultivationLevel?(priorCultivationState?.realm||priorCultivationState?.canonicalRealm||trackLevels(state.track)[priorCultivationLevel-1]):"Unrevealed",after=state.realm||state.canonicalRealm,changeLabel=svgEl("text",{x:0,y:-r-35,class:"cultivation-change-label"});changeLabel.textContent=currentEvent.initial===true&&!priorCultivationLevel?`Cultivation revealed: ${after}`:before===after?after:`${before} → ${after}`;group.appendChild(changeLabel);}const gems=Math.min(7,state.aliases.length),gemR=r+27;for(let i=0;i<gems;i++){const angle=Math.PI+(i+1)*Math.PI/(gems+1);group.appendChild(svgEl("polygon",{points:diamondPoints(Math.cos(angle)*gemR,Math.sin(angle)*gemR,4),class:"alias-gem"}));}}}
+    }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));
+      // What this character is carrying, and — for one beat — what just changed hands.
+      const held=questHolders.get(item.id)||[];
+      if(questBeat?.who.has(item.id)){
+        const settled=questBeat.type==="quest_end",
+          outcome=questBeat.action==="fail"?"failed":questBeat.action==="abandon"?"abandoned":questBeat.action==="reopen"?"reopened":"complete";
+        questNotice={y:r+27,tone:settled?(outcome==="failed"?"quest-failed":outcome==="complete"?"quest-done":"quest-taken"):"quest-taken",
+          text:questBeat.type==="quest_issue"?(questBeat.action==="withdraw"?`✕ ${questBeat.name}`:`⊕ ${questBeat.name}`)
+            :settled?`${outcome==="failed"?"✕":outcome==="complete"?"✓":"⟲"} ${questBeat.name}`
+            :`· ${questBeat.name}`};
+      }if(!appeared){group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:"ghost-ring"}),svgEl("circle",{cx:0,cy:0,r,class:`ghost-core ${state.gender==="female"?"core-female":"core-male"}`}));}else{const lifeClass=state.status==="dead"?"life-dead":state.status==="alive"?"life-alive":"life-unknown";group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:lifeClass}),svgEl("circle",{cx:0,cy:0,r,class:state.gender==="female"?"core-female":"core-male"}));if(cultivationReveal)group.appendChild(svgEl("circle",{cx:0,cy:0,r:r+11,class:"cultivation-reveal-pulse"}));const ladder=trackLevels(state.track),segmentAngle=360/ladder.length;for(let seg=0;seg<ladder.length;seg++){const start=-88+seg*segmentAngle,isOn=state.level>seg,wasOn=priorCultivationLevel>seg,isChanged=cultivationReveal&&isOn!==wasOn,isGain=isChanged&&isOn;group.appendChild(svgEl("path",{d:arcPath(0,0,r+(isChanged?21:15),start,start+segmentAngle*.76),class:`${isOn?"corona-on":"corona-off"}${isChanged?` cultivation-change-segment ${isGain?"cultivation-gain":"cultivation-loss"}`:""}`,...(isChanged?{pathLength:1,style:`--cultivation-delay:${Math.abs(seg-priorCultivationLevel)*55}ms`}:{})}));}if(cultivationReveal){const before=priorCultivationLevel?(priorCultivationState?.realm||priorCultivationState?.canonicalRealm||trackLevels(state.track)[priorCultivationLevel-1]):"Unrevealed",after=state.realm||state.canonicalRealm,changeLabel=svgEl("text",{x:0,y:-r-35,class:"cultivation-change-label"});changeLabel.textContent=currentEvent.initial===true&&!priorCultivationLevel?`Cultivation revealed: ${after}`:before===after?after:`${before} → ${after}`;group.appendChild(changeLabel);}const gems=Math.min(7,state.aliases.length),gemR=r+27;for(let i=0;i<gems;i++){const angle=Math.PI+(i+1)*Math.PI/(gems+1);group.appendChild(svgEl("polygon",{points:diamondPoints(Math.cos(angle)*gemR,Math.sin(angle)*gemR,4),class:"alias-gem"}));}}}
     // Labels live in their own layer above every shape, so a node can never be drawn over
     // another node's name, and so they can be culled independently when the graph gets dense.
     const labelGroup=svgEl("g",{class:`${group.getAttribute("class")} node-labels`,"data-id":item.id}),label=svgEl("text",{x:0,y:labelY,class:`node-label${item.kind==="location"?" location-region-label":""}`});label.textContent=shownName;labelGroup.appendChild(label);
     if(item.kind==="location"||item.kind==="system"){const tier=svgEl("text",{x:0,y:labelY-13,class:`location-tier-label${item.kind==="system"?" system-tier-label":""}`});tier.textContent=item.kind==="system"?"SYSTEM":String(item.locationType||"Place").toUpperCase();labelGroup.appendChild(tier);}
     if(rankLabel){const moved=svgEl("text",{x:0,y:rankLabel.y,class:`system-rank-label ${rankLabel.tone}`});moved.textContent=rankLabel.text;labelGroup.appendChild(moved);}
+    if(questNotice){const notice=svgEl("text",{x:0,y:questNotice.y,class:`quest-notice ${questNotice.tone}`});notice.textContent=questNotice.text;labelGroup.appendChild(notice);}
+    if(item.kind==="character"){
+      // A quest count rides on the shoulder of whoever is carrying it, the way the alias count does.
+      const held=questHolders.get(item.id)||[];
+      if(held.length){const r=state.appeared!==null&&state.appeared<=currentChapter?radius(state):20,
+          x=r*.74,y=r*.74,mark=svgEl("g",{class:`quest-held${questBeat?.who.has(item.id)?" quest-held-active":""}`});
+        mark.append(svgEl("circle",{cx:x,cy:y,r:9.5,class:"quest-held-pip"}));
+        const count=svgEl("text",{x,y:y+3.4,class:"quest-held-count"});count.textContent=String(held.length);
+        mark.appendChild(count);
+        const hint=svgEl("title");hint.textContent=held.length===1?held[0]:`${held.length} quests: ${held.join(", ")}`;mark.appendChild(hint);
+        group.appendChild(mark);}
+    }
     if(mentionedOnly){const stateLabel=svgEl("text",{x:0,y:39,class:"node-state-label"});stateLabel.textContent="MENTIONED";labelGroup.appendChild(stateLabel);}
-    labelLayer.appendChild(labelGroup);labelEls.set(item.id,{group:labelGroup,text:label,offset:labelY,kind:item.kind,tall:Boolean(rankLabel),halfWidth:Math.min(150,Math.max(28,String(shownName).length*4.2)),halfHeight:9});
+    labelLayer.appendChild(labelGroup);labelEls.set(item.id,{group:labelGroup,text:label,offset:labelY,kind:item.kind,tall:Boolean(rankLabel||questNotice),halfWidth:Math.min(150,Math.max(28,String(shownName).length*4.2)),halfHeight:9});
     const selectNode=()=>{cancelChapterSequence();if(item.kind==="location"){activateLocation(item.id);return;}if(item.kind==="system"){activateSystem(item.id);return;}locationPovId=null;selectedId=selectedId===item.id?null:item.id;setMobilePanel("info");renderAll();};
     // A character's name is drawn across the middle of its circle and lives in the layer above,
     // so the same gestures have to work from the label as from the shape — otherwise a press in

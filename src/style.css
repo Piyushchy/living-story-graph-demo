@@ -837,3 +837,15 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .node-depart-layer { pointer-events: none; }
 .node-departing { transform-box: fill-box; transform-origin: center; }
 .depart-label { fill: #cddcf2; font-size: 11px; font-weight: 700; text-anchor: middle; paint-order: stroke; stroke: #081018; stroke-width: 4px; stroke-linejoin: round; }
+
+/* Quests never become nodes, but who is carrying one is a fact about that character, and the
+   beat a quest changes hands is worth seeing on the graph rather than only in the tab. */
+.quest-held-pip { fill: rgba(46,32,12,.95); stroke: #ffb347; stroke-width: 1.6; }
+.quest-held-count { fill: #ffd479; font-size: 10px; font-weight: 800; text-anchor: middle; pointer-events: none; }
+.quest-held-active .quest-held-pip { fill: #ffb347; stroke: #fff0d4; stroke-width: 2; }
+.quest-held-active .quest-held-count { fill: #2a1c06; }
+.quest-notice { font-size: 11px; font-weight: 800; text-anchor: middle; paint-order: stroke; stroke: #081018; stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
+.quest-notice.quest-taken { fill: #ffd479; }
+.quest-notice.quest-done { fill: #8de7b0; }
+.quest-notice.quest-failed { fill: #ef8b92; }
+.quest-issue-edge { fill: none; stroke: #ffb347; stroke-width: 2; stroke-dasharray: 5 4; opacity: .85; }

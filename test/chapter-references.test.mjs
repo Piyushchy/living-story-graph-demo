@@ -558,7 +558,7 @@ function pureSandbox(names) {
 test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
   const body = functionBody("renderGraph");
   assert.match(body, /viewportGroup\.append\(edgeLayer,departLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation and system markers");
-  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,tall:Boolean\(rankLabel\),halfWidth:/);
+  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,tall:Boolean\(rankLabel\|\|questNotice\),halfWidth:/);
   assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=\(entry\.tall\?entry\.group:entry\.text\)\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
   assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
   assert.match(styleSource, /\.node-label-layer \{ pointer-events: none; \}/);
@@ -1028,6 +1028,18 @@ test("a publish failure says what is actually wrong, rather than quoting the sto
   assert.match(api, /No Blob store is connected to this project yet/, "and names where it is put right");
   assert.match(api, /error: describe\(error, "Data could not be saved"\)/);
   assert.match(api, /error: describe\(error, "Hosted data unavailable"\)/);
+});
+
+test("a quest never becomes a node, but carrying one shows on the character and the handing over shows on the graph", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /derived\.quests\.filter\(run=>run\.status==="active"\)\.forEach\(run=>run\.holders\.forEach/, "who is carrying what, right now");
+  assert.match(body, /\.\.\.\(derived\.quests\.find\(run=>run\.quest===currentEvent\.source\)\?\.holders\|\|\[\]\)/, "only an issue names who it goes to; everything after belongs to whoever holds it");
+  assert.match(body, /straightEdge\(issuer,holder,"edge quest-issue-edge newly-revealed-edge",issuer,holder\)/, "the handing over is drawn from issuer to holder, for that beat only");
+  assert.match(body, /class:`quest-held\$\{questBeat\?\.who\.has\(item\.id\)\?" quest-held-active":""\}`/, "the count rides on the shoulder, the way the alias count does");
+  assert.match(body, /questNotice=\{y:r\+27,tone:settled\?/, "and the notice sits under the node, clear of the name above it");
+  assert.match(source, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\|\|kind==="quest"\)return false;/, "the quest itself is still never a node");
+  assert.match(styleSource, /\.quest-issue-edge \{ fill: none; stroke: #ffb347;/);
+  assert.match(styleSource, /\.quest-notice\.quest-failed \{ fill: #ef8b92; \}/);
 });
 
 test("a quest is a record with a run of its own: issued, inched forward chapter by chapter, and settled", () => {
