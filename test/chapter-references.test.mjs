@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 
 const source = await readFile(new URL("../src/main.js", import.meta.url), "utf8");
 const styleSource = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
+const apiDataSource = await readFile(new URL("../api/data.js", import.meta.url), "utf8");
 
 function functionBody(name) {
   const start = source.indexOf(`function ${name}(`);
@@ -1014,6 +1015,19 @@ test("a place known only to be inside a realm can later be placed exactly, witho
   assert.match(source, /if\(type==="location_parent"&&source\.id===location\.id\)\{toast\("A location cannot contain itself"\)/);
   assert.match(source, /if\(type==="location_parent"&&action!=="remove"&&locationLineage\(location\.id,derive\(chapter\)\)\.includes\(source\.id\)\)\{toast\("That would create a circular location hierarchy"\)/);
   assert.match(source, /String\(source\.locationType\|\|""\)===LOCATION_ROOT_TYPE\)\{toast\("A realm is the widest place the graph draws/);
+});
+
+test("a host bond may name where it happened — the place is optional on every action, this one included", () => {
+  assert.match(source, /if\(type==="system_host"&&\(source\.kind!=="system"\|\|target\?\.kind!=="character"\)\)/, "a stray clause rejected the bond whenever a place was named");
+  assert.doesNotMatch(source, /location\?\.kind==="location"\|\|target\?\.kind!=="character"/);
+});
+
+test("a publish failure says what is actually wrong, rather than quoting the storage SDK at the author", () => {
+  const api = apiDataSource;
+  assert.match(api, /const NO_STORE = \/no blob credentials\|BLOB_READ_WRITE_TOKEN\|BLOB_STORE_ID\/i;/);
+  assert.match(api, /No Blob store is connected to this project yet/, "and names where it is put right");
+  assert.match(api, /error: describe\(error, "Data could not be saved"\)/);
+  assert.match(api, /error: describe\(error, "Hosted data unavailable"\)/);
 });
 
 test("a quest is a record with a run of its own: issued, inched forward chapter by chapter, and settled", () => {
