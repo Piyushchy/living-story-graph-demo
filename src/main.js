@@ -2704,8 +2704,8 @@ function combinePickedActions(){
   commitEventOrder(merged);
   toast(`${ids.length} actions now happen as one moment`);
 }
-function orderRowHtml(event,index,total,moment){
-  return `<li class="order-row${event.ghost?" order-row-ghost":""}${moment?" order-row-moment":""}" data-id="${escapeHtml(event.id)}"><label class="order-pick" title="Pick this to combine it with another action"><input type="checkbox" class="order-pick-box" data-id="${escapeHtml(event.id)}" aria-label="Pick this action to combine" /></label><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i>${messageBoxHtml("order-message",event)}</div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===total-1?" disabled":""}>↓</button></div></li>`;
+function orderRowHtml(event,index,total,moment,twin=0){
+  return `<li class="order-row${event.ghost?" order-row-ghost":""}${moment?" order-row-moment":""}${twin?" order-row-twin":""}" data-id="${escapeHtml(event.id)}"><label class="order-pick" title="Pick this to combine it with another action"><input type="checkbox" class="order-pick-box" data-id="${escapeHtml(event.id)}" aria-label="Pick this action to combine" /></label><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i>${twin?`<b class="order-twin" title="This does exactly what action ${twin} in this chapter already does — if it was meant for somebody else, open it and change the name">same action as ${twin}</b>`:""}${messageBoxHtml("order-message",event)}</div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===total-1?" disabled":""}>↓</button></div></li>`;
 }
 // The head names a moment and carries the one sentence it is read by; its parts stay listed
 // underneath, because they are still separate actions and are still reordered and edited there.
@@ -2726,10 +2726,13 @@ function renderOrderEditor(){
   $("#order-position").textContent=`Chapter ${orderChapter} — ${rows.length} action${rows.length===1?"":"s"} · ${at+1} of ${chapters.length} chapters that have events`;
   const html=[];let openMoment=null;
   rows.forEach((event,index)=>{
-    const moment=momentOf(event.id);
+    const moment=momentOf(event.id),
+      // Two actions that do exactly the same thing are almost always one of them written under
+      // the wrong name — the message is generated, so the repeat reads as if it were right.
+      twin=rows.findIndex(other=>sameAction(other,event));
     if(moment&&moment!==openMoment)html.push(momentHeadHtml(moment,rows));
     openMoment=moment;
-    html.push(orderRowHtml(event,index,rows.length,moment));
+    html.push(orderRowHtml(event,index,rows.length,moment,twin>=0&&twin<index?twin+1:0));
   });
   list.innerHTML=html.join("");
   // Every action's message is editable in place, whatever produced it — including the ones the
@@ -2995,6 +2998,21 @@ function renderEventBatch(){
   document.querySelectorAll(".remove-draft").forEach(button=>button.onclick=()=>{eventDrafts=eventDrafts.filter(draft=>draft.id!==button.dataset.id);renderEventBatch();});
 }
 
+// Writing a run of actions keeps the chapter, the subject and the place for the next one, which
+// is what makes a batch quick — and what makes it easy to write the same action twice under the
+// wrong name. The message is written for you, so a repeat reads as if it were correct. This
+// catches it at the moment it is saved, when it is still one keystroke to fix.
+function sameAction(a,b){return a.type===b.type&&a.source===b.source&&(a.target||"")===(b.target||"")&&(a.location||"")===(b.location||"")&&(a.action||"")===(b.action||"");}
+function duplicateAction(record,drafts=[]){
+  return [...data.events,...drafts].find(event=>event.id!==record.id&&Number(event.chapter)===Number(record.chapter)&&sameAction(event,record))||null;
+}
+function duplicateWarning(record,drafts=[]){
+  const twin=duplicateAction(record,drafts);
+  if(!twin)return true;
+  const who=entity(record.source)?.name||record.source,where=record.location?` at ${entity(record.location)?.name||record.location}`:"",
+    what=String(record.type).replaceAll("_"," ");
+  return confirm(`Chapter ${record.chapter} already has this exact action: ${who} · ${what}${where}.\n\n“${twin.description||what}”\n\nIf this was meant for somebody else, cancel and change the name. Add it a second time anyway?`);
+}
 function clearEventInputsForNext(){const form=$("#event-form"),chapter=form.elements.chapter.value,source=form.elements.source.value,location=form.elements.location.value,type=form.elements.type.value;form.reset();form.elements.chapter.value=chapter;form.elements.source.value=source;form.elements.location.value=location;form.elements.type.value=type;updateEventHelp();}
 
 document.querySelectorAll(".tab").forEach(tab=>tab.addEventListener("click",()=>{activeView=tab.dataset.view;document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t===tab));$("#graph-view").classList.toggle("active",activeView==="graph");$("#admin-view").classList.toggle("active",activeView==="admin");if(activeView==="graph")renderAll();}));
@@ -3039,7 +3057,7 @@ $("#load-entity").onclick=()=>loadEntityEditor();
 $("#cancel-entity-edit").onclick=resetEntityEditor;
 $("#delete-entity").onclick=()=>deleteIdentity($("#entity-form").elements.editingId.value);
 
-$("#event-form").addEventListener("submit",event=>{event.preventDefault();const editingId=event.currentTarget.elements.editingId.value,previous=editingId?data.events.find(item=>item.id===editingId):null,record=buildEventRecord(event.currentTarget,editingId||undefined);if(!record)return;if(editingId){const index=data.events.findIndex(item=>item.id===editingId);if(index>=0)data.events[index]=record;}else data.events.push(record);if(previous)syncPresenceFromEvents(previous.source,previous.type);syncPresenceFromEvents(record.source,record.type);saveData();resetEventEditor();
+$("#event-form").addEventListener("submit",event=>{event.preventDefault();const editingId=event.currentTarget.elements.editingId.value,previous=editingId?data.events.find(item=>item.id===editingId):null,record=buildEventRecord(event.currentTarget,editingId||undefined);if(!record)return;if(!duplicateWarning(record))return;if(editingId){const index=data.events.findIndex(item=>item.id===editingId);if(index>=0)data.events[index]=record;}else data.events.push(record);if(previous)syncPresenceFromEvents(previous.source,previous.type);syncPresenceFromEvents(record.source,record.type);saveData();resetEventEditor();
   // Point the running order at the chapter just written to. Filling in a gap — a scene remembered
   // for chapter 2 while the story is at 40 — lands at the end of that chapter, and this is what
   // puts it in front of the reader so the order can be changed like any other action's.
@@ -3053,7 +3071,7 @@ $("#event-form").elements.level.addEventListener("change",()=>{const form=$("#ev
 function installWikiLinkHelpers(){document.querySelectorAll("#admin-view textarea:not([data-plain-text])").forEach(textarea=>{if(textarea.parentElement.querySelector(".inline-link-helper"))return;const button=document.createElement("button");button.type="button";button.className="inline-link-helper";button.textContent="＋ Link selected text to a wiki page";button.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd,label=textarea.value.slice(start,end).trim()||prompt("Text readers should see (for example: Protos Energy)");if(!label)return;const url=prompt("Paste the full webpage URL");if(!safeExternalUrl(url)){if(url)toast("Use a complete http:// or https:// link");return;}const chapterInput=prompt("Also cite a chapter for this? Enter a chapter number, or leave blank to skip."),chapter=validChapter(chapterInput);if(chapterInput&&!chapter){toast("Enter a whole chapter number greater than 0 — link added without a chapter citation");}textarea.setRangeText(chapter?`[[${label}|${url.trim()}|${chapter}]]`:`[[${label}|${url.trim()}]]`,start,end,"end");textarea.focus();};const chapterButton=document.createElement("button");chapterButton.type="button";chapterButton.className="inline-link-helper chapter-mark-helper";chapterButton.textContent="＋ Mark chapter for selected text";chapterButton.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd;if(start===end){toast("Select the sentence or passage this chapter reference belongs to first");return;}const selectedText=textarea.value.slice(start,end);const input=prompt("Which chapter does this belong to?"),chapter=validChapter(input);if(!chapter){if(input!==null)toast("Enter a whole chapter number greater than 0");return;}if(!chapterUrl(chapter)){const urlInput=prompt(`No link is saved for chapter ${chapter} yet. Paste its URL to save it once — every future reference to chapter ${chapter} anywhere will use it automatically. Leave blank to skip.`);const savedUrl=urlInput?safeExternalUrl(urlInput.trim()):"";if(urlInput&&!savedUrl)toast("That wasn't a complete http:// or https:// link — marker added without one");if(savedUrl){data.chapterSources={...(data.chapterSources||{}),[chapter]:savedUrl};saveData();}}textarea.setRangeText(`[[cite:${chapter}]]${selectedText}[[/cite]]`,start,end,"end");textarea.focus();};textarea.insertAdjacentElement("afterend",button);button.insertAdjacentElement("afterend",chapterButton);});}
 document.addEventListener("click",event=>{const link=event.target.closest("[data-open-event]");if(!link)return;event.preventDefault();event.stopPropagation();openProfile(link.dataset.openEvent,Number(link.dataset.eventChapter));});
 $("#cancel-event-edit").onclick=resetEventEditor;
-$("#queue-event").onclick=()=>{const record=buildEventRecord($("#event-form"));if(!record)return;if(eventDrafts.length&&record.chapter!==eventDrafts[0].chapter){toast(`This batch is for chapter ${eventDrafts[0].chapter}. Save or clear it before changing chapters.`);return;}eventDrafts.push(record);renderEventBatch();clearEventInputsForNext();toast("Change added to the chapter batch");};
+$("#queue-event").onclick=()=>{const record=buildEventRecord($("#event-form"));if(!record)return;if(!duplicateWarning(record,eventDrafts))return;if(eventDrafts.length&&record.chapter!==eventDrafts[0].chapter){toast(`This batch is for chapter ${eventDrafts[0].chapter}. Save or clear it before changing chapters.`);return;}eventDrafts.push(record);renderEventBatch();clearEventInputsForNext();toast("Change added to the chapter batch");};
 $("#clear-event-batch").onclick=()=>{eventDrafts=[];renderEventBatch();resetEventEditor();};
 $("#save-event-batch").onclick=()=>{if(!eventDrafts.length)return;data.events.push(...eventDrafts);orderChapter=eventDrafts.at(-1).chapter;eventDrafts.forEach(record=>syncPresenceFromEvents(record.source,record.type));const count=eventDrafts.length;eventDrafts=[];saveData();renderEventBatch();resetEventEditor();renderAll();toast(`${count} chapter changes saved; graph updated`);};
 

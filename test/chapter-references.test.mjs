@@ -1069,6 +1069,23 @@ test("a reward is a thing the story hands over, and a quest can pay several — 
   assert.match(source, /\.\.\.\(event\.rewardRank\?\[`Rank \$\{event\.rewardRank\}`\]:\[\]\)/, "and a stored reward rank becomes one more reward rather than being thrown away");
 });
 
+test("writing the same action twice is caught, because the message is generated and a repeat reads as if it were right", () => {
+  const ctx = { data: { events: [
+    { id: "a", chapter: 4, type: "residency", source: "gerald", location: "inn", action: "begin", description: "Gerald begins using the Inn as Home/Work." }
+  ] } };
+  vm.createContext(ctx);
+  vm.runInContext([functionBody("sameAction"), functionBody("duplicateAction")].join("\n"), ctx);
+  const twin = id => vm.runInContext(`duplicateAction({id:"b",chapter:4,type:"residency",source:${JSON.stringify(id)},location:"inn",action:"begin"})`, ctx);
+  assert.equal(twin("gerald")?.id, "a", "the same action for the same person in the same chapter");
+  assert.equal(twin("velma"), null, "the same action for somebody else is exactly what was meant");
+  assert.equal(vm.runInContext(`duplicateAction({id:"a",chapter:4,type:"residency",source:"gerald",location:"inn",action:"begin"})`, ctx), null, "editing an action is not a duplicate of itself");
+  assert.match(source, /if\(!duplicateWarning\(record\)\)return;/, "saving one goes through it");
+  assert.match(source, /if\(!duplicateWarning\(record,eventDrafts\)\)return;/, "and so does adding one to a chapter batch, where it is likeliest");
+  assert.match(functionBody("duplicateWarning"), /If this was meant for somebody else, cancel and change the name/);
+  assert.match(functionBody("renderOrderEditor"), /twin=rows\.findIndex\(other=>sameAction\(other,event\)\)/, "and one already written stays visible in the running order");
+  assert.match(functionBody("orderRowHtml"), /same action as \$\{twin\}/);
+});
+
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
   assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });

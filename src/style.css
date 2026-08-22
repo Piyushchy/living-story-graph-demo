@@ -967,3 +967,5 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 @media (prefers-reduced-motion: reduce){.edge.forming-edge{animation:none}}
 .quest-reward-list{display:grid;gap:2px;margin:0;padding:0 0 0 13px;list-style:disc}
 .quest-reward-list li{color:inherit}
+.order-row-twin{border-color:#7a5a2a;background:#1a1508}
+.order-twin{display:inline-block;margin-left:8px;padding:2px 7px;border-radius:999px;background:rgba(242,201,94,.14);color:#f2c95e;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:help}
