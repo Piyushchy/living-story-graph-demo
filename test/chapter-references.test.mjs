@@ -654,7 +654,7 @@ test("spring rest lengths clear both nodes, so a link can never pull two shapes 
 
 test("a place a character is standing in keeps the line while it is popped out, and the line rides back into the parent as the pod retracts rather than snapping across", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /const podIds=syncPodTransitions\(locView,currentEvent\),podSet=new Set\(\[\.\.\.podIds,\.\.\.retiringPodIds\]\)/, "retracting pods stay valid endpoints so the line can follow them home");
+  assert.match(body, /const podIds=syncPodTransitions\(locView,beatEvents\),podSet=new Set\(\[\.\.\.podIds,\.\.\.retiringPodIds\]\)/, "retracting pods stay valid endpoints so the line can follow them home");
   assert.ok(body.indexOf("syncPodTransitions(locView") < body.indexOf("const straightEdge="), "and the transition is decided before any link is drawn, or the line snaps home a render early");
   assert.match(body, /const edgeLocationId=id=>entity\(id\)\?\.kind!=="location"\?id:\(podSet\.has\(id\)\?id:\(locView\.anchorOf\.get\(id\)\|\|id\)\)/);
   assert.match(body, /const aPos=pointFor\(a\),bPos=pointFor\(b\)/, "edges resolve pod positions as well as physics positions");
@@ -728,7 +728,7 @@ test("a crowd sharing one place gets a ring wide enough to hold it, rather than 
 
 test("the chapter's actions are all listed and scrollable, and hovering the list holds the auto-advance so it can be read at the reader's pace", () => {
   const body = functionBody("renderEvents");
-  assert.match(body, /const chapterRows=volumeActions\(\)\.map\(\(item,index\)=>\(\{event:item,index:index\+1\}\)\)\.filter\(entry=>entry\.event\.chapter===event\.chapter\)/);
+  assert.match(body, /const chapterRows=chapterEventEntries\(event\.chapter\)/);
   assert.match(body, /upcoming:entry\.index>currentActionIndex/, "actions not yet reached are shown but marked");
   assert.match(body, /if\(!eventScrollHold\)requestAnimationFrame\(\(\)=>list\.querySelector\("\.current-action"\)\?\.scrollIntoView\(\{block:"nearest"\}\)\)/, "and the list does not yank itself while the reader is in it");
   assert.match(functionBody("scheduleChapterSequence"), /if\(expandedChapter!==null\|\|eventScrollHold\|\|sliderStepsEvents\)return;/);
@@ -771,7 +771,7 @@ test("renaming or reordering a ladder keeps existing events pointing at the same
 
 test("every action's message can be edited where the actions are listed, including the ones the identity form generates", () => {
   const body = functionBody("renderOrderEditor");
-  assert.match(body, /\$\{messageBoxHtml\("order-message",event\)\}/);
+  assert.match(functionBody("orderRowHtml"), /\$\{messageBoxHtml\("order-message",event\)\}/);
   assert.match(body, /list\.querySelectorAll\("\.order-message"\)\.forEach\(bindMessageBox\)/);
   assert.match(functionBody("bindMessageBox"), /field\.onchange=\(\)=>\{const record=data\.events\.find\(event=>event\.id===field\.dataset\.id\);if\(!record\)return;record\.description=field\.value\.trim\(\);saveData\(\)/);
   assert.match(body, /list\.querySelectorAll\("\.order-edit"\)\.forEach\(button=>button\.onclick=\(\)=>loadEventEditor\(button\.dataset\.id\)\)/);
@@ -786,6 +786,74 @@ test("an action's message is a text area, so a note can run to several lines", (
   assert.match(bind, /field\.oninput=\(\)=>growMessageBox\(field\)/, "and grows as more is typed");
   assert.match(bind, /if\(event\.key==="Enter"&&\(event\.metaKey\|\|event\.ctrlKey\)\)\{event\.preventDefault\(\);field\.blur\(\);\}/, "plain Enter makes a new line; only Ctrl/Cmd+Enter finishes");
   assert.doesNotMatch(bind, /if\(event\.key==="Enter"\)\{event\.preventDefault/, "Enter no longer throws the writer out of the field");
+});
+
+test("two or more actions can be read as one moment, and that changes nothing about what they do", () => {
+  const ctx = { data: { moments: [{ id: "m1", message: "One sentence for the three.", members: ["a","b","c"] }] } };
+  vm.createContext(ctx);
+  vm.runInContext([functionBody("storyMoments"), functionBody("momentOf"), functionBody("beatsFrom"), functionBody("beatMessage")].join("\n"), ctx);
+  const beats = vm.runInContext(`beatsFrom([{id:"z",chapter:1,description:"Before."},{id:"a",chapter:2},{id:"b",chapter:2},{id:"c",chapter:2},{id:"y",chapter:2,description:"After."}])`, ctx);
+  assert.equal(beats.length, 3, "the three members take one turn between them");
+  assert.equal([...beats].map(beat => beat.index).join(","), "1,4,5", "an index still counts actions, so a moment ends on its last one");
+  assert.equal([...beats[1].events].map(event => event.id).join(","), "a,b,c");
+  assert.equal(vm.runInContext(`beatMessage(beatsFrom([{id:"a",chapter:2},{id:"b",chapter:2}])[0])`, ctx), "One sentence for the three.");
+  // A moment whose parts drifted apart in the running order is not silently reassembled.
+  const split = vm.runInContext(`beatsFrom([{id:"a",chapter:2},{id:"z",chapter:2},{id:"b",chapter:2}])`, ctx);
+  assert.equal(split.length, 3, "only neighbours fold together");
+});
+
+test("a moment is only a way of reading actions, so it lets go of one that is deleted", () => {
+  const ctx = { data: {} };
+  vm.createContext(ctx);
+  vm.runInContext(functionBody("pruneMoments"), ctx);
+  const store = { events: [{ id: "a" }, { id: "b" }], moments: [
+    { id: "m1", members: ["a","b","gone"] },
+    { id: "m2", members: ["a","gone"] }
+  ] };
+  vm.runInContext("pruneMoments(store)", Object.assign(ctx, { store }));
+  assert.deepEqual(store.moments.map(moment => moment.id), ["m1"], "nothing left to combine is no longer a moment");
+  assert.deepEqual(store.moments[0].members, ["a","b"]);
+  assert.match(functionBody("saveData"), /normalizeIdentityIntroductionOrder\(data\);pruneMoments\(data\);/, "so every way of deleting an event is covered");
+});
+
+test("the slider treats a combined moment as one stop, and an index inside one is carried to its end", () => {
+  assert.match(functionBody("snapToBeat"), /return \(beats\.find\(beat=>beat\.index>=index\)\|\|beats\.at\(-1\)\)\?\.index\|\|0;/);
+  assert.match(functionBody("configureTimeline"), /currentActionIndex=snapToBeat\(Math\.max\(0,Math\.min\(actions\.length,currentActionIndex\)\)\)/);
+  assert.match(functionBody("volumeChapterGroups"), /volumeBeats\(\)\.forEach\(beat=>\{/, "a chapter's stops are its beats, so the count in the panel agrees with the slider");
+  assert.match(functionBody("scheduleChapterSequence"), /next=at<0\?null:beats\[at\+1\]/, "playing a chapter through steps moment by moment");
+});
+
+test("everything in one moment lands together on the graph", () => {
+  const graph = functionBody("renderGraph");
+  assert.match(graph, /beatEvents=currentBeatEvents\(\),previousApplied=volumeActions\(\)\.slice\(0,Math\.max\(0,currentActionIndex-Math\.max\(1,beatEvents\.length\)\)\)/, "what came before is everything before the whole moment");
+  assert.match(graph, /const activeIds=new Set\(beatEvents\.flatMap\(/, "every part of it is lit, not only the last");
+  assert.match(functionBody("eventPodIds"), /\[\]\.concat\(beatEvents\|\|\[\]\)/, "and every place it puts on the graph comes out at once");
+});
+
+test("a combined moment is read as one card, with what it is made of kept underneath", () => {
+  const row = functionBody("momentPanelRow");
+  assert.match(row, /<b class="event-type event-moment">together<\/b>/);
+  assert.match(row, /<p class="moment-message">\$\{richText\(beatMessage\(beat\)\)\}<\/p>/, "the sentence written for the moment stands in for the parts'");
+  assert.match(row, /\$\{beat\.moment\.showParts===false\?"":`<details class="moment-parts">/, "and the writer can keep the parts out of sight entirely");
+  assert.match(functionBody("beatPanelRow"), /beat\.moment&&beat\.events\.length>1\?momentPanelRow\(beat,options\):eventPanelRow\(beat\.event,beat\.index,options\)/);
+  assert.match(styleSource, /\.event-type\.event-moment\{/);
+});
+
+test("combining is done in the running order, writes no event of its own, and can be undone", () => {
+  const combine = functionBody("combinePickedActions");
+  assert.match(combine, /if\(new Set\(events\.map\(event=>event\.chapter\)\)\.size>1\)\{toast\("A moment holds actions from one chapter"\);return;\}/);
+  assert.doesNotMatch(combine, /data\.events\.push/, "nothing is added to the story — only how it is read changes");
+  assert.match(combine, /data\.moments\.push\(\{id:`moment-\$\{Date\.now\(\)\.toString\(36\)\}`,message:\$\("#order-combine-message"\)\.value\.trim\(\),members:ids\}\)/);
+  assert.match(combine, /chapterIds\.forEach\(id=>\{if\(!ids\.includes\(id\)\)\{merged\.push\(id\);return;\}if\(placed\)return;placed=true;merged\.push\(\.\.\.ids\);\}\)/, "the picked actions are sat together where the first of them stood");
+  assert.match(source, /list\.querySelectorAll\("\.order-moment-split"\)\.forEach\(button=>button\.onclick=\(\)=>\{\s*data\.moments=storyMoments\(\)\.filter\(moment=>moment\.id!==button\.dataset\.moment\)/, "and separating them again leaves every action where it is");
+  assert.match(functionBody("momentHeadHtml"), /class="order-moment-message"/, "the sentence is written where the actions are ordered");
+});
+
+test("the demo ships a moment, and a stored copy is brought up to it", () => {
+  assert.match(source, /schemaVersion: 17,/);
+  assert.match(source, /\{ id: "m-inn-place", message: "The Midnight Inn Lobby stands in the Midnight Inn Estate, in the city of Stonevale, on the world Verdan\.", members: \["hier-1","hier-2","hier-3"\] \}/);
+  assert.match(source, /if\(!Array\.isArray\(migrated\.moments\)\)migrated\.moments=\[\];/);
+  assert.match(source, /if\(sample\.members\.every\(id=>\(migrated\.events\|\|\[\]\)\.some\(event=>event\.id===id\)\)\)migrated\.moments\.push\(deepClone\(sample\)\)/, "a reader who deleted one of those actions is left alone");
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
@@ -927,7 +995,7 @@ test("a system that was merged away or destroyed shrinks to a small marker on wh
 test("a merged system's history also belongs to the system that took it, and the merge itself shows there", () => {
   assert.match(functionBody("absorbedInto"), /\(derived\.systemMerges\|\|\[\]\)\.filter\(link=>link\.into===current\)/, "following the chain, so a merge of a merge still reports upward");
   assert.match(functionBody("renderEvents"), /family=new Set\(\[selectedId,\.\.\.\(entity\(selectedId\)\?\.kind==="system"\?absorbedInto\(selectedId,currentDerived\(\)\):\[\]\)\]\)/);
-  assert.match(functionBody("renderEvents"), /\[\.\.\.family\]\.some\(id=>eventInvolves\(entry\.event,id\)\)/);
+  assert.match(functionBody("renderEvents"), /beat\.events\.some\(item=>\[\.\.\.family\]\.some\(id=>eventInvolves\(item,id\)\)\)/);
 });
 
 test("a system is selected on the first click and opened on the second, the same as a place, so its own history is reachable", () => {
@@ -942,7 +1010,7 @@ test("an action's message is editable where it is read in the editor, and stays 
   assert.match(functionBody("eventPanelRow"), /\$\{canEditEvents\(\)\?messageBoxHtml\("event-message-edit",event\)/);
   assert.match(functionBody("bindEventPanelRows"), /bindMessageBox\(field\);/);
   assert.match(functionBody("bindMessageBox"), /record\.description=field\.value\.trim\(\);saveData\(\)/);
-  assert.match(functionBody("bindEventPanelRows"), /if\(event\.target\.closest\("button,a,input,textarea"\)\)return;/, "so typing in it does not also jump the graph");
+  assert.match(functionBody("bindEventPanelRows"), /if\(event\.target\.closest\("button,a,input,textarea,summary"\)\)return;/, "so typing in it — or opening what a moment is made of — does not also jump the graph");
 });
 
 test("the demo carries a merged system, a destroyed one, and graded systems, and a stored copy picks them up even if its novel was renamed", () => {
@@ -1011,7 +1079,7 @@ test("the bar is not a list of chapters — it carries where the reader is, and 
 
 test("a node folded into something else is seen going there, rather than blinking out where it stood", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /const podsComing=new Set\(eventPodIds\(locView,currentEvent\)\),departing=\[\];/);
+  assert.match(body, /const podsComing=new Set\(eventPodIds\(locView,beatEvents\)\),departing=\[\];/);
   assert.match(body, /into=kind==="location"\?locView\.anchorOf\.get\(id\)\s*:kind==="system"\?\(sysView\.anchorOf\.get\(id\)\|\|systemSatellites\.find\(item=>item\.id===id\)\?\.anchor\)/, "a place goes to the parent that took it in; a system to whatever swallowed or succeeded it");
   assert.match(body, /if\(into&&into!==id&&renderIds\.has\(into\)\)\{/, "only when there is somewhere to go");
   assert.match(body, /else departing\.push\(\{id,kind,from:\{\.\.\.physics\.pos\.get\(id\)\},into/, "captured before the position is forgotten");
@@ -1076,8 +1144,8 @@ test("the slider steps a chapter at a time or one action at a time, and the read
   assert.match(source, /const SLIDER_MODE_KEY = "living-story-graph-slider-mode-v1";/);
   assert.match(source, /id="toggle-slider-mode"[^>]*aria-pressed="false"/, "offered beside the chapter-refs toggle it is modelled on");
   const timeline = functionBody("configureTimeline");
-  assert.match(timeline, /else if\(sliderStepsEvents\)\{timeline\.min=0;timeline\.max=actions\.length;timeline\.value=currentActionIndex;timeline\.dataset\.mode="actions";/);
-  assert.match(functionBody("applyTimeline"), /if\(timeline\.dataset\.mode==="actions"\)\{currentActionIndex=Math\.max\(0,Math\.min\(volumeActions\(\)\.length,value\)\)/);
+  assert.match(timeline, /else if\(sliderStepsEvents\)\{const position=beatPosition\(beats\);timeline\.min=0;timeline\.max=beats\.length;timeline\.value=position;timeline\.dataset\.mode="actions";/, "one stop per beat, so a combined moment is a single step");
+  assert.match(functionBody("applyTimeline"), /if\(timeline\.dataset\.mode==="actions"\)\{const beats=volumeBeats\(\);currentActionIndex=value<=0\?0:beats\[Math\.min\(beats\.length,value\)-1\]\?\.index\|\|0/);
   assert.match(functionBody("scheduleChapterSequence"), /if\(expandedChapter!==null\|\|eventScrollHold\|\|sliderStepsEvents\)return;/, "stepping by action already advances one at a time");
   assert.match(source, /localStorage\.setItem\(SLIDER_MODE_KEY,sliderStepsEvents\?"events":"chapters"\)/, "and the choice is kept between visits");
 });
