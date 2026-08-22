@@ -558,7 +558,7 @@ function pureSandbox(names) {
 test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
   const body = functionBody("renderGraph");
   assert.match(body, /viewportGroup\.append\(edgeLayer,departLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation and system markers");
-  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,tall:Boolean\(rankLabel\),halfWidth:/);
+  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,tall:Boolean\(rankLabel\|\|questNotice\),halfWidth:/);
   assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=\(entry\.tall\?entry\.group:entry\.text\)\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
   assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
   assert.match(styleSource, /\.node-label-layer \{ pointer-events: none; \}/);
@@ -571,7 +571,7 @@ test("the layout runs on a budget, so a busy action cannot leave the graph drift
   assert.match(body, /physics\.alpha = physics\.dragId \? 1 : physics\.alpha \* ALPHA_DECAY;/, "every frame cools it");
   assert.match(body, /if\(d<ra\+rb\)\{overlapping\.add\(ids\[i\]\);overlapping\.add\(ids\[j\]\);\}/, "only shapes genuinely on top of each other reheat it — the comfort gap kept it awake for ever");
   assert.match(body, /if \(overlapping\.size\) physics\.alpha = Math\.max\(physics\.alpha, ALPHA_CONTACT\);/);
-  assert.match(functionBody("renderGraph"), /departingGhosts=\[\]; physics\.alpha=1;/, "and a change heats it again");
+  assert.match(functionBody("renderGraph"), /departingGhosts=\[\]; questPulses=\[\]; physics\.alpha=1;/, "and a change heats it again");
   assert.match(body, /const scaleCount = Math\.round\(ids\.length\/8\)\*8;/, "the strength constants step in eights, so they do not shift the whole balance for one arrival");
   assert.match(body, /calm = touching \? 0 : Math\.max\(0, Math\.min\(1, \(physics\.calm\.get\(id\)\|\|0\) \+ \(speed < 1\.2 \? \.04 : -\.3\)\)\)/, "and a node that has been sitting still takes a fraction of the force");
 });
@@ -677,8 +677,11 @@ test("the view eases into a new framing instead of jumping, and a reader's own z
   // view give room and take it straight back, over and over.
   assert.match(fit, /needsRoom=target\.scale<view\.scale\*\.97/, "the moment the content needs room, it gets it");
   assert.match(fit, /tooMuchRoom=target\.scale>view\.scale\*1\.5/, "but it only closes back in when there is a great deal of empty space");
-  assert.match(fit, /if\(now-lastContentFit<900\)return;/, "and a busy chapter cannot refit several times over");
-  assert.match(fit, /glideViewTo\(needsRoom\|\|tooMuchRoom\?target:\{\.\.\.target,scale:view\.scale\}\)/, "a drifted framing is recentred without touching the scale as well");
+  assert.match(fit, /if\(!outside&&now-lastContentFit<900\)return;/, "and a busy chapter cannot refit several times over — unless something is genuinely off-frame");
+  assert.match(fit, /const outside=entries\.some\(/, "anything outside the canvas cannot wait for the cooldown or the thresholds");
+  assert.match(fit, /glideViewTo\(outside\?\{\.\.\.target,scale:Math\.min\(view\.scale,target\.scale\)\}/, "rescuing it may pan or pull back, but never close in — that is what sets the view chasing itself");
+  assert.match(fit, /:needsRoom\|\|tooMuchRoom\?target:\{\.\.\.target,scale:view\.scale\}/, "a drifted framing is recentred without touching the scale as well");
+  assert.match(functionBody("seedPosition"), /left=\(0-view\.x\)\/view\.scale,right=\(720-view\.x\)\/view\.scale/, "a newcomer is seeded inside what the reader can actually see");
   assert.match(functionBody("fitGraphToCount"), /scheduleAutoFit\(\);\s*const signature=`\$\{activeVolume\}`;/, "the real fit runs after every render; only the crude pre-simulation guess is once per volume");
   assert.match(source, /viewPinnedByUser = true; viewTween = null;/);
   assert.match(source, /if\(!panStart\)return;viewPinnedByUser=true;viewTween=null;/);
@@ -728,7 +731,7 @@ test("the chapter's actions are all listed and scrollable, and hovering the list
   assert.match(body, /const chapterRows=volumeActions\(\)\.map\(\(item,index\)=>\(\{event:item,index:index\+1\}\)\)\.filter\(entry=>entry\.event\.chapter===event\.chapter\)/);
   assert.match(body, /upcoming:entry\.index>currentActionIndex/, "actions not yet reached are shown but marked");
   assert.match(body, /if\(!eventScrollHold\)requestAnimationFrame\(\(\)=>list\.querySelector\("\.current-action"\)\?\.scrollIntoView\(\{block:"nearest"\}\)\)/, "and the list does not yank itself while the reader is in it");
-  assert.match(functionBody("scheduleChapterSequence"), /if\(expandedChapter!==null\|\|eventScrollHold\)return;/);
+  assert.match(functionBody("scheduleChapterSequence"), /if\(expandedChapter!==null\|\|eventScrollHold\|\|sliderStepsEvents\)return;/);
   assert.match(source, /autoplayHeldByHover=Boolean\(chapterAutoplayTimer\);cancelChapterSequence\(\)/, "only resumes if it was actually playing when the pointer arrived");
   assert.match(source, /eventsCard\.addEventListener\("pointerleave",release\)/);
   assert.match(styleSource, /\.events-list \{[^}]*overflow-y: auto/);
@@ -1030,6 +1033,58 @@ test("a publish failure says what is actually wrong, rather than quoting the sto
   assert.match(api, /error: describe\(error, "Hosted data unavailable"\)/);
 });
 
+test("an identity link may join a character to a system, because a character merged into one is the same fact told over time", () => {
+  assert.match(source, /const IDENTITY_KINDS = new Set\(\["character","system"\]\);/);
+  assert.match(functionBody("derive"), /if\(event\.type==="identity_parent"&&IDENTITY_KINDS\.has\(source\?\.kind\)&&IDENTITY_KINDS\.has\(states\.get\(event\.target\)\?\.kind\)\)/);
+  assert.match(source, /if\(type==="identity_parent"&&!\(IDENTITY_KINDS\.has\(source\.kind\)&&IDENTITY_KINDS\.has\(target\.kind\)\)\)\{toast\("An identity link joins two characters, or a character and a system"\)/, "and says which pairings are allowed rather than naming only characters");
+});
+
+test("ending something does not demand the wording of what it was — the form silently refused every removal", () => {
+  assert.match(source, /const REMOVAL_ACTIONS = new Set\(\["remove","end","close","withdraw"\]\);/);
+  assert.match(functionBody("updateEventHelp"), /form\.elements\.value\.required=needsValue&&!removing;/, "a required empty field made the browser refuse to submit at all, with no message");
+  assert.match(source, /\.includes\(type\)&&!value&&!REMOVAL_ACTIONS\.has\(action\)\)\{toast\(`Enter the/);
+  assert.match(functionBody("updateEventHelp"), /if\(\[\.\.\.action\.options\]\.some\(option=>option\.value===keepAction\)\)action\.value=keepAction;/, "and rebuilding the options must not throw away the action that was chosen");
+  assert.match(source, /\$\("#event-form"\)\.elements\.action\.addEventListener\("change",updateEventHelp\);/);
+});
+
+test("the slider steps a chapter at a time or one action at a time, and the reader decides which", () => {
+  assert.match(source, /const SLIDER_MODE_KEY = "living-story-graph-slider-mode-v1";/);
+  assert.match(source, /id="toggle-slider-mode"[^>]*aria-pressed="false"/, "offered beside the chapter-refs toggle it is modelled on");
+  const timeline = functionBody("configureTimeline");
+  assert.match(timeline, /else if\(sliderStepsEvents\)\{timeline\.min=0;timeline\.max=actions\.length;timeline\.value=currentActionIndex;timeline\.dataset\.mode="actions";/);
+  assert.match(functionBody("applyTimeline"), /if\(timeline\.dataset\.mode==="actions"\)\{currentActionIndex=Math\.max\(0,Math\.min\(volumeActions\(\)\.length,value\)\)/);
+  assert.match(functionBody("scheduleChapterSequence"), /if\(expandedChapter!==null\|\|eventScrollHold\|\|sliderStepsEvents\)return;/, "stepping by action already advances one at a time");
+  assert.match(source, /localStorage\.setItem\(SLIDER_MODE_KEY,sliderStepsEvents\?"events":"chapters"\)/, "and the choice is kept between visits");
+});
+
+test("quests from different systems are kept apart, and whatever just moved is lifted out for its beat", () => {
+  const body = functionBody("renderQuests");
+  assert.match(body, /const sections=new Map\(\),issuerOf=run=>entity\(run\.quest\)\?\.issuer\|\|"";/, "each issuer keeps its own section; their quests never run together");
+  assert.match(body, /justChanged=beat&&String\(beat\.type\)\.startsWith\("quest_"\)&&beat\.type!=="quest_part"\?runs\.get\(beat\.source\):null/);
+  assert.match(body, /<span class="quest-latest-head">Just now<\/span>/, "lifted to the top for its beat, then back into its section");
+  assert.match(functionBody("questCardHtml"), /const stirred=changedId===run\.quest;/);
+  assert.match(styleSource, /@keyframes quest-stir \{/, "and a card that moved catches the eye rather than quietly reading a new number");
+  assert.match(styleSource, /@media \(prefers-reduced-motion: reduce\) \{[^}]*quest-stirred/s, "with the motion dropped for anyone who asked for less of it");
+  assert.match(source, /<label class="field checkbox-field" id="entity-quest-alone-field" hidden><input type="checkbox" name="countsAlone"/, "and whether a part counts as an active quest of its own is the author's call");
+  const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
+  assert.match(sample, /id: "q-winter"[^}]*countsAlone: true/, "and the demo shows both sides of that choice");
+  assert.match(source, /migrated\.schemaVersion=16;/);
+});
+
+test("a quest never becomes a node, but carrying one shows on the character and the handing over shows on the graph", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /derived\.quests\.filter\(run=>run\.status==="active"\)\.forEach\(run=>run\.holders\.forEach/, "who is carrying what, right now");
+  assert.match(body, /\.\.\.\(derived\.quests\.find\(run=>run\.quest===currentEvent\.source\)\?\.holders\|\|\[\]\)/, "only an issue names who it goes to; everything after belongs to whoever holds it");
+  assert.match(body, /straightEdge\(issuer,holder,"edge quest-issue-edge newly-revealed-edge",issuer,holder\)/, "the handing over is drawn from issuer to holder, for that beat only");
+  assert.match(body, /if\(held\.length&&selectedId===item\.id\)\{/, "the count shows on the character being looked at, not painted on everyone for ever");
+  assert.match(body, /questPulses\.push\(\{el:pulse,from:issuer,to:holder/, "and the issuing is a mote running from the system that set it to whoever took it");
+  assert.match(functionBody("stepQuestPulses"), /arrival=Math\.max\(0,\(progress-\.72\)\/\.28\)/, "flaring as it lands, then gone");
+  assert.match(body, /questNotice=\{y:r\+27,tone:settled\?/, "and the notice sits under the node, clear of the name above it");
+  assert.match(source, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\|\|kind==="quest"\)return false;/, "the quest itself is still never a node");
+  assert.match(styleSource, /\.quest-issue-edge \{ fill: none; stroke: #ffb347;/);
+  assert.match(styleSource, /\.quest-notice\.quest-failed \{ fill: #ef8b92; \}/);
+});
+
 test("a quest is a record with a run of its own: issued, inched forward chapter by chapter, and settled", () => {
   assert.match(source, /<option value="quest_issue">Quest is issued<\/option><option value="quest_update">Quest update, hint, remark, or notification<\/option><option value="quest_progress">Quest progress changes<\/option><option value="quest_end">Quest completed, failed, or abandoned<\/option><option value="quest_part">Quest is part of a larger quest<\/option><option value="quest_contribution">Quest contribution and share of the reward<\/option>/);
   assert.match(source, /<option value="quest">Quest<\/option>/, "and a quest is its own kind of identity, with its own terms");
@@ -1069,8 +1124,10 @@ test("every action that offers a second identity or a free-text value actually k
 test("a story that settles hundreds of quests does not build hundreds of cards", () => {
   const body = functionBody("renderQuests");
   assert.match(source, /const QUEST_PAGE=10;/);
-  assert.match(body, /activeShown=active\.slice\(0,QUEST_PAGE\+questPageActive\),settledShown=questSettledOpen\?settled\.slice\(0,QUEST_PAGE\+questPageSettled\):\[\]/, "settled cards are not even built until the group is opened");
+  assert.match(body, /settledShown=questSettledOpen\?settled\.slice\(0,QUEST_PAGE\+questPageSettled\):\[\]/, "settled cards are not even built until the group is opened");
+  assert.match(body, /shown=list\.slice\(0,QUEST_PAGE\+\(questPageActive\|\|0\)\),rest=list\.length-shown\.length/, "and each issuer's own list is paged the same way");
   assert.match(body, /id="more-settled-quests">Show \$\{Math\.min\(settledRest,QUEST_PAGE\)\} older · \$\{settledRest\} left/, "and the rest arrive a page at a time, with the count in plain sight");
+  assert.match(body, /const activeTotal=derived\.quests\.filter\(run=>run\.status==="active"&&\(!parentOf\.has\(run\.quest\)\|\|entity\(run\.quest\)\?\.countsAlone===true\)\)\.length;/, "a part counts with the quest it belongs to unless the story treats it as its own");
   assert.match(body, /questPageSettled=0;renderQuests\(\)/, "closing the group forgets how far it was paged");
 });
 

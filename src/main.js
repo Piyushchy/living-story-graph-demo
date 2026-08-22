@@ -6,17 +6,22 @@ const MARKED_EVENT_TYPES = new Set(["cultivation","relationship","status","alias
 const EVENT_TYPE_COLORS = { cultivation:"#e8ad3c",relationship:"#45c98b",status:"#ef5d67",alias:"#9f7aea",display_name:"#7dd3fc",identity_parent:"#c084fc",membership:"#4f8df7",movement:"#22c7b8",residency:"#55d6a7",location_parent:"#f2c95e",organization_location:"#c084fc",meeting:"#27b8b8",conversation:"#ffd479",system_host:"#b98cff",system_parent:"#b98cff",system_location:"#8f74c4",system_merge:"#8f74c4",system_end:"#ef5d67",system_rank:"#ffd479",quest_issue:"#ffb347",quest_progress:"#7dd3fc",quest_end:"#45c98b",quest_part:"#e8ad3c",quest_update:"#9f7aea",quest_contribution:"#22c7b8",awareness:"#36a8d4",mention:"#7f8da3",appearance:"#ef71b8",corpse_appearance:"#ef5d67",note:"#edf2ff" };
 // What counts as a turning point for one person: the things that change who they are, what they
 // hold, or where they stand — not every mention and meeting along the way.
+// What may stand on either side of a clone / avatar / merged-identity link.
+const IDENTITY_KINDS = new Set(["character","system"]);
+// Actions that undo or end something, where the wording of the thing being ended is not needed.
+const REMOVAL_ACTIONS = new Set(["remove","end","close","withdraw"]);
 const MAJOR_EVENT_TYPES = new Set(["appearance","corpse_appearance","cultivation","status","display_name","identity_parent","relationship","membership","system_host","system_rank","quest_end"]);
 const STORAGE_KEY = "living-story-graph-demo-v1";
 const VIEW_STATE_KEY = "living-story-graph-view-state-v1";
 const PUBLISH_DIRTY_KEY = "living-story-graph-publish-dirty-v1";
 const CHAPTER_REF_TOGGLE_KEY = "living-story-graph-chapter-refs-v1";
+const SLIDER_MODE_KEY = "living-story-graph-slider-mode-v1";
 const CHAPTER_REF_HINT_SEEN_KEY = "living-story-graph-chapter-ref-hint-seen-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CULTIVATION_LEVELS = ["Mortal","Body Tempering","Qi Training","Foundation Establishment","Golden Core","Nascent Soul","Earth Immortal","Heaven Immortal","Celestial Immortal","Demi Dao Lord","Dao Lord","Above Dao Lord"];
 
 const sampleData = {
-  schemaVersion: 15,
+  schemaVersion: 16,
   novel: "The Innkeeper — graph demonstration",
   volumes: [
     { id: "v1", name: "Volume 1", from: 1, to: 40 },
@@ -45,7 +50,7 @@ const sampleData = {
     { id: "q-hearth", kind: "quest", issuer: "inn-system", name: "Keep the Hearth Lit", intro: 4, questBadge: "World", timeLimit: "Until the winter breaks", achievements: ["First Innkeeper"], failure: "The Inn loses its licence and Lex loses the deed.", description: "Hold the Midnight Inn open through the whole of the first winter. Three tasks make up the chain." },
     { id: "q-stock", kind: "quest", issuer: "inn-system", name: "Stock the Cellar", intro: 4, timeLimit: "Seven days", description: "Fill the Inn's cellar before the roads close." },
     { id: "q-cook", kind: "quest", issuer: "inn-system", name: "Find a Cook", intro: 8, failure: "The kitchen stays shut for a month.", description: "Hire someone who can feed a full house." },
-    { id: "q-winter", kind: "quest", issuer: "inn-system", name: "Survive the Long Frost", intro: 18, questBadge: "Urgent", timeLimit: "Ninety days", failure: "Authority falls by one and the Hearthkeeper System is recalled.", description: "Keep every guest alive until the thaw." },
+    { id: "q-winter", kind: "quest", issuer: "inn-system", name: "Survive the Long Frost", intro: 18, countsAlone: true, questBadge: "Urgent", timeLimit: "Ninety days", failure: "Authority falls by one and the Hearthkeeper System is recalled.", description: "Keep every guest alive until the thaw." },
     { id: "q-envoy", kind: "quest", issuer: "inn-system", name: "Answer the Jotun Envoy", intro: 26, questBadge: "Hidden", achievements: ["Spoken For"], failure: "The Jotun Empire marks the Inn as hostile.", description: "Meet Envoy Luthor without giving the Inn away. Nobody was told this quest existed." },
     { id: "q-ledger", kind: "quest", issuer: "inn-system", name: "Balance the Winter Ledger", intro: 30, timeLimit: "Before the spring audit", description: "A quest with no reward stated — the ledger simply has to balance." },
     { id: "q-anomaly", kind: "quest", issuer: "warden-system", name: "Investigate the anomaly in the Azure Mortal Realm", intro: 20, questBadge: "Urgent", description: "Find whatever is bending the realm's edges. The terms of this one grew as the story turned — the objectives below were added chapter by chapter, not split into new quests." },
@@ -213,7 +218,7 @@ let lastLocationView = null, lastSystemView = null;
 let collapsingLocationId = null, locationCollapseTimer = null, lastContentFit = 0;
 // Ghosts of nodes on their way into whatever took them in. They are driven by the tick rather
 // than by a css transition, because the thing they are travelling to is itself still moving.
-let departingGhosts = [];
+let departingGhosts = [], questPulses = [];
 let emergingLocations = new Set(), emergeTimer = null;
 let activePodIds = [], activePodKey = "", retiringPodIds = [], podRetireTimer = null;
 // Where a pod should start its journey from, when the place already had a node of its own a
@@ -224,6 +229,9 @@ let currentChapter = 1;
 let currentActionIndex = 0;
 let chapterAutoplayTimer=null,expandedChapter=null;
 let eventScrollHold=false,autoplayHeldByHover=false;
+// The slider either steps a chapter at a time, gathering that chapter's actions into one stop,
+// or steps every action in turn. Which one is the reader's choice, kept between visits.
+let sliderStepsEvents=false;
 const SELECTION_EVENT_PAGE=30;
 let selectionEventPage=SELECTION_EVENT_PAGE,lastEventSelection=null,questPageActive=0,questPageSettled=0;
 let activeVolume = "";
@@ -241,6 +249,7 @@ app.innerHTML = `
       <div class="brand"><span class="brand-mark"></span><div><strong><span class="brand-long">Living </span>Story Graph</strong><small id="novel-name"></small></div></div>
       <div class="chapter-ref-toggle-wrap">
         <button type="button" id="toggle-chapter-refs" class="chapter-ref-toggle" data-chapter-ref-toggle aria-pressed="false" title="Hover marked text to reveal its chapter"><span aria-hidden="true">🔖</span> Chapter refs</button>
+        <button type="button" id="toggle-slider-mode" class="chapter-ref-toggle" aria-pressed="false" title="Step the slider a chapter at a time, or one action at a time"><span aria-hidden="true">⏱</span> <span id="slider-mode-label">By chapter</span></button>
         <div id="chapter-ref-hint" class="chapter-ref-hint" hidden role="status">
           <p><strong>Chapter references</strong> — some text here links out to another page, and some cites the chapter it's from. Turn this on, then hover marked text to see which. Press <kbd>Alt</kbd> to toggle it quickly.</p>
           <button type="button" id="dismiss-chapter-ref-hint" aria-label="Dismiss">×</button>
@@ -318,6 +327,7 @@ app.innerHTML = `
               <label class="field" id="entity-authority-field" hidden><span>Authority (optional)</span><input name="authority" list="system-unknown-options" inputmode="numeric" maxlength="12" placeholder="7" /><small class="field-note">A plain number, nothing else. Leave it blank if this system has no authority or none has been revealed. This is the starting authority; use a rank action to change it later.</small></label>
               <label class="field" id="entity-grade-field" hidden><span>Grade (optional)</span><input name="grade" list="system-grade-options" maxlength="7" placeholder="S" /><datalist id="system-grade-options"><option value="Destiny"></option><option value="Fate"></option><option value="Divine"></option><option value="Oblivion"></option><option value="Death"></option><option value="Spirit"></option><option value="Life"></option><option value="Chaos"></option><option value="Unknown"></option></datalist><datalist id="system-unknown-options"><option value="Unknown"></option></datalist><small class="field-note">One to three letters with an optional + or − — S, A+, SS, SSS− — or one of the named ranks: Destiny, Fate, Divine, Oblivion, Death, Spirit, Life, Chaos. Leave it blank if this system is ungraded or its grade is unknown. This is the starting grade; use a rank action to change it later.</small></label>
               <label class="field" id="entity-quest-issuer-field" hidden><span>Issued by (optional)</span><input name="issuer" list="admin-entity-options" placeholder="Midnight Inn System" /><small class="field-note">The system — or organisation, or character — this quest comes from. Everything the quest does then shows in that issuer's own history too.</small></label>
+              <label class="field checkbox-field" id="entity-quest-alone-field" hidden><input type="checkbox" name="countsAlone" /><span>Counted as its own active quest</span><small class="field-note">Off by default: a quest that is part of a larger one is counted with it, so a chain of three reads as one running quest. Turn this on where the story treats the part as a quest in its own right.</small></label>
               <label class="field" id="entity-quest-badge-field" hidden><span>Quest badge (optional)</span><input name="questBadge" list="quest-badge-options" maxlength="24" placeholder="Hidden" /><datalist id="quest-badge-options"><option value="Hidden"></option><option value="World"></option><option value="Chain"></option><option value="Daily"></option><option value="Urgent"></option><option value="Punishment"></option></datalist><small class="field-note">A short word for a special quest, shown as a badge in the quest tab. Leave it blank for an ordinary quest.</small></label>
               <label class="field" id="entity-quest-reward-rank-field" hidden><span>Reward rank, if stated up front (optional)</span><input name="rewardRank" list="system-grade-options" maxlength="9" placeholder="SSS+" /><small class="field-note">Write it exactly as the story writes it — E through A+, S through SSS+, or a named rank such as Destiny, Divine, or Chaos. Most quests do not say until they are finished, so leave this blank and fill the rank in on the completion action instead.</small></label>
               <label class="field" id="entity-quest-time-limit-field" hidden><span>Time limit (optional)</span><input name="timeLimit" maxlength="80" placeholder="Three days" /><small class="field-note">Written however the story writes it — a count of days, a deadline, or nothing at all.</small></label>
@@ -574,6 +584,13 @@ function loadLocalData() {
           if(stored&&stored.issuer===undefined)stored.issuer=sample.issuer;
         });
       migrated.schemaVersion=15;
+    }
+    if((migrated.schemaVersion||1)<16){
+      const isBundledDemo=["lex","eclipse","inn-lobby"].every(id=>migrated.entities.some(item=>item.id===id));
+      // One part of the chain is a quest in its own right, so the demo shows both sides of the
+      // choice rather than only the default.
+      if(isBundledDemo){const winter=migrated.entities.find(item=>item.id==="q-winter");if(winter&&winter.countsAlone===undefined)winter.countsAlone=true;}
+      migrated.schemaVersion=16;
     }
     localStorage.setItem(STORAGE_KEY,JSON.stringify(migrated));return migrated;
   }
@@ -905,7 +922,10 @@ function derive(chapter,eventSubset=null) {
       const key=event.source+"|"+event.location;
       if(event.action==="close")systemLocations.delete(key);else systemLocations.set(key,{system:event.source,location:event.location,role:event.value||"Branch",from:event.chapter});
     }
-    if(event.type==="identity_parent"&&source?.kind==="character"&&states.get(event.target)?.kind==="character"){
+    // An identity link is not only one character standing in for another. A character can be
+    // merged into a system and later separate from it again, which is the same fact changing its
+    // wording chapter by chapter rather than a different kind of fact.
+    if(event.type==="identity_parent"&&IDENTITY_KINDS.has(source?.kind)&&IDENTITY_KINDS.has(states.get(event.target)?.kind)){
       if(event.action==="remove"){if(identityParents.get(event.source)?.parent===event.target)identityParents.delete(event.source);}else identityParents.set(event.source,{child:event.source,parent:event.target,relation:event.value||"Clone",from:event.chapter});
     }
     if (event.type === "awareness" && source && states.has(event.target)) {
@@ -1059,10 +1079,15 @@ function renderTimelineMarkers(){
       }
       $("#event-position").textContent=`${stateName(currentDerived(),selectedId)||chosen?.name||"Selected"} · ${milestones.length} turning point${milestones.length===1?"":"s"}`;
     }
-    // Where the reader is, always, on top of anything else.
+    // Where the reader is, always, on top of anything else. The slider measures actions or
+    // chapters depending on how it is set, and the mark has to sit where the thumb does.
     const hereIndex=chapterGroups.findIndex(group=>group.chapter===currentChapter),here=chapterGroups[hereIndex];
     if(here){
-      const position=(hereIndex+1)/chapterGroups.length*100,several=here.entries.length>1;
+      const actionCount=volumeActions().length,
+        position=sliderStepsEvents
+          ?(actionCount?currentActionIndex/actionCount*100:0)
+          :(hereIndex+1)/chapterGroups.length*100,
+        several=here.entries.length>1;
       marks.push(several
         ?`<button type="button" class="main-timeline-mark here-mark expandable" style="left:${position}%;--marker-fill:${eventMarkerFill(here.entries.map(entry=>entry.event))}" title="Chapter ${here.chapter} · ${here.entries.length} events · click to expand" data-expand-chapter="${here.chapter}" aria-label="Expand chapter ${here.chapter} events"></button>`
         :`<span class="main-timeline-mark here-mark" style="left:${position}%;--marker-fill:${eventMarkerFill(here.entries.map(entry=>entry.event))}" title="Chapter ${here.chapter}"></span>`);
@@ -1074,15 +1099,24 @@ function configureTimeline() {
   const volume=activeVol(),actions=volumeActions(),groups=volumeChapterGroups();currentActionIndex=Math.max(0,Math.min(actions.length,currentActionIndex));const action=currentActionEvent(),field=document.querySelector(".timeline-field"),collapse=$("#collapse-chapter-events");currentChapter=action?.chapter||volume.from;
   if(expandedChapter!==null&&action?.chapter!==expandedChapter)expandedChapter=null;
   if(expandedChapter!==null){const entries=chapterEventEntries(expandedChapter),eventIndex=Math.max(0,entries.findIndex(entry=>entry.index===currentActionIndex));timeline.min=0;timeline.max=entries.length+1;timeline.value=eventIndex+1;timeline.dataset.mode="chapter-events";$("#event-position").textContent=`event ${eventIndex+1}/${entries.length} · ends close`;$("#previous").disabled=false;$("#next").disabled=false;$("#chapter-value").textContent=expandedChapter;collapse.hidden=false;field.classList.add("events-expanded","multi-event-chapter");}
+  else if(sliderStepsEvents){timeline.min=0;timeline.max=actions.length;timeline.value=currentActionIndex;timeline.dataset.mode="actions";
+    $("#event-position").textContent=currentActionIndex===0?`0 of ${actions.length} actions`:`action ${currentActionIndex} of ${actions.length}`;
+    $("#previous").disabled=currentActionIndex<=0;$("#next").disabled=currentActionIndex>=actions.length;
+    if(collapse)collapse.hidden=true;field?.classList.remove("chapter-events-mode");}
   else{const groupIndex=action?groups.findIndex(group=>group.chapter===action.chapter):-1,group=groups[groupIndex];timeline.min=0;timeline.max=groups.length;timeline.value=groupIndex+1;timeline.dataset.mode="chapters";$("#event-position").textContent=currentActionIndex===0?`0 of ${groups.length} chapters`:`chapter stop ${groupIndex+1} of ${groups.length}${group?.entries.length>1?` · ${group.entries.length} events`:""}`;$("#previous").disabled=groupIndex<0;$("#next").disabled=groupIndex===groups.length-1;$("#chapter-value").textContent=action?action.chapter:"—";collapse.hidden=true;field.classList.remove("events-expanded");field.classList.toggle("multi-event-chapter",Boolean(group&&group.entries.length>1));}
   renderTimelineMarkers();
 }
 function cancelChapterSequence(){clearTimeout(chapterAutoplayTimer);chapterAutoplayTimer=null;}
 function expandChapterEvents(chapter){const entries=chapterEventEntries(chapter);if(entries.length<2)return;cancelChapterSequence();expandedChapter=chapter;if(currentActionEvent()?.chapter!==chapter)currentActionIndex=entries[0].index;currentChapter=chapter;renderAll();}
 function collapseChapterEvents(){cancelChapterSequence();expandedChapter=null;renderAll();}
-function scheduleChapterSequence(){cancelChapterSequence();if(expandedChapter!==null||eventScrollHold)return;const current=currentActionEvent(),next=volumeActions()[currentActionIndex];if(!current||!next||next.chapter!==current.chapter)return;chapterAutoplayTimer=setTimeout(()=>{chapterAutoplayTimer=null;currentActionIndex+=1;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();scheduleChapterSequence();},1150);}
+function scheduleChapterSequence(){cancelChapterSequence();
+  // Stepping by action already advances one at a time; running the chapter sequence as well
+  // would take two steps for every press.
+  if(expandedChapter!==null||eventScrollHold||sliderStepsEvents)return;const current=currentActionEvent(),next=volumeActions()[currentActionIndex];if(!current||!next||next.chapter!==current.chapter)return;chapterAutoplayTimer=setTimeout(()=>{chapterAutoplayTimer=null;currentActionIndex+=1;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();scheduleChapterSequence();},1150);}
 function applyTimeline() {
-  const previous=currentActionIndex,value=Number(timeline.value);cancelChapterSequence();if(timeline.dataset.mode==="chapter-events"){const groups=volumeChapterGroups(),groupIndex=groups.findIndex(group=>group.chapter===expandedChapter),entries=groups[groupIndex]?.entries||[];if(value<=0){expandedChapter=null;currentActionIndex=groupIndex>0?groups[groupIndex-1].entries.at(-1).index:0;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();return;}if(value>=entries.length+1){expandedChapter=null;const nextGroup=groups[groupIndex+1];currentActionIndex=nextGroup?nextGroup.entries[0].index:entries.at(-1)?.index||0;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();if(nextGroup)scheduleChapterSequence();return;}currentActionIndex=entries[value-1].index;currentChapter=expandedChapter;renderAll();return;}const groups=volumeChapterGroups();if(value<=0){currentActionIndex=0;currentChapter=activeVol().from;renderAll();return;}const group=groups[value-1];if(!group)return;currentActionIndex=group.entries[0].index;currentChapter=group.chapter;renderAll();if(currentActionIndex>previous)scheduleChapterSequence();
+  const previous=currentActionIndex,value=Number(timeline.value);cancelChapterSequence();
+  if(timeline.dataset.mode==="actions"){currentActionIndex=Math.max(0,Math.min(volumeActions().length,value));currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();return;}
+  if(timeline.dataset.mode==="chapter-events"){const groups=volumeChapterGroups(),groupIndex=groups.findIndex(group=>group.chapter===expandedChapter),entries=groups[groupIndex]?.entries||[];if(value<=0){expandedChapter=null;currentActionIndex=groupIndex>0?groups[groupIndex-1].entries.at(-1).index:0;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();return;}if(value>=entries.length+1){expandedChapter=null;const nextGroup=groups[groupIndex+1];currentActionIndex=nextGroup?nextGroup.entries[0].index:entries.at(-1)?.index||0;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();if(nextGroup)scheduleChapterSequence();return;}currentActionIndex=entries[value-1].index;currentChapter=expandedChapter;renderAll();return;}const groups=volumeChapterGroups();if(value<=0){currentActionIndex=0;currentChapter=activeVol().from;renderAll();return;}const group=groups[value-1];if(!group)return;currentActionIndex=group.entries[0].index;currentChapter=group.chapter;renderAll();if(currentActionIndex>previous)scheduleChapterSequence();
 }
 function stepTimeline(direction) { const next=Math.max(Number(timeline.min),Math.min(Number(timeline.max),Number(timeline.value)+direction));if(next===Number(timeline.value))return;timeline.value=next;applyTimeline(); }
 
@@ -1091,7 +1125,17 @@ function arcPath(cx,cy,r,startDeg,endDeg){const a=startDeg*Math.PI/180,b=endDeg*
 function diamondPoints(cx,cy,s){return `${cx},${cy-s} ${cx+s},${cy} ${cx},${cy+s} ${cx-s},${cy}`;}
 function seedPosition(item,index,total) {
   const fixed={lex:[125,90],eclipse:[585,80],inn:[355,165],mary:[595,225],luthor:[110,270],gerald:[350,305],jotun:[70,435],garden:[650,435],"inn-estate":[205,435],"inn-lobby":[365,435],"garden-realm":[525,435]};
-  if(fixed[item.id]) return fixed[item.id]; const angle=index*2.3999632297,r=58+27*Math.sqrt(index+1);return [360+Math.cos(angle)*r,260+Math.sin(angle)*r*.78];
+  if(fixed[item.id]) return fixed[item.id];
+  // The ring below is in world space, so once the view has moved to follow the story a newcomer
+  // could be seeded outside what the reader can see. Spiral out from the middle of the visible
+  // rectangle instead, and keep well inside its edges.
+  const angle=index*2.3999632297,reach=58+27*Math.sqrt(index+1),
+    left=(0-view.x)/view.scale,right=(720-view.x)/view.scale,
+    top=(0-view.y)/view.scale,bottom=(520-view.y)/view.scale,
+    cx=(left+right)/2,cy=(top+bottom)/2,
+    limitX=Math.max(60,(right-left)/2-70),limitY=Math.max(50,(bottom-top)/2-60),
+    r=Math.min(reach,limitX,limitY/.78);
+  return [cx+Math.cos(angle)*r,cy+Math.sin(angle)*r*.78];
 }
 function visibleFrom(item){return item.kind!=="character"?(validChapter(item.intro)??Infinity):(firstMention(item)??firstAppearance(item)??Infinity);}
 function radius(state){const ladder=trackLevels(state?.track);return 19+Math.min(1,Math.max(0,Number(state.level)||0)/ladder.length)*17;}
@@ -1241,7 +1285,7 @@ function fitGraphToCount(count,force=false){
 // The seeded scale above is a guess made before the simulation has run. Once the layout
 // settles, fit the real bounding box to the canvas so the graph fills the space instead of
 // huddling in the middle — and so a big graph zooms out far enough for the declutter to work.
-function scheduleAutoFit(){autoFitTimers.forEach(clearTimeout);autoFitTimers=[850,1900].map(delay=>setTimeout(()=>{if(!viewPinnedByUser&&!physics.dragId)fitGraphToContent();},delay));}
+function scheduleAutoFit(){autoFitTimers.forEach(clearTimeout);autoFitTimers=[220,850,1900].map(delay=>setTimeout(()=>{if(!viewPinnedByUser&&!physics.dragId)fitGraphToContent();},delay));}
 function fitGraphToContent(){
   const entries=[...physics.pos.entries()].filter(([id])=>nodeEls.has(id));
   if(entries.length<2)return;
@@ -1256,14 +1300,26 @@ function fitGraphToContent(){
   // thresholds: the moment the content needs more room the view gives it, while it only closes
   // back in once there is a great deal of empty space, which is what stops the two chasing each
   // other. A short cooldown keeps a busy chapter from refitting several times over.
+  // Anything actually outside the canvas is a different case from a framing that has drifted:
+  // it cannot wait for the cooldown or for the thresholds below, because the reader is looking
+  // at a graph with something missing from it.
+  const outside=entries.some(([id,point])=>{
+    const reach=(physics.radii.get(id)||24)+10,
+      sx=point.x*view.scale+view.x,sy=point.y*view.scale+view.y,pad=reach*view.scale;
+    return sx-pad<0||sx+pad>720||sy-pad<0||sy+pad>520;
+  });
   const now=performance.now(),needsRoom=target.scale<view.scale*.97,
     tooMuchRoom=target.scale>view.scale*1.5,
     offCentre=Math.hypot(target.x-view.x,target.y-view.y)>120;
-  if(now-lastContentFit<900)return;
-  if(!needsRoom&&!tooMuchRoom&&!offCentre)return;
+  if(!outside&&now-lastContentFit<900)return;
+  if(!outside&&!needsRoom&&!tooMuchRoom&&!offCentre)return;
   // When only the framing drifted, keep the scale rather than nudging it as well.
   lastContentFit=now;
-  glideViewTo(needsRoom||tooMuchRoom?target:{...target,scale:view.scale});updateLabelVisibility();
+  // Rescuing something off-frame may pan, and may pull back to make room, but must never close
+  // in — that is the direction that sets the view chasing itself.
+  glideViewTo(outside?{...target,scale:Math.min(view.scale,target.scale)}
+    :needsRoom||tooMuchRoom?target:{...target,scale:view.scale});
+  updateLabelVisibility();
 }
 // Follows the anchor as it settles, so the ghost arrives where the parent actually is rather
 // than where it stood when the journey began.
@@ -1280,9 +1336,27 @@ function stepDepartingGhosts(){
     return true;
   });
 }
+// Runs the mote down the line, following both ends as the layout settles, and flares as it
+// lands. One beat only — the next action clears it.
+function stepQuestPulses(){
+  if(!questPulses.length)return;
+  const now=performance.now();
+  questPulses=questPulses.filter(pulse=>{
+    const a=physics.pos.get(pulse.from),b=physics.pos.get(pulse.to),
+      progress=Math.min(1,(now-pulse.start)/pulse.duration);
+    if(!a||!b||progress>=1){pulse.el.remove();return false;}
+    const ease=progress<.5?2*progress*progress:1-(-2*progress+2)**2/2,
+      x=a.x+(b.x-a.x)*ease,y=a.y+(b.y-a.y)*ease,
+      arrival=Math.max(0,(progress-.72)/.28);
+    pulse.el.style.transform=`translate(${x}px,${y}px) scale(${(1+arrival*2.1).toFixed(2)})`;
+    pulse.el.style.opacity=String((arrival?1-arrival:1).toFixed(3));
+    return true;
+  });
+}
 function tickGraph() {
   stepViewTween();
   stepDepartingGhosts();
+  stepQuestPulses();
   if (activeView === "graph" && physics.pos.size) {
     stepPhysics();
     nodeEls.forEach((el, id) => { const p = physics.pos.get(id); if (p) el.setAttribute("transform", `translate(${p.x.toFixed(2)},${p.y.toFixed(2)})`); });
@@ -1338,6 +1412,20 @@ function renderGraph() {
         systemSatellites.push({id:link.system,anchor,mode:"ended",from:link.from,reason:link.reason});
     });
   }
+  // Quests are records rather than actors, so they never become nodes — but who is carrying one
+  // is a fact about that character, and the moment one is handed over is worth seeing.
+  const questHolders=new Map();
+  derived.quests.filter(run=>run.status==="active").forEach(run=>run.holders.forEach(id=>{
+    if(!questHolders.has(id))questHolders.set(id,[]);
+    questHolders.get(id).push(stateName(derived,run.quest)||entity(run.quest)?.name||run.quest);
+  }));
+  // Only an issue names who it is going to. Everything after that — progress, completion, a
+  // failure — belongs to whoever is already carrying the quest, so the beat is marked on them.
+  const questBeat=currentEvent&&String(currentEvent.type).startsWith("quest_")&&currentEvent.type!=="quest_part"
+    ?{quest:currentEvent.source,name:entity(currentEvent.source)?.name||"",type:currentEvent.type,action:currentEvent.action||"",
+      who:new Set([currentEvent.target,...(currentEvent.characters||[]),
+        ...(derived.quests.find(run=>run.quest===currentEvent.source)?.holders||[])].filter(Boolean))}
+    :null;
   const locView=buildLocationView(derived,visibleIds);lastLocationView=locView;
   // A system acting this beat has to be on screen for it, even when it normally sits folded
   // inside a bigger one.
@@ -1411,7 +1499,7 @@ function renderGraph() {
   derived.identityParents.forEach(link=>addSpring(link.child,link.parent,68,.09));
   [...derived.relations.keys(),...derived.awareness.keys()].forEach(key=>{const [a,b]=key.split("|");addSpring(a,b,150,.02);});
   physics.edges=[...springs.values()];
-  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null; departingGhosts=[]; physics.alpha=1;
+  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null; departingGhosts=[]; questPulses=[]; physics.alpha=1;
   physics.degree.clear();physics.edges.forEach(edge=>{physics.degree.set(edge.a,(physics.degree.get(edge.a)||0)+1);physics.degree.set(edge.b,(physics.degree.get(edge.b)||0)+1);});
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
@@ -1472,13 +1560,28 @@ function renderGraph() {
     const place=edgeLocationId(currentEvent.location);
     locationCharacterIds(currentEvent).forEach(who=>{noteEdge(who,place,currentEvent.chapter,"Here for this action");straightEdge(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place);});
   }
+  // On the beat a quest is handed over, draw the handing over: from whoever issued it to whoever
+  // took it. It lasts only for that action, like the quest notice itself.
+  if(questBeat&&questBeat.type==="quest_issue"&&questBeat.action!=="withdraw"){
+    const issuer=entity(questBeat.quest)?.issuer;
+    if(issuer)questBeat.who.forEach(holder=>{
+      if(!positions.get(issuer)||!positions.get(holder))return;
+      straightEdge(issuer,holder,"edge quest-issue-edge newly-revealed-edge",issuer,holder);
+      // A mote runs down the line from the system that set the quest to whoever took it, so the
+      // issuing is something seen happening rather than a mark left behind.
+      const pulse=svgEl("g",{class:"quest-pulse","aria-hidden":"true"});
+      pulse.append(svgEl("circle",{cx:0,cy:0,r:7,class:"quest-pulse-halo"}),svgEl("circle",{cx:0,cy:0,r:3.4,class:"quest-pulse-core"}));
+      conversationLayer.appendChild(pulse);
+      questPulses.push({el:pulse,from:issuer,to:holder,start:performance.now(),duration:820});
+    });
+  }
   derived.systemHosts.forEach(link=>{noteEdge(link.system,link.host,link.from,`${link.role} of this system`);straightEdge(link.system,link.host,`edge system-host-edge${currentEvent?.type==="system_host"&&currentEvent.source===link.system&&currentEvent.target===link.host?" newly-revealed-edge":""}`,link.system,link.host);});
   derived.systemLocations.forEach(link=>{if(!focusSystems.has(link.system))return;const place=edgeLocationId(link.location);noteEdge(link.system,place,link.from,`${link.role} here`);straightEdge(link.system,place,`edge system-location-edge${currentEvent?.type==="system_location"&&currentEvent.source===link.system&&currentEvent.location===link.location?" newly-revealed-edge":""}`,link.system,place);});
   derived.systemParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,"Subsystem of");straightEdge(link.child,link.parent,`edge system-parent-edge${currentEvent?.type==="system_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent);});
   derived.identityParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,link.relation);return straightEdge(link.child,link.parent,`edge identity-edge${currentEvent?.type==="identity_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent);});
   const activeIds=new Set(currentEvent?[currentEvent.source,currentEvent.target,currentEvent.location,...(currentEvent.characters||[])].filter(Boolean).map(edgeLocationId):[]);
   const retractingIds=collapsingLocationId?new Set([...renderedSubtree(collapsingLocationId,locView)]):new Set();
-  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null;
+  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null,questNotice=null;
     if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));
     }else if(item.kind==="system"){const opened=sysView.expanded.has(item.id),childCount=(sysView.children.get(item.id)||[]).length,r=systemGlyphRadius(state),
         rankMoved=currentEvent?.type==="system_rank"&&currentEvent.source===item.id;
@@ -1516,14 +1619,38 @@ function renderGraph() {
         if(childCount){locationShell.append(svgEl("circle",{cx:r-1,cy:-r+1,r:9.5,class:"location-child-badge"}));const badge=svgEl("text",{x:r-1,y:-r+4.4,class:"location-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);group.setAttribute("aria-label",`${shownName}, contains ${childCount} place${childCount===1?"":"s"}`);}
       }
       group.appendChild(locationShell);
-    }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));if(!appeared){group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:"ghost-ring"}),svgEl("circle",{cx:0,cy:0,r,class:`ghost-core ${state.gender==="female"?"core-female":"core-male"}`}));}else{const lifeClass=state.status==="dead"?"life-dead":state.status==="alive"?"life-alive":"life-unknown";group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:lifeClass}),svgEl("circle",{cx:0,cy:0,r,class:state.gender==="female"?"core-female":"core-male"}));if(cultivationReveal)group.appendChild(svgEl("circle",{cx:0,cy:0,r:r+11,class:"cultivation-reveal-pulse"}));const ladder=trackLevels(state.track),segmentAngle=360/ladder.length;for(let seg=0;seg<ladder.length;seg++){const start=-88+seg*segmentAngle,isOn=state.level>seg,wasOn=priorCultivationLevel>seg,isChanged=cultivationReveal&&isOn!==wasOn,isGain=isChanged&&isOn;group.appendChild(svgEl("path",{d:arcPath(0,0,r+(isChanged?21:15),start,start+segmentAngle*.76),class:`${isOn?"corona-on":"corona-off"}${isChanged?` cultivation-change-segment ${isGain?"cultivation-gain":"cultivation-loss"}`:""}`,...(isChanged?{pathLength:1,style:`--cultivation-delay:${Math.abs(seg-priorCultivationLevel)*55}ms`}:{})}));}if(cultivationReveal){const before=priorCultivationLevel?(priorCultivationState?.realm||priorCultivationState?.canonicalRealm||trackLevels(state.track)[priorCultivationLevel-1]):"Unrevealed",after=state.realm||state.canonicalRealm,changeLabel=svgEl("text",{x:0,y:-r-35,class:"cultivation-change-label"});changeLabel.textContent=currentEvent.initial===true&&!priorCultivationLevel?`Cultivation revealed: ${after}`:before===after?after:`${before} → ${after}`;group.appendChild(changeLabel);}const gems=Math.min(7,state.aliases.length),gemR=r+27;for(let i=0;i<gems;i++){const angle=Math.PI+(i+1)*Math.PI/(gems+1);group.appendChild(svgEl("polygon",{points:diamondPoints(Math.cos(angle)*gemR,Math.sin(angle)*gemR,4),class:"alias-gem"}));}}}
+    }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));
+      // What this character is carrying, and — for one beat — what just changed hands.
+      const held=questHolders.get(item.id)||[];
+      if(questBeat?.who.has(item.id)){
+        const settled=questBeat.type==="quest_end",
+          outcome=questBeat.action==="fail"?"failed":questBeat.action==="abandon"?"abandoned":questBeat.action==="reopen"?"reopened":"complete";
+        questNotice={y:r+27,tone:settled?(outcome==="failed"?"quest-failed":outcome==="complete"?"quest-done":"quest-taken"):"quest-taken",
+          text:questBeat.type==="quest_issue"?(questBeat.action==="withdraw"?`✕ ${questBeat.name}`:`⊕ ${questBeat.name}`)
+            :settled?`${outcome==="failed"?"✕":outcome==="complete"?"✓":"⟲"} ${questBeat.name}`
+            :`· ${questBeat.name}`};
+      }if(!appeared){group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:"ghost-ring"}),svgEl("circle",{cx:0,cy:0,r,class:`ghost-core ${state.gender==="female"?"core-female":"core-male"}`}));}else{const lifeClass=state.status==="dead"?"life-dead":state.status==="alive"?"life-alive":"life-unknown";group.append(svgEl("circle",{cx:0,cy:0,r:r+7,class:lifeClass}),svgEl("circle",{cx:0,cy:0,r,class:state.gender==="female"?"core-female":"core-male"}));if(cultivationReveal)group.appendChild(svgEl("circle",{cx:0,cy:0,r:r+11,class:"cultivation-reveal-pulse"}));const ladder=trackLevels(state.track),segmentAngle=360/ladder.length;for(let seg=0;seg<ladder.length;seg++){const start=-88+seg*segmentAngle,isOn=state.level>seg,wasOn=priorCultivationLevel>seg,isChanged=cultivationReveal&&isOn!==wasOn,isGain=isChanged&&isOn;group.appendChild(svgEl("path",{d:arcPath(0,0,r+(isChanged?21:15),start,start+segmentAngle*.76),class:`${isOn?"corona-on":"corona-off"}${isChanged?` cultivation-change-segment ${isGain?"cultivation-gain":"cultivation-loss"}`:""}`,...(isChanged?{pathLength:1,style:`--cultivation-delay:${Math.abs(seg-priorCultivationLevel)*55}ms`}:{})}));}if(cultivationReveal){const before=priorCultivationLevel?(priorCultivationState?.realm||priorCultivationState?.canonicalRealm||trackLevels(state.track)[priorCultivationLevel-1]):"Unrevealed",after=state.realm||state.canonicalRealm,changeLabel=svgEl("text",{x:0,y:-r-35,class:"cultivation-change-label"});changeLabel.textContent=currentEvent.initial===true&&!priorCultivationLevel?`Cultivation revealed: ${after}`:before===after?after:`${before} → ${after}`;group.appendChild(changeLabel);}const gems=Math.min(7,state.aliases.length),gemR=r+27;for(let i=0;i<gems;i++){const angle=Math.PI+(i+1)*Math.PI/(gems+1);group.appendChild(svgEl("polygon",{points:diamondPoints(Math.cos(angle)*gemR,Math.sin(angle)*gemR,4),class:"alias-gem"}));}}}
     // Labels live in their own layer above every shape, so a node can never be drawn over
     // another node's name, and so they can be culled independently when the graph gets dense.
     const labelGroup=svgEl("g",{class:`${group.getAttribute("class")} node-labels`,"data-id":item.id}),label=svgEl("text",{x:0,y:labelY,class:`node-label${item.kind==="location"?" location-region-label":""}`});label.textContent=shownName;labelGroup.appendChild(label);
     if(item.kind==="location"||item.kind==="system"){const tier=svgEl("text",{x:0,y:labelY-13,class:`location-tier-label${item.kind==="system"?" system-tier-label":""}`});tier.textContent=item.kind==="system"?"SYSTEM":String(item.locationType||"Place").toUpperCase();labelGroup.appendChild(tier);}
     if(rankLabel){const moved=svgEl("text",{x:0,y:rankLabel.y,class:`system-rank-label ${rankLabel.tone}`});moved.textContent=rankLabel.text;labelGroup.appendChild(moved);}
+    if(questNotice){const notice=svgEl("text",{x:0,y:questNotice.y,class:`quest-notice ${questNotice.tone}`});notice.textContent=questNotice.text;labelGroup.appendChild(notice);}
+    if(item.kind==="character"){
+      // How many quests someone is carrying is worth knowing, but not worth painting on every
+      // character for ever — with a dozen quests running that is all the graph becomes. It shows
+      // on the one being looked at, and the tab carries the running total.
+      const held=questHolders.get(item.id)||[];
+      if(held.length&&selectedId===item.id){const r=state.appeared!==null&&state.appeared<=currentChapter?radius(state):20,
+          x=r*.74,y=r*.74,mark=svgEl("g",{class:`quest-held${questBeat?.who.has(item.id)?" quest-held-active":""}`});
+        mark.append(svgEl("circle",{cx:x,cy:y,r:9.5,class:"quest-held-pip"}));
+        const count=svgEl("text",{x,y:y+3.4,class:"quest-held-count"});count.textContent=String(held.length);
+        mark.appendChild(count);
+        const hint=svgEl("title");hint.textContent=held.length===1?held[0]:`${held.length} quests: ${held.join(", ")}`;mark.appendChild(hint);
+        group.appendChild(mark);}
+    }
     if(mentionedOnly){const stateLabel=svgEl("text",{x:0,y:39,class:"node-state-label"});stateLabel.textContent="MENTIONED";labelGroup.appendChild(stateLabel);}
-    labelLayer.appendChild(labelGroup);labelEls.set(item.id,{group:labelGroup,text:label,offset:labelY,kind:item.kind,tall:Boolean(rankLabel),halfWidth:Math.min(150,Math.max(28,String(shownName).length*4.2)),halfHeight:9});
+    labelLayer.appendChild(labelGroup);labelEls.set(item.id,{group:labelGroup,text:label,offset:labelY,kind:item.kind,tall:Boolean(rankLabel||questNotice),halfWidth:Math.min(150,Math.max(28,String(shownName).length*4.2)),halfHeight:9});
     const selectNode=()=>{cancelChapterSequence();if(item.kind==="location"){activateLocation(item.id);return;}if(item.kind==="system"){activateSystem(item.id);return;}locationPovId=null;selectedId=selectedId===item.id?null:item.id;setMobilePanel("info");renderAll();};
     // A character's name is drawn across the middle of its circle and lives in the layer above,
     // so the same gestures have to work from the label as from the shape — otherwise a press in
@@ -1868,7 +1995,7 @@ const expandedQuests=new Set(),foldedQuestChains=new Set();
 const QUEST_PAGE=10;
 let questSettledOpen=false;
 function questProgressTone(run){return run.status==="failed"?"failed":run.status==="abandoned"?"abandoned":run.status==="complete"?"complete":run.progress>=67?"high":run.progress>=34?"middle":"low";}
-function questCardHtml(run,derived,children,depth){
+function questCardHtml(run,derived,children,depth,changedId=null,lifted=false){
   const item=entity(run.quest);if(!item)return "";
   const open=expandedQuests.has(run.quest),partsOpen=!foldedQuestChains.has(run.quest),
     kids=children.get(run.quest)||[],
@@ -1890,7 +2017,10 @@ function questCardHtml(run,derived,children,depth){
       item.failure?{label:"On failure",value:item.failure}:null,
     ].filter(Boolean);
   const statusWord=run.status==="complete"?"Completed":run.status==="failed"?"Failed":run.status==="abandoned"?"Abandoned":`${run.progress}%`;
-  return `<article class="quest-card tone-${questProgressTone(run)} depth-${Math.min(2,depth)}${open?" quest-open":""}" data-quest="${escapeHtml(run.quest)}" style="--quest-progress:${run.progress}%">
+  // A quest that moved this beat is worth noticing, so the card says so rather than quietly
+  // reading a different number than it did a moment ago.
+  const stirred=changedId===run.quest;
+  return `<article class="quest-card tone-${questProgressTone(run)} depth-${Math.min(2,depth)}${open?" quest-open":""}${stirred?" quest-stirred":""}${lifted?" quest-lifted":""}" data-quest="${escapeHtml(run.quest)}" style="--quest-progress:${run.progress}%">
     <div class="quest-fill" aria-hidden="true"></div>
     <div class="quest-face">
       <button class="quest-toggle" type="button" data-quest-toggle="${escapeHtml(run.quest)}" aria-expanded="${open}"><span class="quest-name">${escapeHtml(item.name)}</span><span class="quest-status">${escapeHtml(statusWord)}</span></button>
@@ -1902,7 +2032,7 @@ function questCardHtml(run,derived,children,depth){
       ${run.contributions.length?`<dl class="quest-facts quest-shares">${run.contributions.map(share=>`<div><dt>${escapeHtml(stateName(derived,share.character)||share.character)}</dt><dd>${escapeHtml([share.share,share.performance?`performance ${share.performance}`:"",share.rewardRank?`reward ${share.rewardRank}`:""].filter(Boolean).join(" · ")||"contributed")}</dd></div>`).join("")}</dl>`:""}
       ${run.updates.length?`<ol class="quest-updates">${run.updates.slice().reverse().map(update=>`<li class="update-${escapeHtml(update.kind)}${update.noteKind?` note-${escapeHtml(String(update.noteKind).toLowerCase())}`:""}"><span class="quest-update-chapter">Ch ${update.chapter}</span><span class="quest-update-text">${update.noteKind?`<em>${escapeHtml(update.noteKind)}:</em> `:""}${escapeHtml(update.text||update.kind)}</span><span class="quest-update-progress">${update.progress}%</span></li>`).join("")}</ol>`:""}</div>`
       :lastUpdate?`<p class="quest-latest">${lastUpdate.noteKind?`<em>${escapeHtml(lastUpdate.noteKind)}:</em> `:""}${escapeHtml(lastUpdate.text||"")}</p>`:""}
-    ${kids.length&&partsOpen?`<div class="quest-children">${kids.map(child=>questCardHtml(child,derived,children,depth+1)).join("")}</div>`:""}
+    ${kids.length&&partsOpen?`<div class="quest-children">${kids.map(child=>questCardHtml(child,derived,children,depth+1,changedId)).join("")}</div>`:""}
   </article>`;
 }
 function renderQuests(){
@@ -1913,19 +2043,43 @@ function renderQuests(){
   parentOf.forEach((parent,child)=>{if(!children.has(parent))children.set(parent,[]);children.get(parent).push(runs.get(child));});
   const roots=derived.quests.filter(run=>!parentOf.has(run.quest)),
     active=roots.filter(run=>run.status==="active"),
-    // A long story settles hundreds of quests. They are kept, but they are not all built: the
-    // most recently settled come first and the rest arrive a page at a time, if ever.
-    settled=roots.filter(run=>run.status!=="active").sort((a,b)=>(b.to||0)-(a.to||0)),
-    activeShown=active.slice(0,QUEST_PAGE+questPageActive),settledShown=questSettledOpen?settled.slice(0,QUEST_PAGE+questPageSettled):[],
-    activeRest=active.length-activeShown.length,settledRest=settled.length-settledShown.length;
-  count.textContent=active.length?`${active.length} active`:derived.quests.length?"none active":"";
+    settled=roots.filter(run=>run.status!=="active").sort((a,b)=>(b.to||0)-(a.to||0));
+  // A part is counted with the quest it belongs to unless the story treats it as one of its own,
+  // which is why a chain of three could read as "1 active" while three cards were on screen.
+  const activeTotal=derived.quests.filter(run=>run.status==="active"&&(!parentOf.has(run.quest)||entity(run.quest)?.countsAlone===true)).length;
+  count.textContent=activeTotal?`${activeTotal} active`:derived.quests.length?"none active":"";
   if(!derived.quests.length){box.innerHTML='<p class="quests-empty">No quest has been issued yet. Quests appear here as the chapters reveal them.</p>';return;}
-  box.innerHTML=`${active.length?`<div class="quest-group">${activeShown.map(run=>questCardHtml(run,derived,children,0)).join("")}</div>${activeRest>0?`<div class="quest-page-more"><button type="button" id="more-active-quests">Show ${Math.min(activeRest,QUEST_PAGE)} more active · ${activeRest} left</button></div>`:""}`:'<p class="quests-empty">Nothing is running right now.</p>'}
+
+  // Quests from different systems are different business and are never mixed together: each
+  // issuer keeps its own section, in the order its first quest appeared.
+  const sections=new Map(),issuerOf=run=>entity(run.quest)?.issuer||"";
+  active.forEach(run=>{const key=issuerOf(run);if(!sections.has(key))sections.set(key,[]);sections.get(key).push(run);});
+  const sectionKeys=[...sections.keys()],
+    settledShown=questSettledOpen?settled.slice(0,QUEST_PAGE+questPageSettled):[],
+    settledRest=settled.length-settledShown.length;
+
+  // Whatever just changed is lifted to the top for its own beat, then takes its place in its
+  // issuer's section like everything else.
+  const beat=currentActionEvent(),
+    justChanged=beat&&String(beat.type).startsWith("quest_")&&beat.type!=="quest_part"?runs.get(beat.source):null;
+
+  const sectionHtml=key=>{
+    const list=sections.get(key)||[],issuer=key?entity(key):null,
+      shown=list.slice(0,QUEST_PAGE+(questPageActive||0)),rest=list.length-shown.length;
+    return `<section class="quest-section">
+      <h4 class="quest-section-head">${issuer?`<span class="quest-section-issuer">${escapeHtml(stateName(derived,key)||issuer.name)}</span>`:'<span class="quest-section-issuer none">Not issued by anyone</span>'}<span class="quest-section-count">${list.length}</span></h4>
+      <div class="quest-group">${shown.map(run=>questCardHtml(run,derived,children,0,justChanged?.quest)).join("")}</div>
+      ${rest>0?`<div class="quest-page-more"><button type="button" data-quest-more="${escapeHtml(key)}">Show ${Math.min(rest,QUEST_PAGE)} more · ${rest} left</button></div>`:""}
+    </section>`;
+  };
+
+  box.innerHTML=`${justChanged?`<div class="quest-latest-change"><span class="quest-latest-head">Just now</span>${questCardHtml(justChanged,derived,children,0,justChanged.quest,true)}</div>`:""}
+    ${sectionKeys.length?sectionKeys.map(sectionHtml).join(""):'<p class="quests-empty">Nothing is running right now.</p>'}
     ${settled.length?`<button class="quest-settled-toggle" type="button" id="quest-settled-toggle" aria-expanded="${questSettledOpen}">${questSettledOpen?"▾":"▸"} ${settled.length} settled</button>${questSettledOpen?`<div class="quest-group settled">${settledShown.map(run=>questCardHtml(run,derived,children,0)).join("")}</div>${settledRest>0?`<div class="quest-page-more"><button type="button" id="more-settled-quests">Show ${Math.min(settledRest,QUEST_PAGE)} older · ${settledRest} left</button></div>`:""}`:""}`:""}`;
   box.querySelectorAll("[data-quest-toggle]").forEach(button=>button.addEventListener("click",event=>{event.stopPropagation();const id=button.dataset.questToggle;if(expandedQuests.has(id))expandedQuests.delete(id);else expandedQuests.add(id);renderQuests();}));
   box.querySelectorAll("[data-quest-chain]").forEach(button=>button.addEventListener("click",event=>{event.stopPropagation();const id=button.dataset.questChain;if(foldedQuestChains.has(id))foldedQuestChains.delete(id);else foldedQuestChains.add(id);renderQuests();}));
+  box.querySelectorAll("[data-quest-more]").forEach(button=>button.addEventListener("click",()=>{questPageActive+=QUEST_PAGE;renderQuests();}));
   $("#quest-settled-toggle")?.addEventListener("click",()=>{questSettledOpen=!questSettledOpen;questPageSettled=0;renderQuests();});
-  $("#more-active-quests")?.addEventListener("click",()=>{questPageActive+=QUEST_PAGE;renderQuests();});
   $("#more-settled-quests")?.addEventListener("click",()=>{questPageSettled+=QUEST_PAGE;renderQuests();});
 }
 
@@ -2174,9 +2328,9 @@ function renderVolumeEditor(){const rows=$("#volume-rows");if(!rows)return;rows.
 function collectVolumeRows(){return [...document.querySelectorAll("#volume-rows .volume-row")].map(row=>({id:row.dataset.volumeId||`volume-${crypto.randomUUID()}`,name:row.querySelector('[name="volumeName"]').value.trim(),from:Number(row.querySelector('[name="volumeFrom"]').value),to:Number(row.querySelector('[name="volumeTo"]').value)}));}
 function validateVolumes(volumes){if(!volumes.length)return "Add at least one volume.";const names=new Set();for(let index=0;index<volumes.length;index++){const volume=volumes[index];if(!volume.name)return `Enter a name for volume ${index+1}.`;if(!Number.isInteger(volume.from)||!Number.isInteger(volume.to)||volume.from<1||volume.to<1)return `${volume.name}: chapter numbers must be whole numbers starting from 1.`;if(volume.from>volume.to)return `${volume.name}: the first chapter cannot be after the last chapter.`;const key=volume.name.toLowerCase();if(names.has(key))return `Two volumes cannot both be named “${volume.name}”.`;names.add(key);if(index&&volume.from<=volumes[index-1].to)return `${volume.name} overlaps ${volumes[index-1].name}. Start it after chapter ${volumes[index-1].to}.`;}return "";}
 
-function updateEntityFormFields(){const form=$("#entity-form"),kind=form.elements.kind.value,isCharacter=kind==="character",isLocation=kind==="location";$("#entity-gender-field").hidden=!isCharacter;$("#entity-location-type-field").hidden=!isLocation;$("#entity-mentioned-field").hidden=!isCharacter;$("#entity-initial-cultivation-field").hidden=!isCharacter;$("#entity-initial-track-field").hidden=!isCharacter;const isSystem=kind==="system",isQuest=kind==="quest";$("#entity-authority-field").hidden=!isSystem;$("#entity-grade-field").hidden=!isSystem;["issuer","badge","reward-rank","time-limit","rewards","achievements","failure"].forEach(name=>{$(`#entity-quest-${name}-field`).hidden=!isQuest;});$("#entity-initial-cultivation-alias-field").hidden=!isCharacter;$("#entity-appeared-label").textContent=isCharacter?"First appearance chapter (optional)":isQuest?"Chapter the quest first exists":"Introduction chapter";form.elements.appeared.placeholder=isCharacter?"Leave blank if they have not appeared yet":`When this ${kind} becomes known`;form.elements.appeared.required=!isCharacter;$("#entity-help").textContent=isCharacter?"Presence and cultivation are separate facts. Use the cultivation fields above only for a level confirmed when the character is introduced. Leave Unknown when it has not been revealed; later breakthroughs belong in chapter events.":isLocation?"Choose the place's scale once. Use a hierarchy event to place it inside its direct parent; use movement for travel and residence for long-term homes or bases.":isQuest?"Write the quest once — its terms do not change. Issuing it, moving it along, settling it, and putting it inside a chain are all chapter actions, so the quest tab shows only as much as the reader has read.":"Create the organization once. Membership and headquarters or branch changes are recorded chapter by chapter.";}
+function updateEntityFormFields(){const form=$("#entity-form"),kind=form.elements.kind.value,isCharacter=kind==="character",isLocation=kind==="location";$("#entity-gender-field").hidden=!isCharacter;$("#entity-location-type-field").hidden=!isLocation;$("#entity-mentioned-field").hidden=!isCharacter;$("#entity-initial-cultivation-field").hidden=!isCharacter;$("#entity-initial-track-field").hidden=!isCharacter;const isSystem=kind==="system",isQuest=kind==="quest";$("#entity-authority-field").hidden=!isSystem;$("#entity-grade-field").hidden=!isSystem;["issuer","alone","badge","reward-rank","time-limit","rewards","achievements","failure"].forEach(name=>{$(`#entity-quest-${name}-field`).hidden=!isQuest;});$("#entity-initial-cultivation-alias-field").hidden=!isCharacter;$("#entity-appeared-label").textContent=isCharacter?"First appearance chapter (optional)":isQuest?"Chapter the quest first exists":"Introduction chapter";form.elements.appeared.placeholder=isCharacter?"Leave blank if they have not appeared yet":`When this ${kind} becomes known`;form.elements.appeared.required=!isCharacter;$("#entity-help").textContent=isCharacter?"Presence and cultivation are separate facts. Use the cultivation fields above only for a level confirmed when the character is introduced. Leave Unknown when it has not been revealed; later breakthroughs belong in chapter events.":isLocation?"Choose the place's scale once. Use a hierarchy event to place it inside its direct parent; use movement for travel and residence for long-term homes or bases.":isQuest?"Write the quest once — its terms do not change. Issuing it, moving it along, settling it, and putting it inside a chain are all chapter actions, so the quest tab shows only as much as the reader has read.":"Create the organization once. Membership and headquarters or branch changes are recorded chapter by chapter.";}
 function resetEntityEditor(){const form=$("#entity-form");form.reset();form.elements.editingId.value="";form.elements.editingCreationEventId.value="";$("#creation-edit-note").hidden=true;$("#entity-creation-description-field").hidden=true;$("#entity-form-title").textContent="Create character, organization, or location";$("#save-entity").textContent="Create and add to graph";$("#delete-entity").hidden=true;$("#cancel-entity-edit").hidden=true;$("#manage-entity").value="";updateEntityFormFields();}
-function loadEntityEditor(id=null,{scroll=true,creationEventId=""}={}){const item=id?entity(id):resolveEntity($("#manage-entity").value);if(!item){toast("Choose an existing identity");return;}const form=$("#entity-form"),initialCultivation=item.kind==="character"?orderedEvents().find(event=>event.type==="cultivation"&&event.source===item.id&&event.initial===true):null,managedEvents=creationEventsFor(item),selectedCreationEvent=managedEvents.find(event=>event.id===creationEventId)||null,commonSourceUrl=selectedCreationEvent?.sourceUrl||managedEvents.find(event=>event.sourceUrl)?.sourceUrl||"";$("#manage-entity").value=item.name;form.elements.editingId.value=item.id;form.elements.editingCreationEventId.value=selectedCreationEvent?.id||"";form.elements.kind.value=item.kind;form.elements.name.value=item.name;form.elements.gender.value=item.gender||"unknown";form.elements.locationType.value=item.locationType||"Other";form.elements.authority.value=item.authority??"";form.elements.grade.value=item.grade||"";form.elements.issuer.value=item.issuer?(entity(item.issuer)?.name||item.issuer):"";form.elements.questBadge.value=item.questBadge||"";form.elements.rewardRank.value=item.rewardRank||"";form.elements.timeLimit.value=item.timeLimit||"";form.elements.rewards.value=(item.rewards||[]).join(", ");form.elements.achievements.value=(item.achievements||[]).join(", ");form.elements.failure.value=item.failure||"";form.elements.mentioned.value=item.kind==="character"?(firstMention(item)||""):"";form.elements.appeared.value=item.kind==="character"?(firstAppearance(item)||""):(item.intro||"");form.elements.initialLevel.value=initialCultivation?.level||"";form.elements.initialCultivationAlias.value=initialCultivation&&cultivationDisplay(initialCultivation).toLowerCase()!==cultivationCanonical(initialCultivation).toLowerCase()?cultivationDisplay(initialCultivation):"";form.elements.creationSourceUrl.value=commonSourceUrl;form.elements.creationEventDescription.value=selectedCreationEvent?.description||"";form.elements.description.value=item.description||"";updateEntityFormFields();$("#creation-edit-note").hidden=!selectedCreationEvent;$("#entity-creation-description-field").hidden=!selectedCreationEvent;$("#entity-form-title").textContent=selectedCreationEvent?`Edit creation record — ${item.name}`:`Edit ${item.name}`;$("#save-entity").textContent=selectedCreationEvent?"Update linked creation record":"Save identity";$("#delete-entity").hidden=false;$("#cancel-entity-edit").hidden=false;if(scroll){form.scrollIntoView({behavior:"smooth",block:"start"});(selectedCreationEvent?form.elements.creationEventDescription:form.elements.name).focus({preventScroll:true});}toast(selectedCreationEvent?`Editing the original creation record for ${item.name}`:`${item.name} loaded in the identity form`);}
+function loadEntityEditor(id=null,{scroll=true,creationEventId=""}={}){const item=id?entity(id):resolveEntity($("#manage-entity").value);if(!item){toast("Choose an existing identity");return;}const form=$("#entity-form"),initialCultivation=item.kind==="character"?orderedEvents().find(event=>event.type==="cultivation"&&event.source===item.id&&event.initial===true):null,managedEvents=creationEventsFor(item),selectedCreationEvent=managedEvents.find(event=>event.id===creationEventId)||null,commonSourceUrl=selectedCreationEvent?.sourceUrl||managedEvents.find(event=>event.sourceUrl)?.sourceUrl||"";$("#manage-entity").value=item.name;form.elements.editingId.value=item.id;form.elements.editingCreationEventId.value=selectedCreationEvent?.id||"";form.elements.kind.value=item.kind;form.elements.name.value=item.name;form.elements.gender.value=item.gender||"unknown";form.elements.locationType.value=item.locationType||"Other";form.elements.authority.value=item.authority??"";form.elements.grade.value=item.grade||"";form.elements.issuer.value=item.issuer?(entity(item.issuer)?.name||item.issuer):"";form.elements.countsAlone.checked=item.countsAlone===true;form.elements.questBadge.value=item.questBadge||"";form.elements.rewardRank.value=item.rewardRank||"";form.elements.timeLimit.value=item.timeLimit||"";form.elements.rewards.value=(item.rewards||[]).join(", ");form.elements.achievements.value=(item.achievements||[]).join(", ");form.elements.failure.value=item.failure||"";form.elements.mentioned.value=item.kind==="character"?(firstMention(item)||""):"";form.elements.appeared.value=item.kind==="character"?(firstAppearance(item)||""):(item.intro||"");form.elements.initialLevel.value=initialCultivation?.level||"";form.elements.initialCultivationAlias.value=initialCultivation&&cultivationDisplay(initialCultivation).toLowerCase()!==cultivationCanonical(initialCultivation).toLowerCase()?cultivationDisplay(initialCultivation):"";form.elements.creationSourceUrl.value=commonSourceUrl;form.elements.creationEventDescription.value=selectedCreationEvent?.description||"";form.elements.description.value=item.description||"";updateEntityFormFields();$("#creation-edit-note").hidden=!selectedCreationEvent;$("#entity-creation-description-field").hidden=!selectedCreationEvent;$("#entity-form-title").textContent=selectedCreationEvent?`Edit creation record — ${item.name}`:`Edit ${item.name}`;$("#save-entity").textContent=selectedCreationEvent?"Update linked creation record":"Save identity";$("#delete-entity").hidden=false;$("#cancel-entity-edit").hidden=false;if(scroll){form.scrollIntoView({behavior:"smooth",block:"start"});(selectedCreationEvent?form.elements.creationEventDescription:form.elements.name).focus({preventScroll:true});}toast(selectedCreationEvent?`Editing the original creation record for ${item.name}`:`${item.name} loaded in the identity form`);}
 function resetEventEditor(){const form=$("#event-form");form.reset();form.elements.editingId.value="";form.elements.chapter.value=eventDrafts[0]?.chapter||currentChapter;$("#event-edit-mode-note").hidden=true;$("#event-form-title").textContent="Add chapter changes";$("#save-event").textContent="Save this change";$("#cancel-event-edit").hidden=true;$("#queue-event").hidden=false;updateEventHelp();}
 function loadEventEditor(id){const record=data.events.find(event=>event.id===id);if(!record)return;if(isCreationManagedEvent(record)){resetEventEditor();loadEntityEditor(record.source,{creationEventId:record.id});return;}const form=$("#event-form"),isCanonicalCultivationName=record.type==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===String(record.value||"").trim().toLowerCase());form.elements.editingId.value=record.id;form.elements.type.value=record.type;form.elements.chapter.value=record.chapter;form.elements.source.value=entity(record.source)?.name||record.source;form.elements.location.value=record.location?(entity(record.location)?.name||record.location):"";form.elements.target.value=record.target?(entity(record.target)?.name||record.target):"";form.elements.characters.value=(record.characters||[]).filter(id=>id!==record.source).map(id=>entity(id)?.name||id).join(", ");form.elements.ghost.checked=record.ghost===true;form.elements.progress.value=record.progress??"";form.elements.rewardRank.value=record.rewardRank||"";form.elements.performance.value=record.performance||"";if(record.type==="quest_update")form.elements.noteKind.value=record.value||"Update";form.elements.authority.value=record.authority??"";form.elements.grade.value=record.grade||"";form.elements.value.value=isCanonicalCultivationName?"":record.value||"";fillTrackSelect(form.elements.track,trackIdOf(record));fillLevelSelect(form.elements.level,trackIdOf(record),record.level||"");form.elements.description.value=record.description||"";form.elements.sourceUrl.value=record.sourceUrl||"";updateEventHelp();const defaults={organization_location:"open",residency:"begin",location_parent:"add",identity_parent:"add",membership:"reveal",system_host:"add",system_parent:"add",system_location:"open",system_merge:"add",system_end:"add"};form.elements.action.value=record.action||defaults[record.type]||"join";$("#event-edit-mode-note").hidden=false;$("#event-form-title").textContent=`Edit this exact chapter ${record.chapter} event`;$("#save-event").textContent="Replace this event";$("#cancel-event-edit").hidden=false;$("#queue-event").hidden=true;form.scrollIntoView({behavior:"smooth",block:"start"});form.elements.type.focus({preventScroll:true});toast(`Editing only the selected chapter ${record.chapter} event`);}
 function syncPresenceFromEvents(id,type){if(!["mention","appearance","corpse_appearance"].includes(type))return;const item=entity(id);if(!item||item.kind!=="character")return;const field=type==="mention"?"mentioned":"appeared",types=field==="appeared"?["appearance","corpse_appearance"]:["mention"],chapters=data.events.filter(event=>event.source===id&&types.includes(event.type)).map(event=>event.chapter);item[field]=earliestChapter(chapters);}
@@ -2191,17 +2345,20 @@ async function fillProfileEditor(){
   form.elements.roles.value=(profile.roles||[]).join(", ");form.elements.abilities.value=(profile.abilities||[]).join("\n");form.elements.achievements.value=(profile.achievements||[]).map(achievementLine).join("\n");form.elements.traits.value=(profile.traits||[]).join("\n");form.elements.trivia.value=(profile.trivia||[]).join("\n");form.elements.facts.value=(profile.facts||[]).map(item=>`${item.label}: ${item.value}`).join("\n");setProfileEditorMode(item.kind);toast(`${item.name}'s wiki profile loaded`);
 }
 function updateEventHelp(){
-  const form=$("#event-form"),type=form.elements.type.value,isOrgLocation=type==="organization_location",isResidence=type==="residency",isHierarchy=type==="location_parent",isIdentityHierarchy=type==="identity_parent",needsTarget=["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge","quest_part","quest_contribution"].includes(type),showsTarget=needsTarget||type==="note"||type==="quest_issue",needsValue=["alias","display_name","status","gender","age","relationship","organization_location","residency","identity_parent"].includes(type),showsSystemValue=["system_host","system_location","system_end"].includes(type),showsValue=needsValue||showsSystemValue||type==="membership"||type==="cultivation"||["quest_end","quest_contribution"].includes(type),usesAction=["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end","quest_issue","quest_end","quest_part"].includes(type),help={mention:"Use this when an identity is referred to without physically appearing. Status remains unknown.",appearance:"A normal physical appearance also proves that the character is alive at this action.",corpse_appearance:"Use when a dead body is the character's first physical appearance. This sets appearance and dead status together.",display_name:"Changes the public label from this exact action onward. Add another display-name event later to end a spy name or restore an earlier name.",identity_parent:"Keeps clones, avatars, incarnations, split souls, and their original identity close together in the graph.",movement:"Records travel and changes the character's current physical position.",residency:"Records a home, permanent residence, long-term stay, camp, or personal domain.",location_parent:"Places one location directly inside another. The graph only draws the outermost place — a realm at most — until you open it.",alias:"Adds another searchable name without changing the main displayed label.",cultivation:"Choose the canonical tier by name; an equivalent path title remains synchronized.",status:"Use this for later changes or uncertain states such as missing and presumed dead.",gender:"Use this for a later reveal or an actual change — not needed if it was already set when the character was created.",age:"Use this whenever an age is stated or changes in-story — an exact number, a range, or a description.",awareness:"The first character knows the second exists.",meeting:"Records that two characters meet.",conversation:"One action for a whole conversation, however many characters are in it. Everyone listed counts as having met.",relationship:"Choose a second character and enter friendly, neutral, or hostile.",membership:"Choose whether the membership begins now, was already true but is only revealed now, or ends here.",organization_location:"Connect an organization to a headquarters, branch, base, territory, or outpost.",system_host:"Bind a system to the character who carries it. A system can have no host, and a host can carry more than one.",system_parent:"Place one system inside another — the taverns and resorts that belong to a larger system.",system_location:"A system operates at this place. A system can operate at many places at once.",system_rank:"A system rises or falls. Fill in whichever of authority or grade changed — the other keeps its current value. Write unknown in a field to take that rank away, for a system that loses its grade or whose number was never known.",system_merge:"One system is swallowed by another. It keeps its own history, shown as a small marker on the system that took it.",system_end:"The system is destroyed. It stays on the graph as a small marker so its history is still reachable.",quest_issue:"A quest is handed out. Name the character who receives it if the story says who — a quest can be issued to nobody in particular. List more than one and it becomes a joint quest, worked in cooperation and rewarded by contribution.",quest_progress:"How far along the quest is, as a percentage. Record one of these each time the story moves it, and the quest tab fills its card to match.",quest_end:"The quest is settled. Most quests only name their reward here, scaled to how the host performed, so fill in the rank and the performance grade on this action. A completed quest leaves the active list; a failed one carries whatever punishment the quest itself names.",quest_update:"A quest's terms grow as the story turns. Record the update, hint, added objective, or the system's own remark here — it belongs to the same quest, not to a second one.",quest_part:"Put this quest inside a larger one. The larger quest shows as a single card that opens to reveal its parts, each with its own reward.",quest_contribution:"For a joint quest, what one character contributed and what they were given for it. Record one of these per character — their shares need not be equal, and their rewards need not match.",note:"A general story event."};
+  const form=$("#event-form"),type=form.elements.type.value,isOrgLocation=type==="organization_location",isResidence=type==="residency",isHierarchy=type==="location_parent",isIdentityHierarchy=type==="identity_parent",needsTarget=["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge","quest_part","quest_contribution"].includes(type),showsTarget=needsTarget||type==="note"||type==="quest_issue",needsValue=["alias","display_name","status","gender","age","relationship","organization_location","residency","identity_parent"].includes(type),showsSystemValue=["system_host","system_location","system_end"].includes(type),showsValue=needsValue||showsSystemValue||type==="membership"||type==="cultivation"||["quest_end","quest_contribution"].includes(type),usesAction=["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end","quest_issue","quest_end","quest_part"].includes(type),help={mention:"Use this when an identity is referred to without physically appearing. Status remains unknown.",appearance:"A normal physical appearance also proves that the character is alive at this action.",corpse_appearance:"Use when a dead body is the character's first physical appearance. This sets appearance and dead status together.",display_name:"Changes the public label from this exact action onward. Add another display-name event later to end a spy name or restore an earlier name.",identity_parent:"Keeps clones, avatars, incarnations, split souls, and their original identity close together in the graph. A character merged into a system belongs here too — record the merge now and change or remove the link in the chapter they separate.",movement:"Records travel and changes the character's current physical position.",residency:"Records a home, permanent residence, long-term stay, camp, or personal domain.",location_parent:"Places one location directly inside another. The graph only draws the outermost place — a realm at most — until you open it.",alias:"Adds another searchable name without changing the main displayed label.",cultivation:"Choose the canonical tier by name; an equivalent path title remains synchronized.",status:"Use this for later changes or uncertain states such as missing and presumed dead.",gender:"Use this for a later reveal or an actual change — not needed if it was already set when the character was created.",age:"Use this whenever an age is stated or changes in-story — an exact number, a range, or a description.",awareness:"The first character knows the second exists.",meeting:"Records that two characters meet.",conversation:"One action for a whole conversation, however many characters are in it. Everyone listed counts as having met.",relationship:"Choose a second character and enter friendly, neutral, or hostile.",membership:"Choose whether the membership begins now, was already true but is only revealed now, or ends here.",organization_location:"Connect an organization to a headquarters, branch, base, territory, or outpost.",system_host:"Bind a system to the character who carries it. A system can have no host, and a host can carry more than one.",system_parent:"Place one system inside another — the taverns and resorts that belong to a larger system.",system_location:"A system operates at this place. A system can operate at many places at once.",system_rank:"A system rises or falls. Fill in whichever of authority or grade changed — the other keeps its current value. Write unknown in a field to take that rank away, for a system that loses its grade or whose number was never known.",system_merge:"One system is swallowed by another. It keeps its own history, shown as a small marker on the system that took it.",system_end:"The system is destroyed. It stays on the graph as a small marker so its history is still reachable.",quest_issue:"A quest is handed out. Name the character who receives it if the story says who — a quest can be issued to nobody in particular. List more than one and it becomes a joint quest, worked in cooperation and rewarded by contribution.",quest_progress:"How far along the quest is, as a percentage. Record one of these each time the story moves it, and the quest tab fills its card to match.",quest_end:"The quest is settled. Most quests only name their reward here, scaled to how the host performed, so fill in the rank and the performance grade on this action. A completed quest leaves the active list; a failed one carries whatever punishment the quest itself names.",quest_update:"A quest's terms grow as the story turns. Record the update, hint, added objective, or the system's own remark here — it belongs to the same quest, not to a second one.",quest_part:"Put this quest inside a larger one. The larger quest shows as a single card that opens to reveal its parts, each with its own reward.",quest_contribution:"For a joint quest, what one character contributed and what they were given for it. Record one of these per character — their shares need not be equal, and their rewards need not match.",note:"A general story event."};
   $("#event-target-field").hidden=!showsTarget;$("#event-characters-field").hidden=!["conversation","quest_issue"].includes(type);$("#event-authority-field").hidden=type!=="system_rank";$("#event-grade-field").hidden=type!=="system_rank";$("#event-progress-field").hidden=type!=="quest_progress";$("#event-note-kind-field").hidden=type!=="quest_update";$("#event-reward-rank-field").hidden=!["quest_end","quest_contribution"].includes(type);$("#event-performance-field").hidden=!["quest_end","quest_contribution"].includes(type);$("#event-value-field").hidden=!showsValue;$("#event-level-field").hidden=type!=="cultivation";$("#event-action-field").hidden=!usesAction;
-  form.elements.target.required=needsTarget;form.elements.value.required=needsValue;form.elements.location.required=["movement","organization_location","residency","location_parent","system_location"].includes(type);
+  // Ending something does not need the wording of what it was. Leaving this required meant the
+  // browser silently refused to submit a removal at all — no toast, no event, nothing.
+  const removing=REMOVAL_ACTIONS.has(form.elements.action.value);
+  form.elements.target.required=needsTarget;form.elements.value.required=needsValue&&!removing;form.elements.location.required=["movement","organization_location","residency","location_parent","system_location"].includes(type);
   $("#event-location-label").textContent=type==="movement"?"Destination":isOrgLocation?"Headquarters / branch location":isResidence?"Home / long-term location":isHierarchy?"Direct parent location":"Where this happened (optional)";
   $("#event-source-label").textContent=String(type).startsWith("quest_")?"Quest":type==="movement"?"Character travelling":isOrgLocation?"Organization":isResidence?"Resident character":isHierarchy?"Child location":isIdentityHierarchy?"Clone / avatar / child identity":type==="note"?"Main character, organization, or location":"Identity / source";
   $("#event-target-label").textContent=type==="quest_issue"?"Issued to (optional)":type==="quest_part"?"Larger quest this is part of":type==="quest_contribution"?"Who contributed":type==="membership"?"Organization":isIdentityHierarchy?"Original / parent identity":type==="note"?"Related identity (optional)":"Second character";
   $("#event-value-label").textContent=type==="system_end"?"Why it was destroyed (optional)":type==="quest_end"?"What the reward turned out to be (optional)":type==="quest_contribution"?"Share of the work (optional)":type==="display_name"?"New public display name":type==="identity_parent"?"Identity relationship":type==="alias"?"New alias":type==="cultivation"?"Equivalent path name (optional)":type==="status"?"New status":type==="gender"?"Gender":type==="age"?"Age":type==="relationship"?"Relationship (friendly, neutral, or hostile)":isOrgLocation?"Organization location role":isResidence?"Residence type":"Role or title (optional)";
-  form.elements.target.placeholder=type==="quest_issue"?"Character who receives it":type==="quest_part"?"The larger quest this sits inside":type==="quest_contribution"?"Character whose share this is":type==="membership"?"Type an organization name":isIdentityHierarchy?"Original character or parent clone":type==="note"?"Optional":"Type a character name or alias";
-  form.elements.value.placeholder=type==="system_end"?"Burned out in the Jotun campaign":type==="quest_end"?"Realm Seed, 200 contribution points":type==="quest_contribution"?"Two thirds of the work":type==="display_name"?"Name readers see from this action":type==="identity_parent"?"Clone / Avatar / Incarnation / Split soul":type==="alias"?"E.g. The Innkeeper":type==="cultivation"?"E.g. Earthen Deity":type==="status"?"Unknown / Alive / Dead / Missing":type==="gender"?"E.g. Male, Female, Unknown, Nonbinary":type==="age"?"E.g. 17, Early twenties, Over 900 years":type==="relationship"?"friendly / neutral / hostile":isOrgLocation?"Headquarters / Branch / Base / Outpost":isResidence?"Home / Permanent resident / Camp":"E.g. Founder or member";
+  form.elements.target.placeholder=type==="quest_issue"?"Character who receives it":type==="quest_part"?"The larger quest this sits inside":type==="quest_contribution"?"Character whose share this is":type==="membership"?"Type an organization name":isIdentityHierarchy?"Original character, parent clone, or the system they merged into":type==="note"?"Optional":"Type a character name or alias";
+  form.elements.value.placeholder=type==="system_end"?"Burned out in the Jotun campaign":type==="quest_end"?"Realm Seed, 200 contribution points":type==="quest_contribution"?"Two thirds of the work":type==="display_name"?"Name readers see from this action":type==="identity_parent"?"Clone / Avatar / Incarnation / Merged into":type==="alias"?"E.g. The Innkeeper":type==="cultivation"?"E.g. Earthen Deity":type==="status"?"Unknown / Alive / Dead / Missing":type==="gender"?"E.g. Male, Female, Unknown, Nonbinary":type==="age"?"E.g. 17, Early twenties, Over 900 years":type==="relationship"?"friendly / neutral / hostile":isOrgLocation?"Headquarters / Branch / Base / Outpost":isResidence?"Home / Permanent resident / Camp":"E.g. Founder or member";
   if(isOrgLocation)form.elements.value.setAttribute("list","location-role-options");else if(isResidence)form.elements.value.setAttribute("list","residence-role-options");else form.elements.value.removeAttribute("list");
-  const action=form.elements.action;
+  const action=form.elements.action,keepAction=action.value;
   if(type==="system_host"){action.innerHTML='<option value="add">Bonds to this host</option><option value="remove">Bond ends</option>';$("#event-action-label").textContent="System host change";}
   else if(type==="system_parent"){action.innerHTML='<option value="add">Becomes a subsystem</option><option value="remove">No longer a subsystem</option>';$("#event-action-label").textContent="Subsystem change";}
   else if(type==="system_location"){action.innerHTML='<option value="open">Starts operating here</option><option value="close">Withdraws from here</option>';$("#event-action-label").textContent="System location change";}
@@ -2211,6 +2368,11 @@ function updateEventHelp(){
   else if(type==="quest_end"){action.innerHTML='<option value="complete">Completed</option><option value="fail">Failed</option><option value="abandon">Abandoned</option><option value="reopen">Reopened</option>';$("#event-action-label").textContent="Quest outcome";}
   else if(type==="quest_part"){action.innerHTML='<option value="add">Part of it</option><option value="remove">No longer part of it</option>';$("#event-action-label").textContent="Quest grouping change";}
   else if(isOrgLocation){action.innerHTML='<option value="open">Establishes / opens here</option><option value="close">Closes / leaves this location</option>';$("#event-action-label").textContent="Organization location change";}else if(isResidence){action.innerHTML='<option value="begin">Residence begins</option><option value="end">Residence ends</option>';$("#event-action-label").textContent="Residence change";}else if(isHierarchy){action.innerHTML='<option value="add">Place inside parent</option><option value="remove">Remove from parent</option>';$("#event-action-label").textContent="Location hierarchy change";}else if(isIdentityHierarchy){action.innerHTML='<option value="add">Connect to parent identity</option><option value="remove">Separate from parent identity</option>';$("#event-action-label").textContent="Identity hierarchy change";}else{action.innerHTML='<option value="reveal">Existing membership is revealed</option><option value="join">Joins in this chapter</option><option value="leave">Leaves / membership ends</option>';$("#event-action-label").textContent="Organization membership knowledge";}
+  // The options are rebuilt above, which would otherwise throw away what was chosen — and this
+  // runs whenever the action changes, so the choice must survive it.
+  if([...action.options].some(option=>option.value===keepAction))action.value=keepAction;
+  const removingNow=REMOVAL_ACTIONS.has(action.value);
+  form.elements.value.required=needsValue&&!removingNow;
   $("#event-help").textContent=`${help[type]||"Record a story change."} Add a wiki link inside details as [[visible text|https://full-link]].`;
 }
 
@@ -2261,10 +2423,10 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   if(["awareness","meeting","relationship"].includes(type)&&(source.kind!=="character"||target.kind!=="character")){toast("This event requires two characters");return null;}
   if(type==="membership"&&source.kind!=="character"){toast("Choose the character joining or leaving");return null;}
   if(type==="membership"&&target.kind!=="organization"){toast("Membership must point to an organization");return null;}
-  if(type==="identity_parent"&&(source.kind!=="character"||target.kind!=="character")){toast("Clone and identity hierarchy requires two characters");return null;}
+  if(type==="identity_parent"&&!(IDENTITY_KINDS.has(source.kind)&&IDENTITY_KINDS.has(target.kind))){toast("An identity link joins two characters, or a character and a system");return null;}
   if(type==="identity_parent"&&source.id===target.id){toast("An identity cannot be its own parent");return null;}
   if(["appearance","corpse_appearance"].includes(type)&&source.kind!=="character"){toast("Only a character can physically appear");return null;}
-  if(["alias","display_name","identity_parent","status","gender","age","relationship","organization_location","residency"].includes(type)&&!value){toast(`Enter the ${$("#event-value-label").textContent.toLowerCase()}`);return null;}
+  if(["alias","display_name","identity_parent","status","gender","age","relationship","organization_location","residency"].includes(type)&&!value&&!REMOVAL_ACTIONS.has(action)){toast(`Enter the ${$("#event-value-label").textContent.toLowerCase()}`);return null;}
   if(type==="cultivation"&&!level){toast("Choose the canonical cultivation tier");return null;}
   if(type==="relationship"&&!Object.keys(COLORS).includes(value.toLowerCase())){toast("Relationship must be friendly, neutral, or hostile");return null;}
   const previous=data.events.find(event=>event.id===id),enteredDescription=String(form.get("description")||"").trim(),previousGenerated=previous?generatedEventDescription(previous.type,entity(previous.source),entity(previous.target),entity(previous.location),previous.value,previous.level,previous.action,previous.initial===true,trackIdOf(previous),(previous.characters||[]).map(id=>entity(id)?.name).filter(Boolean),previous.authority??"",previous.grade||"",previous.progress??""):"",useGenerated=!enteredDescription||enteredDescription===previousGenerated||isAutomaticCultivationDescription(enteredDescription,previous),description=useGenerated?generatedEventDescription(type,source,target,location,value,level,action,previous?.initial===true,String(form.get("track")||progressionTracks()[0].id),String(form.get("characters")||"").split(",").map(part=>part.trim()).filter(Boolean).map(part=>resolveEntity(part)?.name).filter(Boolean),String(form.get("authority")||"").trim(),String(form.get("grade")||"").trim(),String(form.get("progress")||"").trim()):enteredDescription,order=previous?.chapter===chapter&&previous?.order?previous.order:nextEventOrder(chapter,eventDrafts),record={id,chapter,order,type,source:source.id,description,...(sourceUrl?{sourceUrl:safeExternalUrl(sourceUrl)}:{})};
@@ -2347,7 +2509,7 @@ $("#entity-form").addEventListener("submit",event=>{
   if(kind==="system"&&!authorityIsValid(form.get("authority"))){toast("Authority is a plain number, or left blank");return null;}
   if(kind==="quest"&&String(form.get("issuer")||"").trim()&&!resolveEntity(String(form.get("issuer")))){toast("Choose an existing identity as the issuer, or leave it blank");return null;}
   if(kind==="quest"&&!gradeIsValid(form.get("rewardRank"))){toast("A reward rank is one to three letters with an optional + or −, one of the named ranks, or left blank");return null;}
-  const record=editingId?entity(editingId):{id},managedBefore=data.events.filter(storyEvent=>storyEvent.source===id&&isCreationManagedEvent(storyEvent)),selectedBefore=managedBefore.find(storyEvent=>storyEvent.id===editingCreationEventId),initialCultivationEvent=managedBefore.find(storyEvent=>storyEvent.type==="cultivation"&&storyEvent.initial===true);Object.assign(record,{kind,name,gender:kind==="character"?String(form.get("gender")):undefined,locationType:kind==="location"?String(form.get("locationType")||"Other"):undefined,authority:kind==="system"?(String(form.get("authority")||"").trim()===""||meansUnknown(form.get("authority"))?undefined:Number(form.get("authority"))):undefined,grade:kind==="system"?(meansUnknown(form.get("grade"))?undefined:String(form.get("grade")||"").trim()||undefined):undefined,issuer:kind==="quest"?(resolveEntity(String(form.get("issuer")||""))?.id||undefined):undefined,questBadge:kind==="quest"?(String(form.get("questBadge")||"").trim()||undefined):undefined,rewardRank:kind==="quest"?(meansUnknown(form.get("rewardRank"))?undefined:String(form.get("rewardRank")||"").trim()||undefined):undefined,timeLimit:kind==="quest"?(String(form.get("timeLimit")||"").trim()||undefined):undefined,rewards:kind==="quest"?(listFromText(form.get("rewards"),true).length?listFromText(form.get("rewards"),true):undefined):undefined,achievements:kind==="quest"?(listFromText(form.get("achievements"),true).length?listFromText(form.get("achievements"),true):undefined):undefined,failure:kind==="quest"?(String(form.get("failure")||"").trim()||undefined):undefined,mentioned:kind==="character"?mentioned:null,appeared:kind==="character"?appeared:null,intro:kind!=="character"?appeared:(mentioned||appeared),description:String(form.get("description")||"")});if(parsedName.wikiUrl)record.profile={...(record.profile||{}),wikiUrl:parsedName.wikiUrl};if(!editingId)data.entities.push(record);
+  const record=editingId?entity(editingId):{id},managedBefore=data.events.filter(storyEvent=>storyEvent.source===id&&isCreationManagedEvent(storyEvent)),selectedBefore=managedBefore.find(storyEvent=>storyEvent.id===editingCreationEventId),initialCultivationEvent=managedBefore.find(storyEvent=>storyEvent.type==="cultivation"&&storyEvent.initial===true);Object.assign(record,{kind,name,gender:kind==="character"?String(form.get("gender")):undefined,locationType:kind==="location"?String(form.get("locationType")||"Other"):undefined,authority:kind==="system"?(String(form.get("authority")||"").trim()===""||meansUnknown(form.get("authority"))?undefined:Number(form.get("authority"))):undefined,grade:kind==="system"?(meansUnknown(form.get("grade"))?undefined:String(form.get("grade")||"").trim()||undefined):undefined,issuer:kind==="quest"?(resolveEntity(String(form.get("issuer")||""))?.id||undefined):undefined,countsAlone:kind==="quest"&&form.get("countsAlone")?true:undefined,questBadge:kind==="quest"?(String(form.get("questBadge")||"").trim()||undefined):undefined,rewardRank:kind==="quest"?(meansUnknown(form.get("rewardRank"))?undefined:String(form.get("rewardRank")||"").trim()||undefined):undefined,timeLimit:kind==="quest"?(String(form.get("timeLimit")||"").trim()||undefined):undefined,rewards:kind==="quest"?(listFromText(form.get("rewards"),true).length?listFromText(form.get("rewards"),true):undefined):undefined,achievements:kind==="quest"?(listFromText(form.get("achievements"),true).length?listFromText(form.get("achievements"),true):undefined):undefined,failure:kind==="quest"?(String(form.get("failure")||"").trim()||undefined):undefined,mentioned:kind==="character"?mentioned:null,appeared:kind==="character"?appeared:null,intro:kind!=="character"?appeared:(mentioned||appeared),description:String(form.get("description")||"")});if(parsedName.wikiUrl)record.profile={...(record.profile||{}),wikiUrl:parsedName.wikiUrl};if(!editingId)data.entities.push(record);
   const sourceFields=creationSourceUrl?{sourceUrl:safeExternalUrl(creationSourceUrl)}:{};
   const creationDescription=(previous,generated)=>previous?.id===selectedBefore?.id&&creationEventDescription&&!(creationEventDescription===previous?.description&&isAutomaticCreationDescription(previous))?creationEventDescription:isAutomaticCreationDescription(previous)?generated:(previous?.description||generated);
   if(kind==="character"){
@@ -2366,6 +2528,7 @@ $("#delete-entity").onclick=()=>deleteIdentity($("#entity-form").elements.editin
 
 $("#event-form").addEventListener("submit",event=>{event.preventDefault();const editingId=event.currentTarget.elements.editingId.value,previous=editingId?data.events.find(item=>item.id===editingId):null,record=buildEventRecord(event.currentTarget,editingId||undefined);if(!record)return;if(editingId){const index=data.events.findIndex(item=>item.id===editingId);if(index>=0)data.events[index]=record;}else data.events.push(record);if(previous)syncPresenceFromEvents(previous.source,previous.type);syncPresenceFromEvents(record.source,record.type);saveData();resetEventEditor();renderAll();toast(`Change ${editingId?"updated":"saved"}; graph updated`);});
 $("#event-form").elements.type.addEventListener("change",updateEventHelp);
+$("#event-form").elements.action.addEventListener("change",updateEventHelp);
 $("#event-form").elements.track.addEventListener("change",event=>{const form=$("#event-form");fillLevelSelect(form.elements.level,event.target.value,"");form.elements.value.value="";});
 $("#entity-form").elements.initialTrack.addEventListener("change",event=>{const form=$("#entity-form");fillLevelSelect(form.elements.initialLevel,event.target.value,"");});
 $("#event-form").elements.level.addEventListener("change",()=>{const form=$("#event-form"),value=form.elements.value.value.trim().toLowerCase();if(form.elements.type.value==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===value))form.elements.value.value="";});
@@ -2410,6 +2573,16 @@ function syncChapterRefToggles(on){document.body.classList.toggle("show-chapter-
 function dismissChapterRefHint(){const hint=$("#chapter-ref-hint");if(hint)hint.hidden=true;localStorage.setItem(CHAPTER_REF_HINT_SEEN_KEY,"1");}
 function toggleChapterRefs(){const next=!document.body.classList.contains("show-chapter-refs");syncChapterRefToggles(next);localStorage.setItem(CHAPTER_REF_TOGGLE_KEY,next?"1":"0");dismissChapterRefHint();}
 syncChapterRefToggles(localStorage.getItem(CHAPTER_REF_TOGGLE_KEY)==="1");
+function syncSliderModeToggle(){const button=$("#toggle-slider-mode");if(!button)return;
+  button.setAttribute("aria-pressed",String(sliderStepsEvents));button.classList.toggle("active",sliderStepsEvents);
+  $("#slider-mode-label").textContent=sliderStepsEvents?"By action":"By chapter";}
+sliderStepsEvents=localStorage.getItem(SLIDER_MODE_KEY)==="events";
+$("#toggle-slider-mode")?.addEventListener("click",()=>{
+  // Keep the reader where they are: the position is an action index either way.
+  sliderStepsEvents=!sliderStepsEvents;expandedChapter=null;cancelChapterSequence();
+  localStorage.setItem(SLIDER_MODE_KEY,sliderStepsEvents?"events":"chapters");
+  syncSliderModeToggle();renderAll();});
+syncSliderModeToggle();
 if(localStorage.getItem(CHAPTER_REF_HINT_SEEN_KEY)!=="1"){const hint=$("#chapter-ref-hint");if(hint)hint.hidden=false;}
 $("#dismiss-chapter-ref-hint")?.addEventListener("click",event=>{event.stopPropagation();dismissChapterRefHint();});
 document.addEventListener("click",event=>{if(event.target.closest("[data-chapter-ref-toggle]"))toggleChapterRefs();});
