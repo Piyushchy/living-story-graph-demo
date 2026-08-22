@@ -21,8 +21,13 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const CULTIVATION_LEVELS = ["Mortal","Body Tempering","Qi Training","Foundation Establishment","Golden Core","Nascent Soul","Earth Immortal","Heaven Immortal","Celestial Immortal","Demi Dao Lord","Dao Lord","Above Dao Lord"];
 
 const sampleData = {
-  schemaVersion: 16,
+  schemaVersion: 17,
   novel: "The Innkeeper — graph demonstration",
+  // Combining actions changes nothing about what happens — it only says that these belong to
+  // one moment, so they land together and the reader is given one sentence for them.
+  moments: [
+    { id: "m-inn-place", message: "The Midnight Inn Lobby stands in the Midnight Inn Estate, in the city of Stonevale, on the world Verdan.", members: ["hier-1","hier-2","hier-3"] }
+  ],
   volumes: [
     { id: "v1", name: "Volume 1", from: 1, to: 40 },
     { id: "v2", name: "Volume 2", from: 41, to: 80 },
@@ -387,8 +392,9 @@ app.innerHTML = `
           <section class="admin-card data-card" id="order-card"><div class="summary-title"><div><h2>Chapter running order</h2><small>Order only matters inside a chapter, so this edits one chapter at a time — a thousand more chapters do not make this list longer.</small></div><span class="chip" id="order-count"></span></div>
             <div class="order-controls"><button type="button" class="button ghost" id="order-prev">◀ Earlier chapter</button><label class="field"><span>Chapter</span><input id="order-chapter" type="number" min="1" inputmode="numeric" /></label><button type="button" class="button ghost" id="order-next">Later chapter ▶</button></div>
             <p class="order-position" id="order-position"></p>
+            <div class="order-combine" id="order-combine" hidden><div class="order-combine-head"><strong id="order-combine-count"></strong><span>They will land together in one step of the slider. Nothing is added to the story — only how it is read changes.</span></div><label class="field"><span>What the moment says (optional)</span><textarea id="order-combine-message" rows="2" placeholder="Lex's Apartment, which is in New York City."></textarea></label><div class="form-actions"><button type="button" class="button ghost" id="order-combine-clear">Clear the picks</button><button type="button" class="button primary" id="order-combine-save">Combine into one moment</button></div></div>
             <ol class="order-list" id="order-list"></ol>
-            <p class="order-hint">Drag a row by its handle, or use the arrows. The slider plays a chapter's actions in exactly this order.</p>
+            <p class="order-hint">Drag a row by its handle, or use the arrows. The slider plays a chapter's actions in exactly this order. Tick two or more to combine them into one moment: they still each do what they do, they simply happen together and are read as one sentence.</p>
           </section>
           <section class="admin-card data-card"><div class="summary-title"><h2>All chapter events</h2><span class="chip" id="data-count"></span></div><div class="table-wrap event-data-table"><table><thead><tr><th>Chapter</th><th>Type</th><th>Entities</th><th>Description</th><th></th></tr></thead><tbody id="event-table"></tbody></table></div></section>
         </div>
@@ -592,6 +598,16 @@ function loadLocalData() {
       if(isBundledDemo){const winter=migrated.entities.find(item=>item.id==="q-winter");if(winter&&winter.countsAlone===undefined)winter.countsAlone=true;}
       migrated.schemaVersion=16;
     }
+    if((migrated.schemaVersion||1)<17){
+      if(!Array.isArray(migrated.moments))migrated.moments=[];
+      const isBundledDemo=["lex","eclipse","inn-lobby"].every(id=>migrated.entities.some(item=>item.id===id));
+      // The demo's three nested places are one moment in the story, and now they are shown as one.
+      if(isBundledDemo)sampleData.moments.forEach(sample=>{
+        if(migrated.moments.some(moment=>moment.id===sample.id))return;
+        if(sample.members.every(id=>(migrated.events||[]).some(event=>event.id===id)))migrated.moments.push(deepClone(sample));
+      });
+      migrated.schemaVersion=17;
+    }
     localStorage.setItem(STORAGE_KEY,JSON.stringify(migrated));return migrated;
   }
   catch (error) { console.error("Story data could not be brought up to date; keeping it as it was.", error); return stored || deepClone(sampleData); }
@@ -604,13 +620,20 @@ async function loadData() {
 }
 function updatePublishingStatus(errorMessage=""){const state=$("#hosted-save-state"),warning=$("#storage-warning"),description=$("#publishing-description"),button=$("#publish-data");if(!state||!warning||!description||!button)return;const connected=hostedDataStatus==="connected",dirty=["dirty","empty"].includes(hostedDataStatus),failed=["unavailable","error"].includes(hostedDataStatus);state.textContent=connected?"Published":dirty?"Unpublished changes":"Storage unavailable";state.title=connected?"Public visitors have this version":dirty?"Drafts are safely stored in this browser":errorMessage||"Publishing is unavailable";state.classList.toggle("error",failed);state.classList.toggle("dirty",dirty);warning.hidden=!failed;description.textContent=connected?"Public graph is up to date.":dirty?"Draft saved locally. Continue editing, then publish the whole dataset once.":"Draft saved locally, but public storage could not be reached.";button.disabled=connected;button.textContent=connected?"Published":"Publish changes";}
 var dataVersion=0;
+// A moment is only a way of reading actions, so it never keeps hold of one that has been deleted,
+// and a moment with nothing left to combine stops being a moment.
+function pruneMoments(store){
+  if(!Array.isArray(store.moments))return;
+  const ids=new Set((store.events||[]).map(event=>event.id));
+  store.moments=store.moments.map(moment=>({...moment,members:(moment.members||[]).filter(id=>ids.has(id))})).filter(moment=>moment.members.length>1);
+}
 function saveData() {
-  normalizeIdentityIntroductionOrder(data);
+  normalizeIdentityIntroductionOrder(data);pruneMoments(data);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   localStorage.setItem(PUBLISH_DIRTY_KEY,"1");hostedDataStatus="dirty";updatePublishingStatus();
   dataVersion++;
 }
-async function publishData(){if(!isUploadRoute||!adminAuthenticated){toast("Unlock the editor before publishing");return;}normalizeIdentityIntroductionOrder(data);localStorage.setItem(STORAGE_KEY,JSON.stringify(data));const state=$("#hosted-save-state"),button=$("#publish-data");if(state){state.textContent="Publishing…";state.classList.add("saving");}if(button)button.disabled=true;try{const response=await fetch("/api/data",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});if(!response.ok)throw new Error((await response.json().catch(()=>({}))).error||"Publish failed");localStorage.removeItem(PUBLISH_DIRTY_KEY);hostedDataStatus="connected";updatePublishingStatus();toast("Published once for all public visitors");}catch(error){hostedDataStatus="error";updatePublishingStatus(error.message);toast(`Not published: ${error.message}`);}finally{if(state)state.classList.remove("saving");if(button&&hostedDataStatus!=="connected")button.disabled=false;}}
+async function publishData(){if(!isUploadRoute||!adminAuthenticated){toast("Unlock the editor before publishing");return;}normalizeIdentityIntroductionOrder(data);pruneMoments(data);localStorage.setItem(STORAGE_KEY,JSON.stringify(data));const state=$("#hosted-save-state"),button=$("#publish-data");if(state){state.textContent="Publishing…";state.classList.add("saving");}if(button)button.disabled=true;try{const response=await fetch("/api/data",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});if(!response.ok)throw new Error((await response.json().catch(()=>({}))).error||"Publish failed");localStorage.removeItem(PUBLISH_DIRTY_KEY);hostedDataStatus="connected";updatePublishingStatus();toast("Published once for all public visitors");}catch(error){hostedDataStatus="error";updatePublishingStatus(error.message);toast(`Not published: ${error.message}`);}finally{if(state)state.classList.remove("saving");if(button&&hostedDataStatus!=="connected")button.disabled=false;}}
 function cacheActiveVolume(){try{localStorage.setItem(VIEW_STATE_KEY,JSON.stringify({activeVolume,currentChapter,currentActionIndex,openProfileId}));}catch{}}
 function restoreActiveVolume(){let cached={};try{cached=JSON.parse(localStorage.getItem(VIEW_STATE_KEY)||"{}");}catch{}activeVolume=data.volumes.some(volume=>volume.id===cached.activeVolume)?cached.activeVolume:(data.volumes[0]?.id||"");const vol=activeVol(),inRange=vol&&Number.isFinite(cached.currentChapter)&&cached.currentChapter>=vol.from&&cached.currentChapter<=vol.to;currentChapter=inRange?cached.currentChapter:(vol?.from||1);currentActionIndex=inRange&&Number.isFinite(cached.currentActionIndex)?cached.currentActionIndex:0;openProfileId=typeof cached.openProfileId==="string"&&entity(cached.openProfileId)?cached.openProfileId:null;}
 function slugify(value) { return value.toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || "entity"; }
@@ -732,6 +755,31 @@ function revealedVolumeActions(){
   const chosen=new Set([...volumeActions().slice(0,currentActionIndex),...ghostActions()].map(event=>event.id));
   return orderedEvents().filter(event=>chosen.has(event.id));
 }
+// Two or three actions are often one moment in the story — a place is introduced, put inside a
+// city, and made someone's home — and reading them as three beats reads wrong. Combining them
+// records nothing new: the actions still each do what they do, they simply take one turn of the
+// slider together, and the list shows the one sentence written for the moment instead of theirs.
+function storyMoments(){if(!Array.isArray(data.moments))data.moments=[];return data.moments;}
+function momentOf(eventId){return storyMoments().find(moment=>(moment.members||[]).includes(eventId))||null;}
+function beatsFrom(actions){
+  const beats=[];
+  actions.forEach((event,index)=>{
+    const moment=momentOf(event.id),last=beats.at(-1);
+    // Only a run of neighbours folds together; a moment whose parts drifted apart in the order
+    // still shows each run where it stands rather than jumping the reader about.
+    if(moment&&last&&last.moment===moment)last.events.push(event);
+    else beats.push({moment,events:[event],chapter:event.chapter,index:0});
+    const beat=beats.at(-1);beat.index=index+1;beat.event=event;beat.chapter=event.chapter;
+  });
+  return beats;
+}
+function volumeBeats(volume=activeVol()){return beatsFrom(volumeActions(volume));}
+function currentBeat(){return currentActionIndex>0?volumeBeats().find(beat=>beat.index===currentActionIndex)||null:null;}
+function currentBeatEvents(){return currentBeat()?.events||[];}
+// The slider stops on whole moments, so an index landing inside one is carried to its end.
+function snapToBeat(index){if(index<=0)return 0;const beats=volumeBeats();return (beats.find(beat=>beat.index>=index)||beats.at(-1))?.index||0;}
+function beatPosition(beats=volumeBeats()){return currentActionIndex<=0?0:beats.findIndex(beat=>beat.index===currentActionIndex)+1;}
+function beatMessage(beat){return beat.moment?String(beat.moment.message||"").trim()||beat.events.map(event=>event.description).filter(Boolean).join(" "):beat.event.description||beat.event.type;}
 function currentActionEvent(){return currentActionIndex>0?volumeActions()[currentActionIndex-1]||null:null;}
 function appliedEvents(){const volume=activeVol(),selected=new Set(revealedVolumeActions().map(event=>event.id));return orderedEvents().filter(event=>event.chapter<volume.from||(event.chapter<=volume.to&&selected.has(event.id)));}
 function resolveEntity(text) {
@@ -1013,7 +1061,7 @@ function eventMarkerFill(events,limit=MARKER_SLICE_LIMIT){
   const size=100/colors.length;
   return `conic-gradient(${colors.map((color,index)=>`${color} ${index*size}% ${(index+1)*size}%`).join(",")})`;
 }
-function volumeChapterGroups(){const groups=[],byChapter=new Map();volumeActions().forEach((event,index)=>{if(!byChapter.has(event.chapter)){const group={chapter:event.chapter,entries:[]};byChapter.set(event.chapter,group);groups.push(group);}byChapter.get(event.chapter).entries.push({event,index:index+1});});return groups;}
+function volumeChapterGroups(){const groups=[],byChapter=new Map();volumeBeats().forEach(beat=>{if(!byChapter.has(beat.chapter)){const group={chapter:beat.chapter,entries:[]};byChapter.set(beat.chapter,group);groups.push(group);}byChapter.get(beat.chapter).entries.push(beat);});return groups;}
 function chapterEventEntries(chapter){return volumeChapterGroups().find(group=>group.chapter===chapter)?.entries||[];}
 // One dot per chapter stops being readable — and stops being cheap to draw — the moment a volume
 // runs to hundreds of chapters. Past what the track can physically show, neighbouring chapters
@@ -1050,7 +1098,7 @@ function renderTimelineMarkers(){
     // and nobody else's.
     if(selectedId&&chapterGroups.length){
       const chosen=entity(selectedId),
-        milestones=volumeActions().slice(0,currentActionIndex).map((event,index)=>({event,index:index+1}))
+        milestones=volumeActions().slice(0,currentActionIndex).map((event,index)=>({event,index:snapToBeat(index+1)}))
           .filter(entry=>MAJOR_EVENT_TYPES.has(entry.event.type)&&eventInvolves(entry.event,selectedId)),
         // A chapter where four things turned is still one place on the bar.
         byChapter=new Map(),chapterAt=new Map(chapterGroups.map((group,index)=>[group.chapter,index]));
@@ -1083,9 +1131,9 @@ function renderTimelineMarkers(){
     // chapters depending on how it is set, and the mark has to sit where the thumb does.
     const hereIndex=chapterGroups.findIndex(group=>group.chapter===currentChapter),here=chapterGroups[hereIndex];
     if(here){
-      const actionCount=volumeActions().length,
+      const beats=volumeBeats(),
         position=sliderStepsEvents
-          ?(actionCount?currentActionIndex/actionCount*100:0)
+          ?(beats.length?beatPosition(beats)/beats.length*100:0)
           :(hereIndex+1)/chapterGroups.length*100,
         several=here.entries.length>1;
       marks.push(several
@@ -1096,13 +1144,13 @@ function renderTimelineMarkers(){
   $("#timeline-marks").innerHTML=marks.join("");document.querySelectorAll("[data-expand-chapter]").forEach(marker=>marker.onclick=event=>{event.preventDefault();event.stopPropagation();expandChapterEvents(Number(marker.dataset.expandChapter));});document.querySelectorAll("[data-event-action]").forEach(marker=>marker.onclick=event=>{event.preventDefault();event.stopPropagation();cancelChapterSequence();currentActionIndex=Number(marker.dataset.eventAction);currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();});
 }
 function configureTimeline() {
-  const volume=activeVol(),actions=volumeActions(),groups=volumeChapterGroups();currentActionIndex=Math.max(0,Math.min(actions.length,currentActionIndex));const action=currentActionEvent(),field=document.querySelector(".timeline-field"),collapse=$("#collapse-chapter-events");currentChapter=action?.chapter||volume.from;
+  const volume=activeVol(),actions=volumeActions(),beats=volumeBeats(),groups=volumeChapterGroups();currentActionIndex=snapToBeat(Math.max(0,Math.min(actions.length,currentActionIndex)));const action=currentActionEvent(),field=document.querySelector(".timeline-field"),collapse=$("#collapse-chapter-events");currentChapter=action?.chapter||volume.from;
   if(expandedChapter!==null&&action?.chapter!==expandedChapter)expandedChapter=null;
   if(expandedChapter!==null){const entries=chapterEventEntries(expandedChapter),eventIndex=Math.max(0,entries.findIndex(entry=>entry.index===currentActionIndex));timeline.min=0;timeline.max=entries.length+1;timeline.value=eventIndex+1;timeline.dataset.mode="chapter-events";$("#event-position").textContent=`event ${eventIndex+1}/${entries.length} · ends close`;$("#previous").disabled=false;$("#next").disabled=false;$("#chapter-value").textContent=expandedChapter;collapse.hidden=false;field.classList.add("events-expanded","multi-event-chapter");}
-  else if(sliderStepsEvents){timeline.min=0;timeline.max=actions.length;timeline.value=currentActionIndex;timeline.dataset.mode="actions";
+  else if(sliderStepsEvents){const position=beatPosition(beats);timeline.min=0;timeline.max=beats.length;timeline.value=position;timeline.dataset.mode="actions";
     $("#chapter-value").textContent=action?action.chapter:"—";
-    $("#event-position").textContent=currentActionIndex===0?`0 of ${actions.length} actions`:`action ${currentActionIndex} of ${actions.length}`;
-    $("#previous").disabled=currentActionIndex<=0;$("#next").disabled=currentActionIndex>=actions.length;
+    $("#event-position").textContent=position===0?`0 of ${beats.length} actions`:`action ${position} of ${beats.length}`;
+    $("#previous").disabled=position<=0;$("#next").disabled=position>=beats.length;
     if(collapse)collapse.hidden=true;field?.classList.remove("chapter-events-mode");}
   else{const groupIndex=action?groups.findIndex(group=>group.chapter===action.chapter):-1,group=groups[groupIndex];timeline.min=0;timeline.max=groups.length;timeline.value=groupIndex+1;timeline.dataset.mode="chapters";$("#event-position").textContent=currentActionIndex===0?`0 of ${groups.length} chapters`:`chapter stop ${groupIndex+1} of ${groups.length}${group?.entries.length>1?` · ${group.entries.length} events`:""}`;$("#previous").disabled=groupIndex<0;$("#next").disabled=groupIndex===groups.length-1;$("#chapter-value").textContent=action?action.chapter:"—";collapse.hidden=true;field.classList.remove("events-expanded");field.classList.toggle("multi-event-chapter",Boolean(group&&group.entries.length>1));}
   renderTimelineMarkers();
@@ -1113,10 +1161,10 @@ function collapseChapterEvents(){cancelChapterSequence();expandedChapter=null;re
 function scheduleChapterSequence(){cancelChapterSequence();
   // Stepping by action already advances one at a time; running the chapter sequence as well
   // would take two steps for every press.
-  if(expandedChapter!==null||eventScrollHold||sliderStepsEvents)return;const current=currentActionEvent(),next=volumeActions()[currentActionIndex];if(!current||!next||next.chapter!==current.chapter)return;chapterAutoplayTimer=setTimeout(()=>{chapterAutoplayTimer=null;currentActionIndex+=1;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();scheduleChapterSequence();},1150);}
+  if(expandedChapter!==null||eventScrollHold||sliderStepsEvents)return;const beats=volumeBeats(),at=beats.findIndex(beat=>beat.index===currentActionIndex),next=at<0?null:beats[at+1];if(!next||next.chapter!==beats[at].chapter)return;chapterAutoplayTimer=setTimeout(()=>{chapterAutoplayTimer=null;currentActionIndex=next.index;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();scheduleChapterSequence();},1150);}
 function applyTimeline() {
   const previous=currentActionIndex,value=Number(timeline.value);cancelChapterSequence();
-  if(timeline.dataset.mode==="actions"){currentActionIndex=Math.max(0,Math.min(volumeActions().length,value));currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();return;}
+  if(timeline.dataset.mode==="actions"){const beats=volumeBeats();currentActionIndex=value<=0?0:beats[Math.min(beats.length,value)-1]?.index||0;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();return;}
   if(timeline.dataset.mode==="chapter-events"){const groups=volumeChapterGroups(),groupIndex=groups.findIndex(group=>group.chapter===expandedChapter),entries=groups[groupIndex]?.entries||[];if(value<=0){expandedChapter=null;currentActionIndex=groupIndex>0?groups[groupIndex-1].entries.at(-1).index:0;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();return;}if(value>=entries.length+1){expandedChapter=null;const nextGroup=groups[groupIndex+1];currentActionIndex=nextGroup?nextGroup.entries[0].index:entries.at(-1)?.index||0;currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();if(nextGroup)scheduleChapterSequence();return;}currentActionIndex=entries[value-1].index;currentChapter=expandedChapter;renderAll();return;}const groups=volumeChapterGroups();if(value<=0){currentActionIndex=0;currentChapter=activeVol().from;renderAll();return;}const group=groups[value-1];if(!group)return;currentActionIndex=group.entries[0].index;currentChapter=group.chapter;renderAll();if(currentActionIndex>previous)scheduleChapterSequence();
 }
 function stepTimeline(direction) { const next=Math.max(Number(timeline.min),Math.min(Number(timeline.max),Number(timeline.value)+direction));if(next===Number(timeline.value))return;timeline.value=next;applyTimeline(); }
@@ -1370,7 +1418,7 @@ function tickGraph() {
 function renderGraph() {
   const awaitingAction=currentActionIndex===0,layout=$("#graph-layout"),onboarding=$("#slider-onboarding");layout.classList.toggle("awaiting-action",awaitingAction);onboarding.hidden=!awaitingAction;
   if(awaitingAction){nodeEls=new Map();edgeUpdaters=[];physics.edges=[];graph.replaceChildren();requestAnimationFrame(positionSliderOnboarding);return;}
-  const volumeApplied=revealedVolumeActions(),previousApplied=volumeActions().slice(0,Math.max(0,currentActionIndex-1)),currentEvent=currentActionEvent(),appliedNow=appliedEvents(),fullDerived=derive(currentChapter,appliedNow),priorCultivationDerived=currentEvent?.type==="cultivation"?derive(currentChapter,appliedNow.filter(event=>event.id!==currentEvent.id)):null,volumeDerived=derive(currentChapter,volumeApplied),derived={...volumeDerived,states:fullDerived.states,locationParents:fullDerived.locationParents},visibleIds=new Set(volumeApplied.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),previousVisibleIds=new Set(previousApplied.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),chapterChangedIds=new Set(volumeApplied.filter(event=>event.chapter===currentChapter).flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean)));
+  const volumeApplied=revealedVolumeActions(),beatEvents=currentBeatEvents(),previousApplied=volumeActions().slice(0,Math.max(0,currentActionIndex-Math.max(1,beatEvents.length))),currentEvent=currentActionEvent(),appliedNow=appliedEvents(),fullDerived=derive(currentChapter,appliedNow),priorCultivationDerived=currentEvent?.type==="cultivation"?derive(currentChapter,appliedNow.filter(event=>event.id!==currentEvent.id)):null,volumeDerived=derive(currentChapter,volumeApplied),derived={...volumeDerived,states:fullDerived.states,locationParents:fullDerived.locationParents},visibleIds=new Set(volumeApplied.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),previousVisibleIds=new Set(previousApplied.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),chapterChangedIds=new Set(volumeApplied.filter(event=>event.chapter===currentChapter).flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean)));
   // A system stands on the graph as soon as the story has touched it, the same as anyone else.
   // What stays folded away until you pick out the system or its host is the rest of its reach:
   // the places it runs at. That is the difference from places, whose links are drawn whenever
@@ -1447,7 +1495,7 @@ function renderGraph() {
   // forgotten, note where it was and what it went into, so it can be seen going there.
   // The pods for this action are worked out the same way the pod pass will work them out, so a
   // place that is about to become one is known before its old position is forgotten.
-  const podsComing=new Set(eventPodIds(locView,currentEvent)),departing=[];
+  const podsComing=new Set(eventPodIds(locView,beatEvents)),departing=[];
   [...physics.pos.keys()].filter(id=>!renderIds.has(id)).forEach(id=>{
     const kind=entity(id)?.kind,
       into=kind==="location"?locView.anchorOf.get(id)
@@ -1507,7 +1555,7 @@ function renderGraph() {
   const edgeLayer=svgEl("g"),departLayer=svgEl("g",{class:"node-depart-layer"}),satelliteLayer=svgEl("g",{class:"system-satellite-layer"}),conversationLayer=svgEl("g",{class:"conversation-layer"}),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,departLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
   // While an action pops a hidden place out of its parent, links point at the pod itself, so the
   // line sits on the place the reader is actually being shown and rides back in as it retracts.
-  const podIds=syncPodTransitions(locView,currentEvent),podSet=new Set([...podIds,...retiringPodIds]);
+  const podIds=syncPodTransitions(locView,beatEvents),podSet=new Set([...podIds,...retiringPodIds]);
   physics.podPos.clear();
   podSet.forEach(id=>{const base=positions.get(locView.anchorOf.get(id));if(base)physics.podPos.set(id,{x:base.x,y:base.y});});
   const edgeLocationId=id=>entity(id)?.kind!=="location"?id:(podSet.has(id)?id:(locView.anchorOf.get(id)||id));
@@ -1580,7 +1628,7 @@ function renderGraph() {
   derived.systemLocations.forEach(link=>{if(!focusSystems.has(link.system))return;const place=edgeLocationId(link.location);noteEdge(link.system,place,link.from,`${link.role} here`);straightEdge(link.system,place,`edge system-location-edge${currentEvent?.type==="system_location"&&currentEvent.source===link.system&&currentEvent.location===link.location?" newly-revealed-edge":""}`,link.system,place);});
   derived.systemParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,"Subsystem of");straightEdge(link.child,link.parent,`edge system-parent-edge${currentEvent?.type==="system_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent);});
   derived.identityParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,link.relation);return straightEdge(link.child,link.parent,`edge identity-edge${currentEvent?.type==="identity_parent"&&currentEvent.source===link.child&&currentEvent.target===link.parent?" newly-revealed-edge":""}`,link.child,link.parent);});
-  const activeIds=new Set(currentEvent?[currentEvent.source,currentEvent.target,currentEvent.location,...(currentEvent.characters||[])].filter(Boolean).map(edgeLocationId):[]);
+  const activeIds=new Set(beatEvents.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])]).filter(Boolean).map(edgeLocationId));
   const retractingIds=collapsingLocationId?new Set([...renderedSubtree(collapsingLocationId,locView)]):new Set();
   visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=currentEvent?.type==="cultivation"&&currentEvent.source===item.id,priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null,questNotice=null;
     if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));
@@ -1724,14 +1772,15 @@ function renderGraph() {
 // A location that is folded away inside a collapsed parent still deserves a moment on
 // screen when an action names it: it swells out of its visible ancestor as a round pod,
 // then sinks back into that ancestor once the action moves on.
-function eventPodIds(view,currentEvent){
-  const named=currentEvent?[currentEvent.location,currentEvent.type==="location_parent"?currentEvent.source:null].filter(Boolean).filter(id=>entity(id)?.kind==="location"):[];
+function eventPodIds(view,beatEvents){
+  // Everything in one moment comes out together, so the pods are gathered from all of its parts.
+  const named=[].concat(beatEvents||[]).filter(Boolean).flatMap(event=>[event.location,event.type==="location_parent"?event.source:null]).filter(Boolean).filter(id=>entity(id)?.kind==="location");
   return [...new Set(named)].filter(id=>view.present.has(id)&&!view.rendered.has(id)&&view.anchorOf.get(id));
 }
 // Decide which pods are coming out and which are sinking back BEFORE the links are drawn, so a
 // link to a retracting pod stays attached and rides it home instead of snapping to the parent.
-function syncPodTransitions(view,currentEvent){
-  const podIds=eventPodIds(view,currentEvent),podKey=podIds.join("|");
+function syncPodTransitions(view,beatEvents){
+  const podIds=eventPodIds(view,beatEvents),podKey=podIds.join("|");
   if(podKey!==activePodKey){
     const gone=activePodIds.filter(id=>!podIds.includes(id));
     activePodIds=podIds;activePodKey=podKey;
@@ -1945,20 +1994,37 @@ function renderSummary(){
   box.className=`side-card summary${panelActive?" mobile-active":""}${unrevealed?" muted":""}`;box.innerHTML=`${header}<div class="summary-stats">${stats.map(stat=>`<article><span>${escapeHtml(stat.label)}</span><strong>${escapeHtml(stat.value)}</strong></article>`).join("")}</div><div class="summary-groups">${summaryGroup("Identity family",identityFamily,4)}${summaryGroup("Current place",currentPlaces,1)}${summaryGroup("Homes / bases",residences,3)}${summaryGroup("Places this chapter",chapterPlaces,4)}${summaryGroup("Aliases",aliases,3)}${summaryGroup("Organizations",organizations,2)}${summaryGroup("Relations",relationItems,4)}${summaryGroup("Met",meetings,4)}${summaryGroup("Aware of",awareOut,4)}${summaryGroup("Known by",awareIn,4)}</div>`;$("#full-details").onclick=()=>openProfile(chosen.id);
 }
 
-function eventPanelRow(event,index,{current=false,related=false,upcoming=false}={}){return `<li class="event-summary-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}"${index?` data-focus-action="${index}" title="Show this action on the graph"`:""}><div><div class="event-panel-meta"><span>Chapter ${event.chapter}</span><b class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type.replaceAll("_"," "))}</b></div>${canEditEvents()?`<input class="event-message-edit" data-id="${escapeHtml(event.id)}" value="${escapeHtml(event.description||"")}" placeholder="${escapeHtml(event.type)} — describe what happens" aria-label="Message for this action" />`:`<p>${richText(event.description||event.type)}</p>`}${event.location?`<p class="event-panel-place"><small>· ${escapeHtml(entity(event.location)?.name||event.location)}</small></p>`:""}</div>${eventOriginControl(event)}</li>`;}
+// A message can run to several lines — a note about a chapter is rarely one sentence — so the
+// in-place editors are text areas that grow with what is written, and Enter starts a new line.
+function messageRows(text){return Math.min(8,Math.max(1,String(text||"").split(/\r?\n/).length));}
+function messageBoxHtml(className,storyEvent){const text=storyEvent.description||"";return `<textarea class="${className}" data-id="${escapeHtml(storyEvent.id)}" rows="${messageRows(text)}" placeholder="${escapeHtml(storyEvent.type)} — describe what happens" aria-label="Message for this action">\n${escapeHtml(text)}</textarea>`;}
+function growMessageBox(field){field.style.height="auto";if(field.scrollHeight)field.style.height=`${field.scrollHeight}px`;}
+function bindMessageBox(field){
+  growMessageBox(field);
+  field.oninput=()=>growMessageBox(field);
+  field.onchange=()=>{const record=data.events.find(event=>event.id===field.dataset.id);if(!record)return;record.description=field.value.trim();saveData();renderAll();toast("Message updated");};
+  field.onkeydown=event=>{if(event.key==="Enter"&&(event.metaKey||event.ctrlKey)){event.preventDefault();field.blur();}};
+}
+function eventPanelRow(event,index,{current=false,related=false,upcoming=false}={}){return `<li class="event-summary-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}"${index?` data-focus-action="${index}" title="Show this action on the graph"`:""}><div><div class="event-panel-meta"><span>Chapter ${event.chapter}</span><b class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type.replaceAll("_"," "))}</b></div>${canEditEvents()?messageBoxHtml("event-message-edit",event):`<p>${richText(event.description||event.type)}</p>`}${event.location?`<p class="event-panel-place"><small>· ${escapeHtml(entity(event.location)?.name||event.location)}</small></p>`:""}</div>${eventOriginControl(event)}</li>`;}
+function beatPanelRow(beat,options={}){return beat.moment&&beat.events.length>1?momentPanelRow(beat,options):eventPanelRow(beat.event,beat.index,options);}
+// A combined moment is read as the one thing it is. What it is made of is still there to open,
+// because the reader may well want to know which changes the sentence covers.
+function momentPanelRow(beat,{current=false,related=false,upcoming=false}={}){
+  const parts=beat.events;
+  return `<li class="event-summary-row event-moment-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}" data-focus-action="${beat.index}" title="Show this moment on the graph"><div><div class="event-panel-meta"><span>Chapter ${beat.chapter}</span><b class="event-type event-moment">together</b><small class="moment-count">${parts.length} changes</small></div><p class="moment-message">${richText(beatMessage(beat))}</p>${beat.moment.showParts===false?"":`<details class="moment-parts"><summary>What happens in it</summary><ul>${parts.map(part=>`<li><i class="event-type event-${escapeHtml(part.type)}">${escapeHtml(part.type.replaceAll("_"," "))}</i><span>${richText(part.description||part.type)}</span></li>`).join("")}</ul></details>`}</div>${eventOriginControl(beat.event)}</li>`;
+}
 function canEditEvents(){return isUploadRoute&&adminAuthenticated;}
 function bindEventPanelRows(){
   document.querySelectorAll(".event-message-edit").forEach(field=>{
-    field.onchange=()=>{const record=data.events.find(event=>event.id===field.dataset.id);if(!record)return;record.description=field.value.trim();saveData();renderAll();toast("Message updated");};
-    field.onkeydown=event=>{if(event.key==="Enter"){event.preventDefault();field.blur();}};
+    bindMessageBox(field);
     field.onclick=event=>event.stopPropagation();
   });
-  document.querySelectorAll("[data-focus-action]").forEach(row=>row.onclick=event=>{if(event.target.closest("button,a,input"))return;cancelChapterSequence();currentActionIndex=Number(row.dataset.focusAction);currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();});}
+  document.querySelectorAll("[data-focus-action]").forEach(row=>row.onclick=event=>{if(event.target.closest("button,a,input,textarea,summary"))return;cancelChapterSequence();currentActionIndex=Number(row.dataset.focusAction);currentChapter=currentActionEvent()?.chapter||activeVol().from;renderAll();});}
 function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),card=list.closest(".events-card");
   // Paging through one character's history should not carry over to the next one picked.
   if(lastEventSelection!==selectedId){lastEventSelection=selectedId;selectionEventPage=SELECTION_EVENT_PAGE;}list.className="events-list";card.classList.toggle("selection-event-mode",Boolean(selectedId));card.classList.toggle("current-event-mode",Boolean(event&&!selectedId));if(!event){$("#events-title").textContent=`${activeVol().name} · Start`;$("#events-count").textContent="Action 0";list.innerHTML='<li class="slider-start-message"><strong>Use the slider to begin</strong><span>Each step reveals one story action in entry order.</span></li>';return;}if(selectedId){
     const chosen=entity(selectedId),family=new Set([selectedId,...(entity(selectedId)?.kind==="system"?absorbedInto(selectedId,currentDerived()):[])]),
-      actions=volumeActions().slice(0,currentActionIndex).map((item,index)=>({event:item,index:index+1})).filter(entry=>[...family].some(id=>eventInvolves(entry.event,id))),
+      actions=volumeBeats().filter(beat=>beat.index<=currentActionIndex&&beat.events.some(item=>[...family].some(id=>eventInvolves(item,id)))),
       // Across three hundred chapters a well-connected character has hundreds of these. They are
       // headed by chapter so the run of them can be read, and only the most recent are built —
       // the rest come in a page at a time rather than all at once.
@@ -1966,10 +2032,10 @@ function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),
       rows=[];
     let heading=null;
     shown.forEach(entry=>{
-      if(entry.event.chapter!==heading){heading=entry.event.chapter;
-        const count=actions.filter(item=>item.event.chapter===heading).length;
+      if(entry.chapter!==heading){heading=entry.chapter;
+        const count=actions.filter(item=>item.chapter===heading).length;
         rows.push(`<li class="event-chapter-heading"><span>Chapter ${heading}</span><small>${count} action${count===1?"":"s"}</small></li>`);}
-      rows.push(eventPanelRow(entry.event,entry.index,{current:entry.index===currentActionIndex,related:true}));
+      rows.push(beatPanelRow(entry,{current:entry.index===currentActionIndex,related:true}));
     });
     $("#events-title").textContent=`${stateName(currentDerived(),selectedId)} · connected events`;
     $("#events-count").textContent=`${newestFirst.length} shown`;
@@ -1977,12 +2043,12 @@ function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),
     bindEventPanelRows();
     $("#more-connected-events")?.addEventListener("click",()=>{selectionEventPage+=SELECTION_EVENT_PAGE;renderEvents();});
     return;
-  }$("#events-title").textContent=`Chapter ${event.chapter} · Action ${currentActionIndex}`;
+  }$("#events-title").textContent=`Chapter ${event.chapter} · Action ${beatPosition()}`;
   // The whole chapter is listed, not just the action being played, so the reader can scroll
   // back and forth through it at their own pace while the slider keeps its place.
-  const chapterRows=volumeActions().map((item,index)=>({event:item,index:index+1})).filter(entry=>entry.event.chapter===event.chapter);
+  const chapterRows=chapterEventEntries(event.chapter);
   $("#events-count").textContent=`${chapterRows.length} in chapter`;
-  list.innerHTML=chapterRows.map(entry=>eventPanelRow(entry.event,entry.index,{current:entry.index===currentActionIndex,upcoming:entry.index>currentActionIndex})).join("");
+  list.innerHTML=chapterRows.map(entry=>beatPanelRow(entry,{current:entry.index===currentActionIndex,upcoming:entry.index>currentActionIndex})).join("");
   bindEventPanelRows();
   if(!eventScrollHold)requestAnimationFrame(()=>list.querySelector(".current-action")?.scrollIntoView({block:"nearest"}));}
 
@@ -2265,23 +2331,77 @@ function collectTrackRows(){
   }).filter(track=>track.levels.length);
 }
 function slugForTrack(name){const base=String(name||"track").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"track";let id=base,n=2;while(progressionTracks().some(track=>track.id===id))id=`${base}-${n++}`;return id;}
+let pickedOrderIds=new Set(),pickedChapter=null;
+function renderCombineBar(){
+  const bar=$("#order-combine");if(!bar)return;
+  const picked=[...document.querySelectorAll("#order-list .order-pick-box:checked")].map(box=>box.dataset.id);
+  bar.hidden=picked.length<2;
+  $("#order-combine-count").textContent=`${picked.length} actions picked`;
+}
+// Combining writes no event of its own: it records that these actions belong to one moment, sits
+// them together in the running order, and gives the reader one sentence in place of theirs.
+function combinePickedActions(){
+  const ids=[...document.querySelectorAll("#order-list .order-pick-box:checked")].map(box=>box.dataset.id),
+    events=ids.map(id=>data.events.find(event=>event.id===id)).filter(Boolean);
+  if(events.length<2){toast("Pick at least two actions to combine");return;}
+  if(new Set(events.map(event=>event.chapter)).size>1){toast("A moment holds actions from one chapter");return;}
+  data.moments=storyMoments().map(moment=>({...moment,members:(moment.members||[]).filter(id=>!ids.includes(id))})).filter(moment=>moment.members.length>1);
+  data.moments.push({id:`moment-${Date.now().toString(36)}`,message:$("#order-combine-message").value.trim(),members:ids});
+  const chapterIds=orderedEvents().filter(event=>event.chapter===events[0].chapter).map(event=>event.id),merged=[];
+  let placed=false;
+  chapterIds.forEach(id=>{if(!ids.includes(id)){merged.push(id);return;}if(placed)return;placed=true;merged.push(...ids);});
+  pickedOrderIds.clear();$("#order-combine-message").value="";
+  commitEventOrder(merged);
+  toast(`${ids.length} actions now happen as one moment`);
+}
+function orderRowHtml(event,index,total,moment){
+  return `<li class="order-row${event.ghost?" order-row-ghost":""}${moment?" order-row-moment":""}" data-id="${escapeHtml(event.id)}"><label class="order-pick" title="Pick this to combine it with another action"><input type="checkbox" class="order-pick-box" data-id="${escapeHtml(event.id)}" aria-label="Pick this action to combine" /></label><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i>${messageBoxHtml("order-message",event)}</div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===total-1?" disabled":""}>↓</button></div></li>`;
+}
+// The head names a moment and carries the one sentence it is read by; its parts stay listed
+// underneath, because they are still separate actions and are still reordered and edited there.
+function momentHeadHtml(moment,rows){
+  const parts=rows.filter(event=>(moment.members||[]).includes(event.id)).length;
+  return `<li class="order-moment-head" data-moment="${escapeHtml(moment.id)}"><div class="order-moment-title"><b class="event-type event-moment">together</b><span>${parts} action${parts===1?"":"s"} land as one moment</span></div><textarea class="order-moment-message" data-moment="${escapeHtml(moment.id)}" rows="${messageRows(moment.message)}" placeholder="What this moment says — shown in place of the parts" aria-label="What this moment says">\n${escapeHtml(moment.message||"")}</textarea><button type="button" class="button ghost order-moment-split" data-moment="${escapeHtml(moment.id)}">Separate</button><label class="order-moment-open"><input type="checkbox" class="order-moment-show" data-moment="${escapeHtml(moment.id)}"${moment.showParts===false?"":" checked"} /><span>Let the reader open what the moment is made of</span></label></li>`;
+}
 function renderOrderEditor(){
   const list=$("#order-list");if(!list)return;
   const chapters=chaptersWithEvents();
   $("#order-count").textContent=`${chapters.length} chapter${chapters.length===1?"":"s"} with events`;
   if(!chapters.length){list.innerHTML='<li class="order-empty">No events yet.</li>';$("#order-position").textContent="";return;}
   if(orderChapter===null||!chapters.includes(orderChapter))orderChapter=chapters.includes(currentChapter)?currentChapter:chapters[0];
+  if(pickedChapter!==orderChapter){pickedChapter=orderChapter;pickedOrderIds.clear();}
   const field=$("#order-chapter");if(field&&document.activeElement!==field)field.value=orderChapter;
   const rows=orderedEvents().filter(event=>Number(event.chapter)===orderChapter),at=chapters.indexOf(orderChapter);
   $("#order-prev").disabled=at<=0;$("#order-next").disabled=at>=chapters.length-1;
   $("#order-position").textContent=`Chapter ${orderChapter} — ${rows.length} action${rows.length===1?"":"s"} · ${at+1} of ${chapters.length} chapters that have events`;
-  list.innerHTML=rows.map((event,index)=>`<li class="order-row${event.ghost?" order-row-ghost":""}" data-id="${escapeHtml(event.id)}"><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i><input class="order-message" data-id="${escapeHtml(event.id)}" value="${escapeHtml(event.description||"")}" placeholder="${escapeHtml(event.type)} — describe what happens" aria-label="Message for this action" /></div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===rows.length-1?" disabled":""}>↓</button></div></li>`).join("");
+  const html=[];let openMoment=null;
+  rows.forEach((event,index)=>{
+    const moment=momentOf(event.id);
+    if(moment&&moment!==openMoment)html.push(momentHeadHtml(moment,rows));
+    openMoment=moment;
+    html.push(orderRowHtml(event,index,rows.length,moment));
+  });
+  list.innerHTML=html.join("");
   // Every action's message is editable in place, whatever produced it — including the ones the
   // identity form generates, which otherwise had no obvious way in.
-  list.querySelectorAll(".order-message").forEach(field=>{
-    field.onchange=()=>{const record=data.events.find(event=>event.id===field.dataset.id);if(!record)return;record.description=field.value.trim();saveData();renderAll();toast("Message updated");};
-    field.onkeydown=event=>{if(event.key==="Enter"){event.preventDefault();field.blur();}};
+  list.querySelectorAll(".order-message").forEach(bindMessageBox);
+  list.querySelectorAll(".order-moment-message").forEach(field=>{
+    growMessageBox(field);
+    field.oninput=()=>growMessageBox(field);
+    field.onchange=()=>{const moment=storyMoments().find(item=>item.id===field.dataset.moment);if(!moment)return;moment.message=field.value.trim();saveData();renderAll();toast("Moment updated");};
+    field.onkeydown=event=>{if(event.key==="Enter"&&(event.metaKey||event.ctrlKey)){event.preventDefault();field.blur();}};
   });
+  list.querySelectorAll(".order-moment-show").forEach(box=>box.onchange=()=>{
+    const moment=storyMoments().find(item=>item.id===box.dataset.moment);if(!moment)return;
+    if(box.checked)delete moment.showParts;else moment.showParts=false;
+    saveData();renderAll();toast(box.checked?"The parts can be opened again":"Only the moment is shown");
+  });
+  list.querySelectorAll(".order-moment-split").forEach(button=>button.onclick=()=>{
+    data.moments=storyMoments().filter(moment=>moment.id!==button.dataset.moment);
+    saveData();renderAll();toast("Separated — each action takes its own turn again");
+  });
+  list.querySelectorAll(".order-pick-box").forEach(box=>{box.checked=pickedOrderIds.has(box.dataset.id);box.onchange=()=>{if(box.checked)pickedOrderIds.add(box.dataset.id);else pickedOrderIds.delete(box.dataset.id);renderCombineBar();};});
+  renderCombineBar();
   list.querySelectorAll(".order-edit").forEach(button=>button.onclick=()=>loadEventEditor(button.dataset.id));
   list.querySelectorAll(".order-ghost").forEach(button=>button.onclick=()=>{const record=data.events.find(event=>event.id===button.dataset.id);if(!record)return;if(record.ghost)delete record.ghost;else record.ghost=true;saveData();renderAll();toast(record.ghost?"Ghost action — its effects stay, it leaves the list":"Back in the list");});
   const idsInOrder=()=>[...list.querySelectorAll(".order-row")].map(row=>row.dataset.id);
@@ -2565,7 +2685,7 @@ $("#export-data").onclick=()=>{const blob=new Blob([JSON.stringify(data,null,2)]
 $("#publish-data").onclick=publishData;
 $("#import-data").addEventListener("change",async event=>{const file=event.target.files[0];if(!file)return;try{const parsed=JSON.parse(await file.text());if(!Array.isArray(parsed.entities)||!Array.isArray(parsed.events)||!Array.isArray(parsed.volumes)||validateVolumes(parsed.volumes))throw new Error();data=parsed;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;saveData();selectedId=null;locationPovId=null;configure();renderAll();toast("Data imported");}catch{toast("That JSON file is not valid graph data");}event.target.value="";});
 $("#reset-data").onclick=()=>{if(!confirm("Reset this browser's demo data to the original sample?"))return;cancelChapterSequence();expandedChapter=null;data=deepClone(sampleData);saveData();selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=activeVol().from;configure();renderAll();toast("Sample data restored");};
-$("#clear-all-data").onclick=()=>{const answer=prompt("This permanently deletes every character, organization, location, profile, and event from the published graph. Your volume structure will remain. Type DELETE to continue.");if(answer!=="DELETE"){if(answer!==null)toast("Nothing was deleted");return;}cancelChapterSequence();expandedChapter=null;data={schemaVersion:11,novel:data.novel||"Living Story Graph",volumes:deepClone(data.volumes?.length?data.volumes:sampleData.volumes),cultivationLevels:deepClone(CULTIVATION_LEVELS),progressionTracks:deepClone(data.progressionTracks?.length?data.progressionTracks:sampleData.progressionTracks),chapterUrlTemplate:data.chapterUrlTemplate||"",chapterSources:deepClone(data.chapterSources||{}),entities:[],events:[]};eventDrafts=[];selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;physics.pos.clear();physics.vel.clear();lastAutoFitSignature="";saveData();resetEntityEditor();resetEventEditor();renderEventBatch();configure();renderAll();toast("All story data deleted");};
+$("#clear-all-data").onclick=()=>{const answer=prompt("This permanently deletes every character, organization, location, profile, and event from the published graph. Your volume structure will remain. Type DELETE to continue.");if(answer!=="DELETE"){if(answer!==null)toast("Nothing was deleted");return;}cancelChapterSequence();expandedChapter=null;data={schemaVersion:17,moments:[],novel:data.novel||"Living Story Graph",volumes:deepClone(data.volumes?.length?data.volumes:sampleData.volumes),cultivationLevels:deepClone(CULTIVATION_LEVELS),progressionTracks:deepClone(data.progressionTracks?.length?data.progressionTracks:sampleData.progressionTracks),chapterUrlTemplate:data.chapterUrlTemplate||"",chapterSources:deepClone(data.chapterSources||{}),entities:[],events:[]};eventDrafts=[];selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;physics.pos.clear();physics.vel.clear();lastAutoFitSignature="";saveData();resetEntityEditor();resetEventEditor();renderEventBatch();configure();renderAll();toast("All story data deleted");};
 
 function toast(message){const el=$("#toast");el.textContent=message;el.classList.add("show");clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove("show"),2200);}
 
@@ -2635,6 +2755,8 @@ $("#track-form").addEventListener("submit",event=>{
   });
   saveData();configure();renderAll();toast("Progression tracks saved");
 });
+$("#order-combine-save").onclick=combinePickedActions;
+$("#order-combine-clear").onclick=()=>{pickedOrderIds.clear();document.querySelectorAll("#order-list .order-pick-box").forEach(box=>{box.checked=false;});renderCombineBar();};
 $("#order-prev").onclick=()=>stepOrderChapter(-1);
 $("#order-next").onclick=()=>stepOrderChapter(1);
 $("#order-chapter").addEventListener("change",event=>{const wanted=Number(event.target.value);if(!Number.isFinite(wanted))return;const chapters=chaptersWithEvents();if(!chapters.length)return;
