@@ -855,7 +855,7 @@ test("combining is done in the running order, writes no event of its own, and ca
 });
 
 test("the demo ships a moment, and a stored copy is brought up to it", () => {
-  assert.match(source, /schemaVersion: 18,/);
+  assert.match(source, /schemaVersion: 19,/);
   assert.match(source, /\{ id: "m-inn-place", message: "The Midnight Inn Lobby stands in the Midnight Inn Estate, in the city of Stonevale, on the world Verdan\.", members: \["hier-1","hier-2","hier-3"\] \}/);
   assert.match(source, /if\(!Array\.isArray\(migrated\.moments\)\)migrated\.moments=\[\];/);
   assert.match(source, /if\(sample\.members\.every\(id=>\(migrated\.events\|\|\[\]\)\.some\(event=>event\.id===id\)\)\)migrated\.moments\.push\(deepClone\(sample\)\)/, "a reader who deleted one of those actions is left alone");
@@ -994,6 +994,16 @@ test("linked words are written once, in their own editor card, and are searchabl
   assert.match(source, /if\(!Array\.isArray\(migrated\.lexicon\)\)migrated\.lexicon=\[\];/);
 });
 
+test("a conversation is not only people talking — a system speaks to its host, and some places speak", () => {
+  assert.match(source, /const CAN_SPEAK = new Set\(\["character","system","organization","location"\]\);/);
+  assert.match(source, /\{ id: "talk-3", chapter: 5, order: 4, type: "conversation", source: "inn-system", characters: \["inn-system","lex"\]/, "the demo shows a system talking to its host");
+  assert.match(source, /\{ id: "talk-4", chapter: 59, order: 4, type: "conversation", source: "garden-heart", characters: \["garden-heart","lex","inn-system"\]/, "and a place speaking for itself");
+  assert.match(functionBody("renderGraph"), /const seen=new Set\(\),talkers=convo\.talkers\.map\(edgeLocationId\)/, "a place folded into its parent speaks through it rather than dropping out");
+  assert.match(source, /sampleData\.events\.filter\(event=>\["talk-3","talk-4"\]\.includes\(event\.id\)&&!eventIds\.has\(event\.id\)\)/, "a stored copy of the demo picks them up");
+  assert.match(source, /type==="conversation"\?"Who speaks first"/, "and the editor stops asking only for a character");
+  assert.match(source, /charactersLabel\.textContent=type==="conversation"\?"Everyone taking part":"Who it is issued to"/);
+});
+
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
   assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });
@@ -1038,11 +1048,14 @@ test("systems carry a host, a parent system and any number of places, and are dr
 });
 
 test("a conversation is one action covering everyone in it, not a pile of pairwise meetings", () => {
-  assert.match(source, /<option value="conversation">Conversation between characters<\/option>/);
-  assert.match(source, /const talkers=\[\.\.\.new Set\(\[event\.source,\.\.\.\(event\.characters\|\|\[\]\)\]\)\]\.filter\(id=>states\.get\(id\)\?\.kind==="character"\)/);
-  assert.match(source, /talkers\.forEach\(\(a,index\)=>talkers\.slice\(index\+1\)\.forEach\(b=>\{if\(!meetings\.has\(pairKey\(a,b\)\)\)meetings\.set\(pairKey\(a,b\),event\)/, "everyone in it counts as having met everyone else");
+  assert.match(source, /<option value="conversation">Conversation — characters, systems, or a place that speaks<\/option>/);
+  assert.match(source, /const talkers=\[\.\.\.new Set\(\[event\.source,\.\.\.\(event\.characters\|\|\[\]\)\]\)\]\.filter\(id=>CAN_SPEAK\.has\(states\.get\(id\)\?\.kind\)\)/, "a system talking to its host is a conversation, and so is a place that speaks");
+  assert.match(source, /met=talkers\.filter\(id=>states\.get\(id\)\?\.kind==="character"\)/, "only the people in it count as having met");
+  assert.match(source, /met\.forEach\(\(a,index\)=>met\.slice\(index\+1\)\.forEach\(b=>\{if\(!meetings\.has\(pairKey\(a,b\)\)\)meetings\.set\(pairKey\(a,b\),event\)/, "everyone in it counts as having met everyone else");
   const record = functionBody("buildEventRecord");
-  assert.match(record, /if\(talkers\.length<2\)\{toast\("A conversation needs at least two characters"\);return null;\}/);
+  assert.match(record, /if\(talkers\.length<2\)\{toast\("A conversation needs at least two taking part — characters, systems, or a place that speaks"\);return null;\}/);
+  assert.match(record, /const speaking=\[source,\.\.\.named\],mute=speaking\.find\(item=>!CAN_SPEAK\.has\(item\.kind\)\)/, "a quest is a record of terms, not a voice");
+  assert.match(source, /const CAN_SPEAK = new Set\(\["character","system","organization","location"\]\);/);
   assert.match(record, /if\(named\.some\(item=>!item\)\)\{toast\("One of the conversation names does not match an identity"\)/, "a name that matches nothing is refused rather than silently dropped");
   assert.match(functionBody("renderGraph"), /derived\.conversations\.filter\(convo=>currentEvent\?\.id===convo\.id\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)\)/, "and the whole group is drawn joined up");
 });
