@@ -673,7 +673,7 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .order-row.order-dragging .order-grip { cursor: grabbing; }
 .order-index { min-width: 18px; color: #6d7f96; font-size: 10px; font-weight: 700; text-align: right; }
 .order-body { min-width: 0; }
-.order-message { width: 100%; margin-top: 4px; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #c3cedd; font: inherit; font-size: 11px; line-height: 1.4; }
+.order-message { display: block; width: 100%; margin-top: 4px; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #c3cedd; font: inherit; font-size: 11px; line-height: 1.4; resize: none; overflow: hidden; white-space: pre-wrap; }
 .order-message:hover { border-color: #2a3a4e; background: #0b1421; }
 .order-message:focus { border-color: #6de0d5; background: #0b1421; color: #eaf2ff; outline: none; }
 .order-message::placeholder { color: #5b6c82; font-style: italic; }
@@ -729,7 +729,7 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .checkbox-field { display: flex !important; flex-direction: row !important; gap: 8px; align-items: center; }
 .checkbox-field input { width: 15px; height: 15px; }
 .checkbox-field span { color: #9fb0c5; font-size: 11px; }
-.event-message-edit { width: 100%; margin: 5px 0 0; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #d5deeb; font: inherit; font-size: 12px; line-height: 1.42; }
+.event-message-edit { display: block; width: 100%; margin: 5px 0 0; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #d5deeb; font: inherit; font-size: 12px; line-height: 1.42; resize: none; overflow: hidden; white-space: pre-wrap; }
 .event-message-edit:hover { border-color: #2a3a4e; background: #0b1421; }
 .event-message-edit:focus { border-color: #6de0d5; background: #0b1421; color: #eaf2ff; outline: none; }
 .system-grade { fill: #e6d4ff; font-size: 15px; font-weight: 800; letter-spacing: .01em; text-anchor: middle; pointer-events: none; }

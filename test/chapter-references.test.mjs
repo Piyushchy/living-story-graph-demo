@@ -771,9 +771,21 @@ test("renaming or reordering a ladder keeps existing events pointing at the same
 
 test("every action's message can be edited where the actions are listed, including the ones the identity form generates", () => {
   const body = functionBody("renderOrderEditor");
-  assert.match(body, /<input class="order-message" data-id="\$\{escapeHtml\(event\.id\)\}"/);
-  assert.match(body, /field\.onchange=\(\)=>\{const record=data\.events\.find\(event=>event\.id===field\.dataset\.id\);if\(!record\)return;record\.description=field\.value\.trim\(\);saveData\(\)/);
+  assert.match(body, /\$\{messageBoxHtml\("order-message",event\)\}/);
+  assert.match(body, /list\.querySelectorAll\("\.order-message"\)\.forEach\(bindMessageBox\)/);
+  assert.match(functionBody("bindMessageBox"), /field\.onchange=\(\)=>\{const record=data\.events\.find\(event=>event\.id===field\.dataset\.id\);if\(!record\)return;record\.description=field\.value\.trim\(\);saveData\(\)/);
   assert.match(body, /list\.querySelectorAll\("\.order-edit"\)\.forEach\(button=>button\.onclick=\(\)=>loadEventEditor\(button\.dataset\.id\)\)/);
+});
+
+test("an action's message is a text area, so a note can run to several lines", () => {
+  const html = functionBody("messageBoxHtml");
+  assert.match(html, /<textarea class="\$\{className\}"/, "a text area, not a single-line input");
+  assert.match(html, /aria-label="Message for this action">\\n\$\{escapeHtml\(text\)\}<\/textarea>/, "the leading newline the parser eats, so a message starting with a blank line survives");
+  assert.match(functionBody("messageRows"), /Math\.min\(8,Math\.max\(1,String\(text\|\|""\)\.split\(\/\\r\?\\n\/\)\.length\)\)/, "it opens at the height of what is already written");
+  const bind = functionBody("bindMessageBox");
+  assert.match(bind, /field\.oninput=\(\)=>growMessageBox\(field\)/, "and grows as more is typed");
+  assert.match(bind, /if\(event\.key==="Enter"&&\(event\.metaKey\|\|event\.ctrlKey\)\)\{event\.preventDefault\(\);field\.blur\(\);\}/, "plain Enter makes a new line; only Ctrl/Cmd+Enter finishes");
+  assert.doesNotMatch(bind, /if\(event\.key==="Enter"\)\{event\.preventDefault/, "Enter no longer throws the writer out of the field");
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
@@ -927,9 +939,10 @@ test("a system is selected on the first click and opened on the second, the same
 
 test("an action's message is editable where it is read in the editor, and stays plain prose on the public graph", () => {
   assert.match(functionBody("canEditEvents"), /return isUploadRoute&&adminAuthenticated;/);
-  assert.match(functionBody("eventPanelRow"), /\$\{canEditEvents\(\)\?`<input class="event-message-edit"/);
-  assert.match(functionBody("bindEventPanelRows"), /record\.description=field\.value\.trim\(\);saveData\(\)/);
-  assert.match(functionBody("bindEventPanelRows"), /if\(event\.target\.closest\("button,a,input"\)\)return;/, "so typing in it does not also jump the graph");
+  assert.match(functionBody("eventPanelRow"), /\$\{canEditEvents\(\)\?messageBoxHtml\("event-message-edit",event\)/);
+  assert.match(functionBody("bindEventPanelRows"), /bindMessageBox\(field\);/);
+  assert.match(functionBody("bindMessageBox"), /record\.description=field\.value\.trim\(\);saveData\(\)/);
+  assert.match(functionBody("bindEventPanelRows"), /if\(event\.target\.closest\("button,a,input,textarea"\)\)return;/, "so typing in it does not also jump the graph");
 });
 
 test("the demo carries a merged system, a destroyed one, and graded systems, and a stored copy picks them up even if its novel was renamed", () => {
