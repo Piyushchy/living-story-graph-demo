@@ -1122,6 +1122,22 @@ test("a message that names one person while the action is about another is the c
   assert.match(functionBody("orderRowHtml"), /<b class="order-mismatch"[^>]*>message names someone else<\/b>/);
 });
 
+test("a ghost late in a chapter has not happened yet while the reader is earlier in that chapter", () => {
+  const ctx = { currentActionIndex: 0, activeVol: () => ({ from: 1, to: 40 }),
+    data: { events: [
+      { id: "a", chapter: 4, order: 4, type: "residency", source: "gerald", location: "inn", action: "begin" },
+      { id: "b", chapter: 4, order: 7, type: "residency", source: "velma", location: "inn", action: "begin" },
+      { id: "ghost", chapter: 4, order: 24, type: "residency", source: "velma", location: "inn", action: "end", ghost: true },
+      { id: "c", chapter: 4, order: 26, type: "residency", source: "velma", location: "lobby", action: "begin" }
+    ] } };
+  vm.createContext(ctx);
+  vm.runInContext([functionBody("orderedEvents"), functionBody("volumeActions"), functionBody("ghostActions")].join("\n"), ctx);
+  const ghostsAt = index => { ctx.currentActionIndex = index; return vm.runInContext("ghostActions().map(event=>event.id).join(',')", ctx); };
+  assert.equal(ghostsAt(0), "", "nothing has happened yet");
+  assert.equal(ghostsAt(2), "", "the reader is at Velma taking up residence — the ghost that ends it is twenty actions away");
+  assert.equal(ghostsAt(3), "ghost", "and it comes into force when the reader reaches its place in the order");
+});
+
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
   assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });
@@ -1213,7 +1229,7 @@ test("a conversation can be found again after the slider moves on — selecting 
 
 test("a ghost action changes the world without taking a turn: no stop on the slider, not in the list, but everything it does is in force — and it replays in story order, not after everything else", () => {
   assert.match(functionBody("volumeActions"), /&&!event\.ghost\);/, "never a stop");
-  assert.match(functionBody("ghostActions"), /event\.ghost&&event\.chapter>=volume\.from&&event\.chapter<=volume\.to&&event\.chapter<=chapter/, "in force from its chapter onward");
+  assert.match(functionBody("ghostActions"), /event\.ghost&&index<=cutoff&&event\.chapter>=volume\.from&&event\.chapter<=volume\.to/, "in force from its own place in the running order — not from the top of its chapter, which would have it undoing things the reader has not reached yet");
   assert.match(functionBody("revealedVolumeActions"), /const chosen=new Set\(\[\.\.\.volumeActions\(\)\.slice\(0,currentActionIndex\),\.\.\.ghostActions\(\)\]\.map\(event=>event\.id\)\);\s*return orderedEvents\(\)\.filter\(event=>chosen\.has\(event\.id\)\);/);
   assert.match(functionBody("appliedEvents"), /const volume=activeVol\(\),selected=new Set\(revealedVolumeActions\(\)\.map\(event=>event\.id\)\)/, "so derivation sees it too");
   assert.match(source, /if\(form\.get\("ghost"\)\)record\.ghost=true;/);

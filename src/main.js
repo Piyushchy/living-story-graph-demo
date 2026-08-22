@@ -879,7 +879,16 @@ function nextEventOrder(chapter,drafts=[]){const sameChapter=[...data.events,...
 // A ghost action still changes the world but never takes a turn: it is not a stop on the slider
 // and it is not listed, yet everything it does is in force from its chapter onward.
 function volumeActions(volume=activeVol()){return orderedEvents().filter(event=>event.chapter>=volume.from&&event.chapter<=volume.to&&!event.ghost);}
-function ghostActions(volume=activeVol(),chapter=currentChapter){return orderedEvents().filter(event=>event.ghost&&event.chapter>=volume.from&&event.chapter<=volume.to&&event.chapter<=chapter);}
+// A ghost takes no turn on the slider, but it still happens somewhere in the running order and it
+// comes into force there — not from the top of its chapter. A ghost late in chapter 4 that ends a
+// residence must not already have undone the residence the reader watches begin earlier in
+// chapter 4: everything in a chapter would otherwise arrive having already happened.
+function ghostActions(volume=activeVol()){
+  const ordered=orderedEvents(),reached=volumeActions(volume).slice(0,currentActionIndex).at(-1);
+  if(!reached)return [];
+  const cutoff=ordered.findIndex(event=>event.id===reached.id);
+  return ordered.filter((event,index)=>event.ghost&&index<=cutoff&&event.chapter>=volume.from&&event.chapter<=volume.to);
+}
 // Ghost actions have to be folded back into story order, not appended: derivation is
 // order-sensitive, so a ghost issued in chapter 26 must not be replayed after a chapter 34
 // action that settles the same thing.
