@@ -21,8 +21,11 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const CULTIVATION_LEVELS = ["Mortal","Body Tempering","Qi Training","Foundation Establishment","Golden Core","Nascent Soul","Earth Immortal","Heaven Immortal","Celestial Immortal","Demi Dao Lord","Dao Lord","Above Dao Lord"];
 
 const sampleData = {
-  schemaVersion: 17,
+  schemaVersion: 18,
   novel: "The Innkeeper — graph demonstration",
+  // Words the story gives its own meaning to. Wherever one is written, it becomes a link out —
+  // written once here rather than marked up every time it is mentioned.
+  lexicon: [],
   // Combining actions changes nothing about what happens — it only says that these belong to
   // one moment, so they land together and the reader is given one sentence for them.
   moments: [
@@ -266,7 +269,7 @@ app.innerHTML = `
       <section id="graph-view" class="view active">
         <div class="graph-page">
           <div class="controls">
-            <label class="field"><span>Find character, organization, location, or alias</span><input id="search" list="entity-options" placeholder="Start typing…"><datalist id="entity-options"></datalist></label>
+            <label class="field search-field"><span>Search — a name, or <code>from:lex event:cultivation</code></span><input id="search" placeholder="Try from:, event:, at:, quest:, chapter:" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" aria-autocomplete="list"><datalist id="entity-options" hidden></datalist><div class="search-results" id="search-results" role="listbox" hidden></div></label>
             <label class="field"><span>Volume</span><select id="volume"></select></label>
             <div class="field timeline-field"><span class="chapter-label"><span>Chapter <strong id="chapter-value">—</strong></span><span id="event-position"></span><button type="button" id="collapse-chapter-events" class="collapse-chapter-events" hidden>Collapse events ×</button></span><div class="range-row"><button class="step" id="previous" aria-label="Previous stop">−</button><div class="main-range-wrap"><input id="timeline" type="range"><div id="timeline-marks" class="main-timeline-marks"></div></div><button class="step" id="next" aria-label="Next stop">+</button></div></div>
           </div>
@@ -315,6 +318,12 @@ app.innerHTML = `
 2 | https://www.webnovel.com/book/.../chapter-title_789012"></textarea></label>
             <label class="field"><span>Fallback URL template <small>(only for sites where chapter URLs are just a number — optional)</small></span><input id="chapter-url-template" name="template" type="text" placeholder="https://your-site.com/chapter-{n}"></label>
             <p id="chapter-links-error" class="volume-error" role="alert"></p>
+          </form>
+          <form id="lexicon-form" class="admin-card">
+            <div class="volume-editor-heading"><div><span class="editor-kicker">Linked words</span><h2>Words that carry a link</h2><p>Words the story gives its own meaning to. Write one here and every mention of it — in an action's message, a profile, a quest, anywhere — becomes a link out, without marking it up each time. They are searchable too: type one into the graph's search to jump straight to its page.</p></div><button class="button primary" type="submit">Save linked words</button></div>
+            <label class="field"><span>One per line: the word, its link, and a note <small>(the note is optional and shows on hover)</small></span><textarea id="lexicon-text" rows="5" placeholder="Host Attire | https://the-innkeeper.fandom.com/wiki/Host_Attire | What Lex was given in the starter pack&#10;Protos Energy | https://the-innkeeper.fandom.com/wiki/Protos_Energy"></textarea></label>
+            <p id="lexicon-error" class="volume-error" role="alert"></p>
+            <p class="order-hint" id="lexicon-count"></p>
           </form>
           <form id="chapter-quick-add-form" class="admin-card">
             <div class="volume-editor-heading"><div><span class="editor-kicker">Quick add</span><h2>Add or update one chapter link</h2><p>Faster than scrolling the list above for a single chapter. Typing an existing chapter number fills in its current link so you can review or replace it.</p></div><button class="button primary" type="submit">Save</button></div>
@@ -410,6 +419,7 @@ const graph = $("#graph");
 const timeline = $("#timeline");
 const volumeSelect = $("#volume");
 const searchInput = $("#search");
+let searchPage = 8;
 
 function parseIdentityName(value){const raw=String(value||"").trim(),match=raw.match(/^\[\[([^\]|]+?)\|([^\]]+?)\]\]$/);if(!match)return {name:raw,wikiUrl:""};const wikiUrl=safeExternalUrl(match[2].trim());return wikiUrl?{name:match[1].trim(),wikiUrl}:{name:match[1].trim(),wikiUrl:""};}
 function normalizeIdentityWikiNames(stored){(stored.entities||[]).forEach(item=>{const parsed=parseIdentityName(item.name);if(parsed.name&&parsed.name!==item.name){item.name=parsed.name;if(parsed.wikiUrl)item.profile={...(item.profile||{}),wikiUrl:item.profile?.wikiUrl||parsed.wikiUrl};}});return stored;}
@@ -608,6 +618,10 @@ function loadLocalData() {
       });
       migrated.schemaVersion=17;
     }
+    if((migrated.schemaVersion||1)<18){
+      if(!Array.isArray(migrated.lexicon))migrated.lexicon=[];
+      migrated.schemaVersion=18;
+    }
     localStorage.setItem(STORAGE_KEY,JSON.stringify(migrated));return migrated;
   }
   catch (error) { console.error("Story data could not be brought up to date; keeping it as it was.", error); return stored || deepClone(sampleData); }
@@ -642,12 +656,48 @@ function safeExternalUrl(value){
   try { const url=new URL(String(value||"").trim()); return ["http:","https:"].includes(url.protocol)?url.href:""; }
   catch { return ""; }
 }
+// A story gives its own words their own meaning. Written once here, each of them becomes a link
+// wherever it is mentioned, so the prose never has to carry the mark-up.
+function storyLexicon(){return Array.isArray(data.lexicon)?data.lexicon:[];}
+function lexiconFromText(raw){return listFromText(raw).map(line=>{const [term="",url="",note=""]=line.split(/\s+\|\s+/,3);return {term:term.trim(),url:safeExternalUrl(url),...(note.trim()?{note:note.trim()}:{})};}).filter(entry=>entry.term&&entry.url);}
+function lexiconToText(){return storyLexicon().map(entry=>[entry.term,entry.url,entry.note].filter(Boolean).join(" | ")).join("\n");}
+function badLexiconLine(raw){return listFromText(raw).find(line=>{const [term="",url=""]=line.split(/\s+\|\s+/,3);return !(term.trim()&&safeExternalUrl(url));});}
+function lexiconTerms(){
+  return storyLexicon().map(entry=>({term:String(entry.term||"").trim(),url:safeExternalUrl(entry.url),note:String(entry.note||"").trim()}))
+    .filter(entry=>entry.term&&entry.url).sort((a,b)=>b.term.length-a.term.length);
+}
+let lexiconPattern={version:-1,regex:null,byWord:new Map()};
+function lexiconMatcher(){
+  if(lexiconPattern.version===dataVersion)return lexiconPattern;
+  const terms=lexiconTerms(),byWord=new Map();
+  terms.forEach(entry=>{const key=escapeHtml(entry.term).toLowerCase();if(!byWord.has(key))byWord.set(key,entry);});
+  // The prose is already escaped when this runs, so the terms are matched in the same shape, and
+  // a term is only a term on its own — "inn" never lights up inside "inner".
+  const regex=byWord.size?new RegExp(`(?<![\\w-])(${[...byWord.keys()].map(key=>key.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")})(?![\\w-])`,"gi"):null;
+  lexiconPattern={version:dataVersion,regex,byWord};
+  return lexiconPattern;
+}
+// Only the first mention in a line is linked: a paragraph peppered with the same link reads worse
+// than the sentence it was meant to help.
+function lexiconLink(html){
+  const {regex,byWord}=lexiconMatcher();
+  if(!regex||!html)return html;
+  const used=new Set();
+  regex.lastIndex=0;
+  return html.replace(regex,(match)=>{
+    const entry=byWord.get(match.toLowerCase());
+    if(!entry||used.has(entry.term))return match;
+    used.add(entry.term);
+    return `<a class="lexicon-link" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(entry.note||`Open ${entry.term}`)}">${match}<span aria-hidden="true">↗</span></a>`;
+  });
+}
+function proseText(value){return lexiconLink(escapeHtml(value));}
 function richInline(value){
   const text=String(value??""),pattern=/\[\[cite:(\d+)\]\]|\[\[\/cite\]\]|\[\[([^\]|[]+?)\|([^\]|[]+?)(?:\|([^\]|[]+?))?\]\]|\[\[(\d+)\]\]/g;
   let html="",lastIndex=0,match,openChapter=null;
   const closeZone=()=>{html+=chapterCitation({chapter:openChapter})+"</span>";openChapter=null;};
   while((match=pattern.exec(text))){
-    html+=escapeHtml(text.slice(lastIndex,match.index));
+    html+=proseText(text.slice(lastIndex,match.index));
     if(match[1]!==undefined){
       if(openChapter!==null)closeZone();
       const chapter=validChapter(match[1]);
@@ -684,7 +734,7 @@ function richInline(value){
     }
     lastIndex=pattern.lastIndex;
   }
-  html+=escapeHtml(text.slice(lastIndex));
+  html+=proseText(text.slice(lastIndex));
   if(openChapter!==null)closeZone();
   return html;
 }
@@ -791,6 +841,191 @@ function resolveEntity(text) {
   return aliasEvent ? entity(aliasEvent.source) : null;
 }
 function stateName(derived,id){return derived?.states?.get(id)?.displayName||entity(id)?.name||id;}
+// A search that reads the way the story is talked about: "from:lex event:cultivation", or
+// "from:Midnight Inn System quest:rewards". A field's value runs until the next field, so a name
+// with spaces in it needs no quoting, and anything the field does not account for is kept as
+// ordinary words to look for.
+const SEARCH_FIELDS={from:"from",by:"from",source:"from",issuer:"from",with:"with",to:"with",target:"with",at:"at",in:"at",place:"at",where:"at",chapter:"chapter",ch:"chapter",chap:"chapter",event:"type",type:"type",action:"type",kind:"type",quest:"quest",text:"text",says:"text",word:"text",is:"is",about:"about",any:"about"};
+const SEARCH_FIELD_HELP=[["from:","who it comes from — a character, or the system that issued the quest"],["with:","who else it touches"],["at:","where it happens"],["event:","the kind of change — cultivation, movement, quest…"],["quest:","a quest by name, or one of its terms: rewards, rank, achievements"],["chapter:","one chapter, a range like 12-40, or >60"],["is:","ghost, moment, quest"]];
+function searchWords(text){return String(text||"").toLowerCase().split(/[^\p{L}\p{N}'’-]+/u).filter(word=>word.length>1);}
+function parseSearchQuery(raw){
+  const text=String(raw||"").replace(/\s+/g," ").trim();
+  if(!text)return {filters:[],words:[]};
+  const marks=[...text.matchAll(/(?:^|\s)([A-Za-z]{2,8})\s*:\s*/g)].filter(mark=>SEARCH_FIELDS[mark[1].toLowerCase()]);
+  if(!marks.length)return {filters:[],words:searchWords(text)};
+  const filters=[],words=searchWords(text.slice(0,marks[0].index));
+  marks.forEach((mark,index)=>{
+    const start=mark.index+mark[0].length,end=index+1<marks.length?marks[index+1].index:text.length,
+      value=text.slice(start,end).trim().replace(/^"|"$/g,"").trim();
+    if(value)filters.push({field:SEARCH_FIELDS[mark[1].toLowerCase()],value});
+  });
+  return {filters,words};
+}
+// One letter out is still the word that was meant: "cultivatoin" finds cultivation.
+function withinOneEdit(a,b){
+  if(a===b)return true;
+  if(Math.abs(a.length-b.length)>1||Math.max(a.length,b.length)<4)return false;
+  // Two letters the wrong way round is one slip of the fingers: "cultivatoin" is cultivation.
+  if(a.length===b.length)for(let at=0;at<a.length-1;at++)
+    if(a[at]!==b[at]&&a[at]===b[at+1]&&a[at+1]===b[at]&&a.slice(at+2)===b.slice(at+2)&&a.slice(0,at)===b.slice(0,at))return true;
+  const [short,long]=a.length<=b.length?[a,b]:[b,a];
+  let i=0,j=0,slack=1;
+  while(i<short.length&&j<long.length){
+    if(short[i]===long[j]){i++;j++;continue;}
+    if(!slack--)return false;
+    if(short.length===long.length)i++;
+    j++;
+  }
+  return true;
+}
+let searchCache={version:-1,names:null,values:new Map(),haystacks:new Map()};
+function searchStore(){if(searchCache.version!==dataVersion)searchCache={version:dataVersion,names:null,values:new Map(),haystacks:new Map()};return searchCache;}
+function searchNameRows(){
+  const store=searchStore();if(store.names)return store.names;
+  const rows=data.entities.map(item=>({id:item.id,kind:item.kind,names:[item.name]}));
+  const byId=new Map(rows.map(row=>[row.id,row]));
+  data.events.filter(event=>["alias","display_name"].includes(event.type)&&event.value).forEach(event=>byId.get(event.source)?.names.push(String(event.value)));
+  store.names=rows;return rows;
+}
+// A value is read for the longest name inside it, and whatever is left over becomes words to look
+// for — so "from:Midnight Inn System : Quest/Rewards" finds the system and still hunts for both.
+function readEntityValue(value){
+  const store=searchStore(),cached=store.values.get(value);
+  if(cached)return cached;
+  const lower=String(value||"").toLowerCase();
+  let best=null,bestName="";
+  searchNameRows().forEach(row=>row.names.forEach(name=>{
+    const candidate=String(name||"").trim().toLowerCase();
+    if(candidate.length<2||!lower.includes(candidate)||candidate.length<=bestName.length)return;
+    best=row;bestName=candidate;
+  }));
+  const read=best?{id:best.id,words:searchWords(lower.replace(bestName,"　"))}:{id:null,words:searchWords(value)};
+  store.values.set(value,read);return read;
+}
+function matchesTypeValue(value,type){
+  const readable=String(type).replaceAll("_"," "),parts=readable.split(" ");
+  return searchWords(value).some(token=>readable.includes(token)||parts.some(part=>part.startsWith(token)||withinOneEdit(token,part)));
+}
+function matchesChapterValue(value,chapter){
+  const text=String(value).trim(),range=text.match(/^(\d+)\s*(?:-|–|to)\s*(\d+)$/),over=text.match(/^([<>])\s*(\d+)$/);
+  if(range)return chapter>=Number(range[1])&&chapter<=Number(range[2]);
+  if(over)return over[1]===">"?chapter>Number(over[2]):chapter<Number(over[2]);
+  const exact=validChapter(text);
+  return exact?chapter===exact:false;
+}
+// A quest's own terms are searchable by the name of the term as well as by what it says, so
+// "quest:rewards" finds the quests that carry rewards at all.
+function questSearchText(id){
+  const quest=entity(id);
+  if(!quest||quest.kind!=="quest")return "";
+  return [quest.name,quest.issuer?entity(quest.issuer)?.name:"",quest.description,quest.rewards?`rewards ${quest.rewards}`:"",quest.achievements?`achievements ${quest.achievements}`:"",quest.failure?`failure punishment ${quest.failure}`:"",quest.timeLimit?`time limit ${quest.timeLimit}`:"",quest.rewardRank?`rank ${quest.rewardRank}`:"",quest.questBadge||""].filter(Boolean).join(" ").toLowerCase();
+}
+function actionHaystack(event){
+  const store=searchStore(),cached=store.haystacks.get(event.id);
+  if(cached!==undefined)return cached;
+  const carried=[event.rewardRank?`reward rank ${event.rewardRank}`:"",String(event.type)==="quest_end"&&event.value?`rewards reward ${event.value}`:"",event.performance?`performance ${event.performance}`:"",event.grade?`grade ${event.grade}`:"",event.authority?`authority ${event.authority}`:""].filter(Boolean).join(" ");
+  const text=[event.description,String(event.type).replaceAll("_"," "),carried,entity(event.source)?.name,entity(event.target)?.name,entity(event.location)?.name,event.value,event.noteKind,(event.characters||[]).map(id=>entity(id)?.name).join(" "),questSearchText(event.source),momentOf(event.id)?.message].filter(Boolean).join(" ").toLowerCase();
+  store.haystacks.set(event.id,text);return text;
+}
+function actionMatchesFilter(event,filter){
+  if(filter.field==="chapter")return matchesChapterValue(filter.value,event.chapter);
+  if(filter.field==="type")return matchesTypeValue(filter.value,event.type);
+  if(filter.field==="text")return searchWords(filter.value).every(word=>actionHaystack(event).includes(word));
+  if(filter.field==="is"){
+    return searchWords(filter.value).every(flag=>
+      flag==="ghost"?Boolean(event.ghost)
+      :flag==="moment"||flag==="combined"||flag==="together"?Boolean(momentOf(event.id))
+      :flag==="quest"?String(event.type).startsWith("quest_")
+      :actionHaystack(event).includes(flag));
+  }
+  if(filter.field==="quest"){
+    if(!String(event.type).startsWith("quest_"))return false;
+    const text=questSearchText(event.source);
+    return searchWords(filter.value).every(word=>text.includes(word)||actionHaystack(event).includes(word));
+  }
+  const read=readEntityValue(filter.value),haystack=actionHaystack(event);
+  if(read.id){
+    const belongs=filter.field==="from"?event.source===read.id||(String(event.type).startsWith("quest_")&&entity(event.source)?.issuer===read.id)
+      :filter.field==="with"?event.target===read.id||(event.characters||[]).includes(read.id)
+      :filter.field==="at"?event.location===read.id
+      :eventInvolves(event,read.id);
+    if(!belongs)return false;
+  }else if(!searchWords(filter.value).every(word=>haystack.includes(word)))return false;
+  return read.words.every(word=>haystack.includes(word));
+}
+function searchActions(query){
+  const beats=volumeBeats(),beatOf=new Map();
+  beats.forEach(beat=>beat.events.forEach(event=>beatOf.set(event.id,beat)));
+  const found=volumeActions().map((event,index)=>({event,index:index+1}))
+    .filter(entry=>query.filters.every(filter=>actionMatchesFilter(entry.event,filter)));
+  const narrowed=query.words.length?found.filter(entry=>query.words.every(word=>actionHaystack(entry.event).includes(word))):found;
+  // Words that nothing carries are reported rather than obeyed: a query with a filter in it
+  // never falls through to nothing when the filter itself found something.
+  const loose=Boolean(query.words.length&&query.filters.length&&!narrowed.length&&found.length);
+  return {entries:(loose?found:narrowed).map(entry=>({...entry,beat:beatOf.get(entry.event.id)})),loose};
+}
+function searchIdentities(query){
+  if(query.filters.some(filter=>filter.field!=="from"&&filter.field!=="with"&&filter.field!=="at"&&filter.field!=="about"))return [];
+  const wanted=[...query.words,...query.filters.flatMap(filter=>searchWords(filter.value))];
+  if(!wanted.length)return [];
+  const inVolume=new Set(volumeActions().flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean)));
+  return searchNameRows().filter(row=>row.kind!=="quest"&&inVolume.has(row.id)&&row.names.some(name=>{
+    const lower=String(name).toLowerCase();
+    return wanted.every(word=>lower.includes(word));
+  })).slice(0,5);
+}
+function searchTerms(query){
+  const wanted=[...query.words,...query.filters.flatMap(filter=>searchWords(filter.value))];
+  if(!wanted.length)return [];
+  return lexiconTerms().filter(entry=>{const lower=`${entry.term} ${entry.note}`.toLowerCase();return wanted.some(word=>lower.includes(word));}).slice(0,5);
+}
+function jumpToAction(index){
+  cancelChapterSequence();expandedChapter=null;
+  currentActionIndex=snapToBeat(index);
+  currentChapter=currentActionEvent()?.chapter||activeVol().from;
+  renderAll();
+}
+const SEARCH_PAGE=8;
+function renderSearchResults(){
+  const panel=$("#search-results");if(!panel)return;
+  const raw=searchInput.value,query=parseSearchQuery(raw);
+  if(!raw.trim()){
+    panel.innerHTML=`<p class="search-help-title">Search this volume</p><ul class="search-help">${SEARCH_FIELD_HELP.map(([field,note])=>`<li><code>${field}</code><span>${escapeHtml(note)}</span></li>`).join("")}</ul>`;
+    panel.hidden=document.activeElement!==searchInput;searchInput.setAttribute("aria-expanded",String(!panel.hidden));return;
+  }
+  const {entries,loose}=searchActions(query),identities=searchIdentities(query),terms=searchTerms(query),rows=[];
+  if(terms.length)rows.push(`<li class="search-group">Linked words</li>`,...terms.map(entry=>`<li><a class="search-row search-term" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer"><span class="search-meta">opens the wiki</span><strong>${escapeHtml(entry.term)}</strong>${entry.note?`<span class="search-note">${escapeHtml(entry.note)}</span>`:""}</a></li>`));
+  if(identities.length)rows.push(`<li class="search-group">On the graph</li>`,...identities.map(row=>{const shown=revealedVolumeActions().some(event=>eventInvolves(event,row.id));return `<li><button type="button" class="search-row${shown?"":" search-ahead"}" data-search-entity="${escapeHtml(row.id)}"><span class="search-meta">${escapeHtml(row.kind)}${shown?"":" · not reached yet"}</span><strong>${escapeHtml(stateName(currentDerived(),row.id)||row.names[0])}</strong></button></li>`;}));
+  if(entries.length){
+    rows.push(`<li class="search-group">Actions · ${entries.length}${loose?" · nothing also mentions every word":""}</li>`);
+    entries.slice(0,searchPage).forEach(entry=>{
+      const ahead=currentActionIndex>0&&entry.index>currentActionIndex,combined=entry.beat?.moment&&entry.beat.events.length>1;
+      rows.push(`<li><button type="button" class="search-row${ahead?" search-ahead":""}" data-search-action="${entry.beat?.index||entry.index}"><span class="search-meta">Chapter ${entry.event.chapter} · ${escapeHtml(String(entry.event.type).replaceAll("_"," "))}${combined?" · in a moment":""}${ahead?" · ahead":""}</span><span class="search-text">${escapeHtml(entry.event.description||entry.event.type)}</span></button></li>`);
+    });
+    if(entries.length>searchPage)rows.push(`<li><button type="button" class="search-row search-more" id="search-more">Show ${Math.min(entries.length-searchPage,SEARCH_PAGE)} more · ${entries.length-searchPage} left</button></li>`);
+  }
+  panel.innerHTML=rows.length?`<ul class="search-list">${rows.join("")}</ul>`:`<p class="search-empty">Nothing in ${escapeHtml(activeVol().name)} matches that.</p>`;
+  panel.hidden=false;searchInput.setAttribute("aria-expanded","true");
+  panel.querySelectorAll("[data-search-action]").forEach(button=>button.onclick=()=>{closeSearch();jumpToAction(Number(button.dataset.searchAction));});
+  panel.querySelectorAll("[data-search-entity]").forEach(button=>button.onclick=()=>{
+    closeSearch();cancelChapterSequence();expandedChapter=null;selectedId=button.dataset.searchEntity;locationPovId=null;setMobilePanel("info");
+    // Someone already on the graph is simply picked out; someone the reader has not reached yet
+    // is worth going to, so the slider moves forward to where they first turn up.
+    const shown=revealedVolumeActions().some(event=>eventInvolves(event,selectedId)),
+      index=volumeActions().findIndex(event=>eventInvolves(event,selectedId));
+    if(!shown&&index>=0)currentActionIndex=snapToBeat(index+1);
+    currentChapter=currentActionEvent()?.chapter||activeVol().from;
+    renderAll();
+  });
+  const more=$("#search-more");if(more)more.onclick=()=>{searchPage+=SEARCH_PAGE;renderSearchResults();};
+}
+function closeSearch(){const panel=$("#search-results");if(!panel)return;panel.hidden=true;searchInput.setAttribute("aria-expanded","false");searchInput.blur();}
+function moveSearchCursor(step){
+  const rows=[...document.querySelectorAll("#search-results .search-row")];
+  if(!rows.length)return;
+  const at=rows.indexOf(document.activeElement);
+  (rows[Math.max(0,Math.min(rows.length-1,at<0?(step>0?0:rows.length-1):at+step))]).focus();
+}
 function resolvePublicEntity(text){const q=text.trim().toLowerCase();if(!q)return null;const d=currentDerived(),knownEvents=appliedEvents(),knownIds=new Set(knownEvents.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),direct=data.entities.find(item=>knownIds.has(item.id)&&(stateName(d,item.id).toLowerCase()===q||item.name.toLowerCase()===q||item.id===q));if(direct)return direct;const known=knownEvents.find(event=>["alias","display_name"].includes(event.type)&&String(event.value||"").toLowerCase()===q);return known?entity(known.source):null;}
 function relationHistoryFor(a,b,chapter) { return data.events.filter(e => e.type === "relationship" && e.chapter <= chapter && pairKey(e.source,e.target) === pairKey(a,b)).sort((x,y)=>x.chapter-y.chapter); }
 function meetingFor(a,b,chapter) { return data.events.find(e => e.type === "meeting" && e.chapter <= chapter && pairKey(e.source,e.target) === pairKey(a,b)); }
@@ -2430,10 +2665,13 @@ function renderOrderEditor(){
     });
   });
 }
+let renderedLexicon=null;
 function renderAdmin(){
   renderVolumeEditor();
   const templateField=$("#chapter-url-template");if(templateField&&document.activeElement!==templateField)templateField.value=data.chapterUrlTemplate||"";
   const sourcesField=$("#chapter-sources-text");if(sourcesField&&document.activeElement!==sourcesField&&renderedChapterSources!==data.chapterSources){sourcesField.value=chapterSourcesToText(data.chapterSources);renderedChapterSources=data.chapterSources;}
+  const lexiconField=$("#lexicon-text");if(lexiconField&&document.activeElement!==lexiconField&&renderedLexicon!==data.lexicon){lexiconField.value=lexiconToText();renderedLexicon=data.lexicon;}
+  const lexiconCount=$("#lexicon-count");if(lexiconCount)lexiconCount.textContent=storyLexicon().length?`${storyLexicon().length} word${storyLexicon().length===1?"":"s"} link out wherever they are written.`:"No linked words yet.";
   const missingBox=$("#missing-chapter-links");if(missingBox){const missing=referencedChaptersWithoutLinks();missingBox.hidden=!missing.length;if(missing.length)missingBox.querySelector("span").textContent=`Chapter${missing.length===1?"":"s"} ${missing.join(", ")} ${missing.length===1?"is":"are"} referenced somewhere but ${missing.length===1?"has":"have"} no saved link yet.`;}
   const sorted=[...data.events].sort((a,b)=>a.chapter-b.chapter||(a.order||0)-(b.order||0)||String(a.type).localeCompare(String(b.type)));$("#data-count").textContent=`${data.events.length} events`;$("#entity-count").textContent=`${data.entities.length} identities`;$("#entity-table").innerHTML=[...data.entities].sort((a,b)=>a.name.localeCompare(b.name)).map(item=>{const connected=data.events.filter(event=>eventInvolves(event,item.id)).length,intro=item.kind==="character"?(firstMention(item)||firstAppearance(item)||item.intro):item.intro;return `<tr class="${connected?"":"orphan-identity"}"><td><strong>${escapeHtml(item.name)}</strong>${connected?"":'<small class="orphan-warning">Not yet visible on graph</small>'}</td><td><span class="chip">${escapeHtml(item.kind)}</span></td><td>${intro?`Chapter ${intro}`:"—"}</td><td>${connected||'<span class="orphan-warning">0 — repair needed</span>'}</td><td><div class="table-actions"><button class="button ghost edit-identity" data-id="${escapeHtml(item.id)}">Edit identity</button><button class="button ghost delete-identity-row" data-id="${escapeHtml(item.id)}">Delete</button></div></td></tr>`;}).join("");$("#event-table").innerHTML=sorted.map(e=>{const creationManaged=isCreationManagedEvent(e);return `<tr data-event-id="${escapeHtml(e.id)}" data-event-owner="${creationManaged?"identity":"chapter"}"><td>${e.chapter}</td><td><span class="chip">${escapeHtml(e.type)}</span>${creationManaged?'<small class="table-location">creation record</small>':""}</td><td>${escapeHtml([entity(e.source)?.name,e.target?entity(e.target)?.name:null].filter(Boolean).join(" → "))}${e.location?`<small class="table-location">at ${escapeHtml(entity(e.location)?.name||e.location)}</small>`:""}</td><td>${escapeHtml(e.description||"")}</td><td><div class="table-actions"><button class="button ghost edit-event" data-id="${escapeHtml(e.id)}">${creationManaged?"Edit creation":"Edit event"}</button><button class="button ghost delete-event" data-id="${escapeHtml(e.id)}">Delete</button></div></td></tr>`;}).join("");
   renderOrderEditor();renderTrackEditor();
@@ -2619,7 +2857,15 @@ volumeSelect.addEventListener("change",()=>{cancelChapterSequence();expandedChap
 timeline.addEventListener("input",applyTimeline);timeline.addEventListener("wheel",event=>{event.preventDefault();wheelDelta+=Math.abs(event.deltaY)>=Math.abs(event.deltaX)?event.deltaY:event.deltaX;if(Math.abs(wheelDelta)>=24){stepTimeline(wheelDelta>0?1:-1);wheelDelta=0;}},{passive:false});
 $("#collapse-chapter-events").onclick=collapseChapterEvents;
 $("#previous").onclick=()=>stepTimeline(-1);$("#next").onclick=()=>stepTimeline(1);
-searchInput.addEventListener("change",()=>{const match=resolvePublicEntity(searchInput.value);if(match){cancelChapterSequence();expandedChapter=null;selectedId=match.id;locationPovId=null;setMobilePanel("info");const index=revealedVolumeActions().findIndex(event=>eventInvolves(event,match.id));if(index>=0){currentActionIndex=index+1;renderAll();}}});
+searchInput.addEventListener("input",()=>{searchPage=SEARCH_PAGE;renderSearchResults();});
+searchInput.addEventListener("focus",renderSearchResults);
+searchInput.addEventListener("keydown",event=>{
+  if(event.key==="Escape"){event.preventDefault();if(searchInput.value){searchInput.value="";searchPage=SEARCH_PAGE;renderSearchResults();}else closeSearch();return;}
+  if(event.key==="ArrowDown"||event.key==="ArrowUp"){event.preventDefault();renderSearchResults();moveSearchCursor(event.key==="ArrowDown"?1:-1);return;}
+  if(event.key==="Enter"){event.preventDefault();document.querySelector("#search-results .search-row")?.click();}
+});
+document.addEventListener("keydown",event=>{if(event.key!=="Escape")return;const panel=$("#search-results");if(panel&&!panel.hidden&&panel.contains(document.activeElement))closeSearch();});
+document.addEventListener("click",event=>{if(!event.target.closest(".search-field"))closeSearch();});
 $("#close-profile").onclick=()=>{$("#profile-modal").close();openProfileId=null;cacheActiveVolume();};
 
 $("#entity-form").addEventListener("submit",event=>{
@@ -2679,13 +2925,14 @@ $("#add-volume").onclick=()=>{const rows=$("#volume-rows"),last=rows.lastElement
 $("#volume-form").addEventListener("submit",event=>{event.preventDefault();const volumes=collectVolumeRows(),error=validateVolumes(volumes),errorBox=$("#volume-error");errorBox.textContent=error;if(error){errorBox.scrollIntoView({behavior:"smooth",block:"center"});return;}const orphanEvents=data.events.filter(storyEvent=>!volumes.some(volume=>storyEvent.chapter>=volume.from&&storyEvent.chapter<=volume.to));if(orphanEvents.length&&!confirm(`${orphanEvents.length} existing event${orphanEvents.length===1?" is":"s are"} outside these chapter ranges and will not appear in a volume. Save anyway?`))return;cancelChapterSequence();expandedChapter=null;data.volumes=volumes;activeVolume=volumes.some(volume=>volume.id===activeVolume)?activeVolume:volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=activeVol().from;selectedId=null;locationPovId=null;lastAutoFitSignature="";saveData();configure();renderAll();toast(`${volumes.length} volume${volumes.length===1?"":"s"} saved`);});
 $("#chapter-links-form").addEventListener("submit",event=>{event.preventDefault();const rawTemplate=$("#chapter-url-template").value.trim(),rawSources=$("#chapter-sources-text").value,errorBox=$("#chapter-links-error");errorBox.textContent="";if(rawTemplate&&!rawTemplate.includes("{n}")){errorBox.textContent="Include {n} in the template so each chapter number can be inserted — for example https://example.com/chapter-{n}.";return;}if(rawTemplate&&!safeExternalUrl(rawTemplate.replaceAll("{n}","1"))){errorBox.textContent="The fallback template must be a complete http:// or https:// URL.";return;}const badLine=listFromText(rawSources).find(line=>{const [chapterText,urlText]=line.split(/\s+\|\s+/,2);return !(validChapter(chapterText)&&safeExternalUrl(urlText));});if(badLine){errorBox.textContent=`Couldn't read this line — use "chapter number | full URL": ${badLine}`;return;}data.chapterUrlTemplate=rawTemplate;data.chapterSources=chapterSourcesFromText(rawSources);saveData();renderAll();toast("Chapter links saved");});
 $("#quick-add-chapter").addEventListener("blur",()=>{const chapter=validChapter($("#quick-add-chapter").value);if(chapter){const existing=data.chapterSources?.[chapter];if(existing)$("#quick-add-url").value=existing;}});
+$("#lexicon-form").addEventListener("submit",event=>{event.preventDefault();const raw=$("#lexicon-text").value,errorBox=$("#lexicon-error"),bad=badLexiconLine(raw);errorBox.textContent="";if(bad){errorBox.textContent=`Couldn't read this line — use "word | full URL" and, if you like, a note after a second bar: ${bad}`;return;}data.lexicon=lexiconFromText(raw);renderedLexicon=null;saveData();renderAll();toast(`${data.lexicon.length} linked word${data.lexicon.length===1?"":"s"} saved`);});
 $("#chapter-quick-add-form").addEventListener("submit",event=>{event.preventDefault();const chapter=validChapter($("#quick-add-chapter").value),url=safeExternalUrl($("#quick-add-url").value),errorBox=$("#quick-add-error");errorBox.textContent="";if(!chapter){errorBox.textContent="Enter a whole chapter number greater than 0.";return;}if(!url){errorBox.textContent="Enter a complete http:// or https:// URL.";return;}data.chapterSources={...(data.chapterSources||{}),[chapter]:url};saveData();renderAll();$("#quick-add-chapter").value="";$("#quick-add-url").value="";toast(`Chapter ${chapter} link saved`);});
 
 $("#export-data").onclick=()=>{const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="living-story-graph-data.json";link.click();URL.revokeObjectURL(url);};
 $("#publish-data").onclick=publishData;
 $("#import-data").addEventListener("change",async event=>{const file=event.target.files[0];if(!file)return;try{const parsed=JSON.parse(await file.text());if(!Array.isArray(parsed.entities)||!Array.isArray(parsed.events)||!Array.isArray(parsed.volumes)||validateVolumes(parsed.volumes))throw new Error();data=parsed;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;saveData();selectedId=null;locationPovId=null;configure();renderAll();toast("Data imported");}catch{toast("That JSON file is not valid graph data");}event.target.value="";});
 $("#reset-data").onclick=()=>{if(!confirm("Reset this browser's demo data to the original sample?"))return;cancelChapterSequence();expandedChapter=null;data=deepClone(sampleData);saveData();selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=activeVol().from;configure();renderAll();toast("Sample data restored");};
-$("#clear-all-data").onclick=()=>{const answer=prompt("This permanently deletes every character, organization, location, profile, and event from the published graph. Your volume structure will remain. Type DELETE to continue.");if(answer!=="DELETE"){if(answer!==null)toast("Nothing was deleted");return;}cancelChapterSequence();expandedChapter=null;data={schemaVersion:17,moments:[],novel:data.novel||"Living Story Graph",volumes:deepClone(data.volumes?.length?data.volumes:sampleData.volumes),cultivationLevels:deepClone(CULTIVATION_LEVELS),progressionTracks:deepClone(data.progressionTracks?.length?data.progressionTracks:sampleData.progressionTracks),chapterUrlTemplate:data.chapterUrlTemplate||"",chapterSources:deepClone(data.chapterSources||{}),entities:[],events:[]};eventDrafts=[];selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;physics.pos.clear();physics.vel.clear();lastAutoFitSignature="";saveData();resetEntityEditor();resetEventEditor();renderEventBatch();configure();renderAll();toast("All story data deleted");};
+$("#clear-all-data").onclick=()=>{const answer=prompt("This permanently deletes every character, organization, location, profile, and event from the published graph. Your volume structure will remain. Type DELETE to continue.");if(answer!=="DELETE"){if(answer!==null)toast("Nothing was deleted");return;}cancelChapterSequence();expandedChapter=null;data={schemaVersion:18,moments:[],lexicon:[],novel:data.novel||"Living Story Graph",volumes:deepClone(data.volumes?.length?data.volumes:sampleData.volumes),cultivationLevels:deepClone(CULTIVATION_LEVELS),progressionTracks:deepClone(data.progressionTracks?.length?data.progressionTracks:sampleData.progressionTracks),chapterUrlTemplate:data.chapterUrlTemplate||"",chapterSources:deepClone(data.chapterSources||{}),entities:[],events:[]};eventDrafts=[];selectedId=null;locationPovId=null;activeVolume=data.volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=data.volumes[0].from;physics.pos.clear();physics.vel.clear();lastAutoFitSignature="";saveData();resetEntityEditor();resetEventEditor();renderEventBatch();configure();renderAll();toast("All story data deleted");};
 
 function toast(message){const el=$("#toast");el.textContent=message;el.classList.add("show");clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove("show"),2200);}
 

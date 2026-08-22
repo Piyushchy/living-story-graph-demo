@@ -22,6 +22,11 @@ function sandbox(dataValue) {
     functionBody("validChapter"),
     functionBody("chapterUrl"),
     functionBody("chapterCitation"),
+    functionBody("storyLexicon"),
+    functionBody("lexiconTerms"),
+    functionBody("lexiconMatcher"),
+    functionBody("lexiconLink"),
+    functionBody("proseText"),
     functionBody("richInline"),
     functionBody("richText"),
     functionBody("listFromText"),
@@ -850,10 +855,143 @@ test("combining is done in the running order, writes no event of its own, and ca
 });
 
 test("the demo ships a moment, and a stored copy is brought up to it", () => {
-  assert.match(source, /schemaVersion: 17,/);
+  assert.match(source, /schemaVersion: 18,/);
   assert.match(source, /\{ id: "m-inn-place", message: "The Midnight Inn Lobby stands in the Midnight Inn Estate, in the city of Stonevale, on the world Verdan\.", members: \["hier-1","hier-2","hier-3"\] \}/);
   assert.match(source, /if\(!Array\.isArray\(migrated\.moments\)\)migrated\.moments=\[\];/);
   assert.match(source, /if\(sample\.members\.every\(id=>\(migrated\.events\|\|\[\]\)\.some\(event=>event\.id===id\)\)\)migrated\.moments\.push\(deepClone\(sample\)\)/, "a reader who deleted one of those actions is left alone");
+});
+
+function constLine(name) {
+  const found = source.match(new RegExp(`^const ${name}=.*$`, "m"));
+  assert.ok(found, `${name} must exist`);
+  return found[0];
+}
+
+function searchSandbox(dataValue) {
+  const ctx = { data: dataValue, URL };
+  vm.createContext(ctx);
+  vm.runInContext([
+    "var dataVersion=0;",
+    functionBody("escapeHtml"),
+    functionBody("safeExternalUrl"),
+    functionBody("validChapter"),
+    constLine("SEARCH_FIELDS"),
+    functionBody("searchWords"),
+    functionBody("parseSearchQuery"),
+    functionBody("withinOneEdit"),
+    functionBody("searchStore"),
+    functionBody("searchNameRows"),
+    functionBody("readEntityValue"),
+    functionBody("matchesTypeValue"),
+    functionBody("matchesChapterValue"),
+  ].join("\n"), ctx);
+  return ctx;
+}
+
+test("a search reads field:value the way the story is talked about, and a name with spaces needs no quoting", () => {
+  const ctx = searchSandbox({ entities: [], events: [] });
+  const parsed = vm.runInContext(`JSON.stringify(parseSearchQuery("from:Midnight Inn System event:quest end rewards"))`, ctx);
+  assert.deepEqual(JSON.parse(parsed), { filters: [
+    { field: "from", value: "Midnight Inn System" },
+    { field: "type", value: "quest end rewards" }
+  ], words: [] }, "a value runs until the next field, so it may hold spaces");
+  const loose = JSON.parse(vm.runInContext(`JSON.stringify(parseSearchQuery("winter from:lex"))`, ctx));
+  assert.deepEqual(loose.words, ["winter"], "anything written before the first field is words to look for");
+  const unknown = JSON.parse(vm.runInContext(`JSON.stringify(parseSearchQuery("colour:red"))`, ctx));
+  assert.deepEqual(unknown, { filters: [], words: ["colour", "red"] }, "a field nobody has heard of is read as ordinary words");
+  assert.deepEqual(JSON.parse(vm.runInContext(`JSON.stringify(parseSearchQuery("   "))`, ctx)), { filters: [], words: [] });
+});
+
+test("one letter out still finds the word that was meant", () => {
+  const ctx = searchSandbox({ entities: [], events: [] });
+  const near = query => vm.runInContext(`withinOneEdit(${JSON.stringify(query)},"cultivation")`, ctx);
+  assert.equal(near("cultivation"), true);
+  assert.equal(near("cultivatoin"), true, "two letters the wrong way round is one slip of the fingers");
+  assert.equal(near("cultivaton"), true, "a letter missed");
+  assert.equal(near("cultivationn"), true, "a letter doubled");
+  assert.equal(near("movement"), false);
+  assert.equal(vm.runInContext(`withinOneEdit("at","in")`, ctx), false, "short words are never guessed at");
+  assert.equal(vm.runInContext(`matchesTypeValue("cultivatoin changes","cultivation")`, ctx), true);
+  assert.equal(vm.runInContext(`matchesTypeValue("quest","quest_end")`, ctx), true, "a family of types is found by its family name");
+});
+
+test("a filter's value is read for the longest name inside it, and the rest stays as words to look for", () => {
+  const ctx = searchSandbox({
+    entities: [
+      { id: "inn-system", kind: "system", name: "Midnight Inn System" },
+      { id: "inn", kind: "organization", name: "Midnight Inn" },
+      { id: "lex", kind: "character", name: "Lex" }
+    ],
+    events: [{ type: "alias", source: "lex", value: "Innkeeper" }]
+  });
+  const read = value => JSON.parse(vm.runInContext(`JSON.stringify(readEntityValue(${JSON.stringify(value)}))`, ctx));
+  assert.deepEqual(read("Midnight Inn System : Quest/Rewards"), { id: "inn-system", words: ["quest","rewards"] }, "the longer name wins, and what is left over is still searched for");
+  assert.deepEqual(read("innkeeper"), { id: "lex", words: [] }, "a name the story gave later counts as their name");
+  assert.deepEqual(read("nobody at all"), { id: null, words: ["nobody","at","all"] });
+});
+
+test("a chapter filter takes one chapter, a range, or an open end", () => {
+  const ctx = searchSandbox({ entities: [], events: [] });
+  const at = (value, chapter) => vm.runInContext(`matchesChapterValue(${JSON.stringify(value)},${chapter})`, ctx);
+  assert.equal(at("12", 12), true);
+  assert.equal(at("12", 13), false);
+  assert.equal(at("12-40", 22), true);
+  assert.equal(at("12-40", 41), false);
+  assert.equal(at(">60", 61), true);
+  assert.equal(at("<5", 4), true);
+  assert.equal(at("soon", 4), false);
+});
+
+test("what an action carries is searchable by the name of the thing it carries", () => {
+  const haystack = functionBody("actionHaystack");
+  assert.match(haystack, /event\.rewardRank\?`reward rank \$\{event\.rewardRank\}`:""/);
+  assert.match(haystack, /String\(event\.type\)==="quest_end"&&event\.value\?`rewards reward \$\{event\.value\}`:""/, "so quest:rewards finds the quests that ended with one");
+  assert.match(haystack, /questSearchText\(event\.source\)/);
+  assert.match(functionBody("questSearchText"), /quest\.rewards\?`rewards \$\{quest\.rewards\}`:""/, "a term is findable by the name of the term as well as by what it says");
+  const filter = functionBody("actionMatchesFilter");
+  assert.match(filter, /filter\.field==="from"\?event\.source===read\.id\|\|\(String\(event\.type\)\.startsWith\("quest_"\)&&entity\(event\.source\)\?\.issuer===read\.id\)/, "a quest belongs to the system that issued it");
+  assert.match(filter, /flag==="moment"\|\|flag==="combined"\|\|flag==="together"\?Boolean\(momentOf\(event\.id\)\)/);
+});
+
+test("words nothing carries are reported rather than obeyed, so a query with a filter never dead-ends", () => {
+  const body = functionBody("searchActions");
+  assert.match(body, /const loose=Boolean\(query\.words\.length&&query\.filters\.length&&!narrowed\.length&&found\.length\)/);
+  assert.match(body, /entries:\(loose\?found:narrowed\)/);
+  assert.match(functionBody("renderSearchResults"), /\$\{loose\?" · nothing also mentions every word":""\}/, "and the reader is told which half of the query answered");
+});
+
+test("a search result takes the reader to the whole moment, and to someone they have not reached yet", () => {
+  assert.match(functionBody("jumpToAction"), /currentActionIndex=snapToBeat\(index\)/, "landing inside a combined moment plays all of it");
+  const results = functionBody("renderSearchResults");
+  assert.match(results, /const ahead=currentActionIndex>0&&entry\.index>currentActionIndex/, "nothing is 'ahead' before the reader has started");
+  assert.match(results, /shown=revealedVolumeActions\(\)\.some\(event=>eventInvolves\(event,selectedId\)\),\s*index=volumeActions\(\)\.findIndex\(event=>eventInvolves\(event,selectedId\)\)/);
+  assert.match(results, /if\(!shown&&index>=0\)currentActionIndex=snapToBeat\(index\+1\)/, "someone already on the graph is picked out, not jumped to");
+  assert.match(source, /id="search"[^>]*role="combobox"/);
+  assert.match(source, /<div class="search-results" id="search-results" role="listbox" hidden>/);
+});
+
+test("a word the story gives its own meaning to carries its link wherever it is written", () => {
+  const ctx = sandbox({ lexicon: [
+    { term: "Host Attire", url: "https://wiki.example.com/host-attire", note: "From the starter pack" },
+    { term: "Inn", url: "https://wiki.example.com/inn" }
+  ] });
+  const html = vm.runInContext(`richInline("Lex wore the host attire into the Inn, then the inner room. Host Attire again.")`, ctx);
+  assert.match(html, /<a class="lexicon-link" href="https:\/\/wiki\.example\.com\/host-attire"[^>]*title="From the starter pack">host attire/, "the writer's own casing is kept, and the note is the hover");
+  assert.equal(html.match(/lexicon-link/g).length, 2, "only the first mention of each word is linked — a paragraph of the same link reads worse");
+  assert.doesNotMatch(html, /<a[^>]*>inner/, "a word is only a word on its own — \"Inn\" never lights up inside \"inner\"");
+  assert.match(vm.runInContext(`richInline("<b>Inn</b>")`, ctx), /&lt;b&gt;<a class="lexicon-link"/, "the prose is escaped before any of this, so nothing can be smuggled through it");
+  assert.match(vm.runInContext(`richInline("[[Host Attire|https://elsewhere.example.com/x]]")`, ctx), /href="https:\/\/elsewhere\.example\.com\/x"/);
+  assert.equal(vm.runInContext(`(richInline("[[Host Attire|https://elsewhere.example.com/x]]").match(/<a /g)||[]).length`, ctx), 1, "a link written by hand is left exactly as written");
+});
+
+test("linked words are written once, in their own editor card, and are searchable", () => {
+  assert.match(source, /<form id="lexicon-form" class="admin-card">/);
+  assert.match(source, /<textarea id="lexicon-text"/);
+  assert.match(functionBody("lexiconFromText"), /const \[term="",url="",note=""\]=line\.split\(\/\\s\+\\\|\\s\+\/,3\)/);
+  assert.match(functionBody("badLexiconLine"), /return !\(term\.trim\(\)&&safeExternalUrl\(url\)\)/, "a line that is not a full URL is refused, not silently dropped");
+  assert.match(functionBody("searchTerms"), /lexiconTerms\(\)\.filter\(entry=>\{const lower=`\$\{entry\.term\} \$\{entry\.note\}`\.toLowerCase\(\)/);
+  assert.match(functionBody("renderSearchResults"), /<li class="search-group">Linked words<\/li>/);
+  assert.match(source, /if\(!Array\.isArray\(migrated\.lexicon\)\)migrated\.lexicon=\[\];/);
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
