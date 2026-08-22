@@ -848,4 +848,7 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .quest-notice.quest-taken { fill: #ffd479; }
 .quest-notice.quest-done { fill: #8de7b0; }
 .quest-notice.quest-failed { fill: #ef8b92; }
-.quest-issue-edge { fill: none; stroke: #ffb347; stroke-width: 2; stroke-dasharray: 5 4; opacity: .85; }
+.quest-issue-edge { fill: none; stroke: #ffb347; stroke-width: 1.6; stroke-dasharray: 4 5; opacity: .5; }
+.quest-pulse { pointer-events: none; transform-box: fill-box; transform-origin: center; }
+.quest-pulse-halo { fill: rgba(255,179,71,.28); }
+.quest-pulse-core { fill: #ffd479; }

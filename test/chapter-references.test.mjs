@@ -571,7 +571,7 @@ test("the layout runs on a budget, so a busy action cannot leave the graph drift
   assert.match(body, /physics\.alpha = physics\.dragId \? 1 : physics\.alpha \* ALPHA_DECAY;/, "every frame cools it");
   assert.match(body, /if\(d<ra\+rb\)\{overlapping\.add\(ids\[i\]\);overlapping\.add\(ids\[j\]\);\}/, "only shapes genuinely on top of each other reheat it — the comfort gap kept it awake for ever");
   assert.match(body, /if \(overlapping\.size\) physics\.alpha = Math\.max\(physics\.alpha, ALPHA_CONTACT\);/);
-  assert.match(functionBody("renderGraph"), /departingGhosts=\[\]; physics\.alpha=1;/, "and a change heats it again");
+  assert.match(functionBody("renderGraph"), /departingGhosts=\[\]; questPulses=\[\]; physics\.alpha=1;/, "and a change heats it again");
   assert.match(body, /const scaleCount = Math\.round\(ids\.length\/8\)\*8;/, "the strength constants step in eights, so they do not shift the whole balance for one arrival");
   assert.match(body, /calm = touching \? 0 : Math\.max\(0, Math\.min\(1, \(physics\.calm\.get\(id\)\|\|0\) \+ \(speed < 1\.2 \? \.04 : -\.3\)\)\)/, "and a node that has been sitting still takes a fraction of the force");
 });
@@ -1052,7 +1052,9 @@ test("a quest never becomes a node, but carrying one shows on the character and 
   assert.match(body, /derived\.quests\.filter\(run=>run\.status==="active"\)\.forEach\(run=>run\.holders\.forEach/, "who is carrying what, right now");
   assert.match(body, /\.\.\.\(derived\.quests\.find\(run=>run\.quest===currentEvent\.source\)\?\.holders\|\|\[\]\)/, "only an issue names who it goes to; everything after belongs to whoever holds it");
   assert.match(body, /straightEdge\(issuer,holder,"edge quest-issue-edge newly-revealed-edge",issuer,holder\)/, "the handing over is drawn from issuer to holder, for that beat only");
-  assert.match(body, /class:`quest-held\$\{questBeat\?\.who\.has\(item\.id\)\?" quest-held-active":""\}`/, "the count rides on the shoulder, the way the alias count does");
+  assert.match(body, /if\(held\.length&&selectedId===item\.id\)\{/, "the count shows on the character being looked at, not painted on everyone for ever");
+  assert.match(body, /questPulses\.push\(\{el:pulse,from:issuer,to:holder/, "and the issuing is a mote running from the system that set it to whoever took it");
+  assert.match(functionBody("stepQuestPulses"), /arrival=Math\.max\(0,\(progress-\.72\)\/\.28\)/, "flaring as it lands, then gone");
   assert.match(body, /questNotice=\{y:r\+27,tone:settled\?/, "and the notice sits under the node, clear of the name above it");
   assert.match(source, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\|\|kind==="quest"\)return false;/, "the quest itself is still never a node");
   assert.match(styleSource, /\.quest-issue-edge \{ fill: none; stroke: #ffb347;/);

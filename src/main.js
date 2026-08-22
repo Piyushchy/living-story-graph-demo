@@ -217,7 +217,7 @@ let lastLocationView = null, lastSystemView = null;
 let collapsingLocationId = null, locationCollapseTimer = null, lastContentFit = 0;
 // Ghosts of nodes on their way into whatever took them in. They are driven by the tick rather
 // than by a css transition, because the thing they are travelling to is itself still moving.
-let departingGhosts = [];
+let departingGhosts = [], questPulses = [];
 let emergingLocations = new Set(), emergeTimer = null;
 let activePodIds = [], activePodKey = "", retiringPodIds = [], podRetireTimer = null;
 // Where a pod should start its journey from, when the place already had a node of its own a
@@ -1309,9 +1309,27 @@ function stepDepartingGhosts(){
     return true;
   });
 }
+// Runs the mote down the line, following both ends as the layout settles, and flares as it
+// lands. One beat only — the next action clears it.
+function stepQuestPulses(){
+  if(!questPulses.length)return;
+  const now=performance.now();
+  questPulses=questPulses.filter(pulse=>{
+    const a=physics.pos.get(pulse.from),b=physics.pos.get(pulse.to),
+      progress=Math.min(1,(now-pulse.start)/pulse.duration);
+    if(!a||!b||progress>=1){pulse.el.remove();return false;}
+    const ease=progress<.5?2*progress*progress:1-(-2*progress+2)**2/2,
+      x=a.x+(b.x-a.x)*ease,y=a.y+(b.y-a.y)*ease,
+      arrival=Math.max(0,(progress-.72)/.28);
+    pulse.el.style.transform=`translate(${x}px,${y}px) scale(${(1+arrival*2.1).toFixed(2)})`;
+    pulse.el.style.opacity=String((arrival?1-arrival:1).toFixed(3));
+    return true;
+  });
+}
 function tickGraph() {
   stepViewTween();
   stepDepartingGhosts();
+  stepQuestPulses();
   if (activeView === "graph" && physics.pos.size) {
     stepPhysics();
     nodeEls.forEach((el, id) => { const p = physics.pos.get(id); if (p) el.setAttribute("transform", `translate(${p.x.toFixed(2)},${p.y.toFixed(2)})`); });
@@ -1454,7 +1472,7 @@ function renderGraph() {
   derived.identityParents.forEach(link=>addSpring(link.child,link.parent,68,.09));
   [...derived.relations.keys(),...derived.awareness.keys()].forEach(key=>{const [a,b]=key.split("|");addSpring(a,b,150,.02);});
   physics.edges=[...springs.values()];
-  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null; departingGhosts=[]; physics.alpha=1;
+  nodeEls=new Map(); labelEls=new Map(); edgeUpdaters=[]; hoverId=null; departingGhosts=[]; questPulses=[]; physics.alpha=1;
   physics.degree.clear();physics.edges.forEach(edge=>{physics.degree.set(edge.a,(physics.degree.get(edge.a)||0)+1);physics.degree.set(edge.b,(physics.degree.get(edge.b)||0)+1);});
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
@@ -1520,8 +1538,14 @@ function renderGraph() {
   if(questBeat&&questBeat.type==="quest_issue"&&questBeat.action!=="withdraw"){
     const issuer=entity(questBeat.quest)?.issuer;
     if(issuer)questBeat.who.forEach(holder=>{
-      if(positions.get(issuer)&&positions.get(holder))
-        straightEdge(issuer,holder,"edge quest-issue-edge newly-revealed-edge",issuer,holder);
+      if(!positions.get(issuer)||!positions.get(holder))return;
+      straightEdge(issuer,holder,"edge quest-issue-edge newly-revealed-edge",issuer,holder);
+      // A mote runs down the line from the system that set the quest to whoever took it, so the
+      // issuing is something seen happening rather than a mark left behind.
+      const pulse=svgEl("g",{class:"quest-pulse","aria-hidden":"true"});
+      pulse.append(svgEl("circle",{cx:0,cy:0,r:7,class:"quest-pulse-halo"}),svgEl("circle",{cx:0,cy:0,r:3.4,class:"quest-pulse-core"}));
+      conversationLayer.appendChild(pulse);
+      questPulses.push({el:pulse,from:issuer,to:holder,start:performance.now(),duration:820});
     });
   }
   derived.systemHosts.forEach(link=>{noteEdge(link.system,link.host,link.from,`${link.role} of this system`);straightEdge(link.system,link.host,`edge system-host-edge${currentEvent?.type==="system_host"&&currentEvent.source===link.system&&currentEvent.target===link.host?" newly-revealed-edge":""}`,link.system,link.host);});
@@ -1586,9 +1610,11 @@ function renderGraph() {
     if(rankLabel){const moved=svgEl("text",{x:0,y:rankLabel.y,class:`system-rank-label ${rankLabel.tone}`});moved.textContent=rankLabel.text;labelGroup.appendChild(moved);}
     if(questNotice){const notice=svgEl("text",{x:0,y:questNotice.y,class:`quest-notice ${questNotice.tone}`});notice.textContent=questNotice.text;labelGroup.appendChild(notice);}
     if(item.kind==="character"){
-      // A quest count rides on the shoulder of whoever is carrying it, the way the alias count does.
+      // How many quests someone is carrying is worth knowing, but not worth painting on every
+      // character for ever — with a dozen quests running that is all the graph becomes. It shows
+      // on the one being looked at, and the tab carries the running total.
       const held=questHolders.get(item.id)||[];
-      if(held.length){const r=state.appeared!==null&&state.appeared<=currentChapter?radius(state):20,
+      if(held.length&&selectedId===item.id){const r=state.appeared!==null&&state.appeared<=currentChapter?radius(state):20,
           x=r*.74,y=r*.74,mark=svgEl("g",{class:`quest-held${questBeat?.who.has(item.id)?" quest-held-active":""}`});
         mark.append(svgEl("circle",{cx:x,cy:y,r:9.5,class:"quest-held-pip"}));
         const count=svgEl("text",{x,y:y+3.4,class:"quest-held-count"});count.textContent=String(held.length);
