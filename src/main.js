@@ -1098,7 +1098,17 @@ function arcPath(cx,cy,r,startDeg,endDeg){const a=startDeg*Math.PI/180,b=endDeg*
 function diamondPoints(cx,cy,s){return `${cx},${cy-s} ${cx+s},${cy} ${cx},${cy+s} ${cx-s},${cy}`;}
 function seedPosition(item,index,total) {
   const fixed={lex:[125,90],eclipse:[585,80],inn:[355,165],mary:[595,225],luthor:[110,270],gerald:[350,305],jotun:[70,435],garden:[650,435],"inn-estate":[205,435],"inn-lobby":[365,435],"garden-realm":[525,435]};
-  if(fixed[item.id]) return fixed[item.id]; const angle=index*2.3999632297,r=58+27*Math.sqrt(index+1);return [360+Math.cos(angle)*r,260+Math.sin(angle)*r*.78];
+  if(fixed[item.id]) return fixed[item.id];
+  // The ring below is in world space, so once the view has moved to follow the story a newcomer
+  // could be seeded outside what the reader can see. Spiral out from the middle of the visible
+  // rectangle instead, and keep well inside its edges.
+  const angle=index*2.3999632297,reach=58+27*Math.sqrt(index+1),
+    left=(0-view.x)/view.scale,right=(720-view.x)/view.scale,
+    top=(0-view.y)/view.scale,bottom=(520-view.y)/view.scale,
+    cx=(left+right)/2,cy=(top+bottom)/2,
+    limitX=Math.max(60,(right-left)/2-70),limitY=Math.max(50,(bottom-top)/2-60),
+    r=Math.min(reach,limitX,limitY/.78);
+  return [cx+Math.cos(angle)*r,cy+Math.sin(angle)*r*.78];
 }
 function visibleFrom(item){return item.kind!=="character"?(validChapter(item.intro)??Infinity):(firstMention(item)??firstAppearance(item)??Infinity);}
 function radius(state){const ladder=trackLevels(state?.track);return 19+Math.min(1,Math.max(0,Number(state.level)||0)/ladder.length)*17;}
@@ -1248,7 +1258,7 @@ function fitGraphToCount(count,force=false){
 // The seeded scale above is a guess made before the simulation has run. Once the layout
 // settles, fit the real bounding box to the canvas so the graph fills the space instead of
 // huddling in the middle — and so a big graph zooms out far enough for the declutter to work.
-function scheduleAutoFit(){autoFitTimers.forEach(clearTimeout);autoFitTimers=[850,1900].map(delay=>setTimeout(()=>{if(!viewPinnedByUser&&!physics.dragId)fitGraphToContent();},delay));}
+function scheduleAutoFit(){autoFitTimers.forEach(clearTimeout);autoFitTimers=[220,850,1900].map(delay=>setTimeout(()=>{if(!viewPinnedByUser&&!physics.dragId)fitGraphToContent();},delay));}
 function fitGraphToContent(){
   const entries=[...physics.pos.entries()].filter(([id])=>nodeEls.has(id));
   if(entries.length<2)return;
@@ -1263,14 +1273,26 @@ function fitGraphToContent(){
   // thresholds: the moment the content needs more room the view gives it, while it only closes
   // back in once there is a great deal of empty space, which is what stops the two chasing each
   // other. A short cooldown keeps a busy chapter from refitting several times over.
+  // Anything actually outside the canvas is a different case from a framing that has drifted:
+  // it cannot wait for the cooldown or for the thresholds below, because the reader is looking
+  // at a graph with something missing from it.
+  const outside=entries.some(([id,point])=>{
+    const reach=(physics.radii.get(id)||24)+10,
+      sx=point.x*view.scale+view.x,sy=point.y*view.scale+view.y,pad=reach*view.scale;
+    return sx-pad<0||sx+pad>720||sy-pad<0||sy+pad>520;
+  });
   const now=performance.now(),needsRoom=target.scale<view.scale*.97,
     tooMuchRoom=target.scale>view.scale*1.5,
     offCentre=Math.hypot(target.x-view.x,target.y-view.y)>120;
-  if(now-lastContentFit<900)return;
-  if(!needsRoom&&!tooMuchRoom&&!offCentre)return;
+  if(!outside&&now-lastContentFit<900)return;
+  if(!outside&&!needsRoom&&!tooMuchRoom&&!offCentre)return;
   // When only the framing drifted, keep the scale rather than nudging it as well.
   lastContentFit=now;
-  glideViewTo(needsRoom||tooMuchRoom?target:{...target,scale:view.scale});updateLabelVisibility();
+  // Rescuing something off-frame may pan, and may pull back to make room, but must never close
+  // in — that is the direction that sets the view chasing itself.
+  glideViewTo(outside?{...target,scale:Math.min(view.scale,target.scale)}
+    :needsRoom||tooMuchRoom?target:{...target,scale:view.scale});
+  updateLabelVisibility();
 }
 // Follows the anchor as it settles, so the ghost arrives where the parent actually is rather
 // than where it stood when the journey began.

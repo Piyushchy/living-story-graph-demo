@@ -677,8 +677,11 @@ test("the view eases into a new framing instead of jumping, and a reader's own z
   // view give room and take it straight back, over and over.
   assert.match(fit, /needsRoom=target\.scale<view\.scale\*\.97/, "the moment the content needs room, it gets it");
   assert.match(fit, /tooMuchRoom=target\.scale>view\.scale\*1\.5/, "but it only closes back in when there is a great deal of empty space");
-  assert.match(fit, /if\(now-lastContentFit<900\)return;/, "and a busy chapter cannot refit several times over");
-  assert.match(fit, /glideViewTo\(needsRoom\|\|tooMuchRoom\?target:\{\.\.\.target,scale:view\.scale\}\)/, "a drifted framing is recentred without touching the scale as well");
+  assert.match(fit, /if\(!outside&&now-lastContentFit<900\)return;/, "and a busy chapter cannot refit several times over — unless something is genuinely off-frame");
+  assert.match(fit, /const outside=entries\.some\(/, "anything outside the canvas cannot wait for the cooldown or the thresholds");
+  assert.match(fit, /glideViewTo\(outside\?\{\.\.\.target,scale:Math\.min\(view\.scale,target\.scale\)\}/, "rescuing it may pan or pull back, but never close in — that is what sets the view chasing itself");
+  assert.match(fit, /:needsRoom\|\|tooMuchRoom\?target:\{\.\.\.target,scale:view\.scale\}/, "a drifted framing is recentred without touching the scale as well");
+  assert.match(functionBody("seedPosition"), /left=\(0-view\.x\)\/view\.scale,right=\(720-view\.x\)\/view\.scale/, "a newcomer is seeded inside what the reader can actually see");
   assert.match(functionBody("fitGraphToCount"), /scheduleAutoFit\(\);\s*const signature=`\$\{activeVolume\}`;/, "the real fit runs after every render; only the crude pre-simulation guess is once per volume");
   assert.match(source, /viewPinnedByUser = true; viewTween = null;/);
   assert.match(source, /if\(!panStart\)return;viewPinnedByUser=true;viewTween=null;/);
