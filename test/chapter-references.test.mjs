@@ -1102,6 +1102,26 @@ test("the running order says what each action really does, not only what its mes
   assert.match(functionBody("orderRowHtml"), /<b class="order-subject">\$\{escapeHtml\(actionSubjectLine\(event\)\)\}<\/b>/);
 });
 
+test("a message that names one person while the action is about another is the commonest slip, and is called out", () => {
+  const ctx = { data: { entities: [
+    { id: "gerald", kind: "character", name: "Gerald" },
+    { id: "velma", kind: "character", name: "Velma" },
+    { id: "inn", kind: "organization", name: "Midnight Inn" },
+    { id: "inn-estate", kind: "location", name: "Midnight Inn Estate" }
+  ] } };
+  vm.createContext(ctx);
+  vm.runInContext([functionBody("entity"), functionBody("namesWord"), functionBody("messageMismatch")].join("\n"), ctx);
+  const check = event => vm.runInContext(`messageMismatch(${JSON.stringify(event)})`, ctx);
+  assert.match(check({ type: "residency", source: "gerald", location: "inn-estate", description: "Velma begins using Midnight Inn as Home/Work." }),
+    /the message names Velma, but this action is about Gerald/, "the subject was never changed — only the sentence was");
+  assert.match(check({ type: "residency", source: "velma", location: "inn-estate", description: "Gerald begins using Midnight Inn as Home/Work." }),
+    /the message names Gerald, but this action is about Velma/, "and the other way round: the subject changed under a hand-written sentence");
+  assert.equal(check({ type: "residency", source: "velma", location: "inn-estate", description: "Velma settles in for good." }), "");
+  assert.equal(check({ type: "residency", source: "velma", location: "inn-estate", description: "Velma moves into the Midnight Inn." }), "", "a place written short is the same place, not somebody else");
+  assert.equal(check({ type: "note", source: "gerald", description: "" }), "");
+  assert.match(functionBody("orderRowHtml"), /<b class="order-mismatch"[^>]*>message names someone else<\/b>/);
+});
+
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
   assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });

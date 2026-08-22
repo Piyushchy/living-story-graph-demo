@@ -2733,8 +2733,30 @@ function actionEffectProblem(event){
   if(type.startsWith("quest_"))return needs(kind(event.source)==="quest","a quest action needs a quest as its subject");
   return "";
 }
+// The commonest slip of all: the message says one name and the action is about another. It
+// happens because a run of actions keeps the last subject, and because a message written by hand
+// survives a change of subject underneath it. Either way the graph obeys the record and the
+// reader believes the sentence, so the two are compared here.
+function namesWord(text,name){
+  const word=String(name||"").trim();
+  if(word.length<3)return false;
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${word.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}(?:[^\\p{L}\\p{N}]|$)`,"iu").test(String(text||""));
+}
+function messageMismatch(event){
+  const text=String(event.description||""),subject=entity(event.source);
+  if(!text||!subject)return "";
+  const own=[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean),
+    ownNames=own.map(id=>entity(id)?.name).filter(Boolean);
+  if(ownNames.some(name=>namesWord(text,name)))return "";
+  // "Midnight Inn" written where the place is the Midnight Inn Estate is a shorter way of saying
+  // the same thing, not somebody else.
+  const nearOwn=name=>ownNames.some(own=>{const a=own.toLowerCase(),b=String(name).toLowerCase();return a.includes(b)||b.includes(a);});
+  const strangers=data.entities.filter(item=>!own.includes(item.id)&&!nearOwn(item.name)&&namesWord(text,item.name))
+    .sort((a,b)=>(b.kind===subject.kind)-(a.kind===subject.kind)||b.name.length-a.name.length);
+  return strangers.length?`the message names ${strangers[0].name}, but this action is about ${subject.name}`:"";
+}
 function orderRowHtml(event,index,total,moment,twin=0){
-  return `<li class="order-row${event.ghost?" order-row-ghost":""}${moment?" order-row-moment":""}${twin?" order-row-twin":""}" data-id="${escapeHtml(event.id)}"><label class="order-pick" title="Pick this to combine it with another action"><input type="checkbox" class="order-pick-box" data-id="${escapeHtml(event.id)}" aria-label="Pick this action to combine" /></label><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><div class="order-facts"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i>${actionSubjectLine(event)?`<b class="order-subject">${escapeHtml(actionSubjectLine(event))}</b>`:""}${twin?`<b class="order-twin" title="This does exactly what action ${twin} in this chapter already does — if it was meant for somebody else, open it and change the name">same action as ${twin}</b>`:""}${actionEffectProblem(event)?`<b class="order-inert" title="${escapeHtml(actionEffectProblem(event))} — as it stands the graph ignores this action">changes nothing</b>`:""}</div>${messageBoxHtml("order-message",event)}</div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===total-1?" disabled":""}>↓</button></div></li>`;
+  return `<li class="order-row${event.ghost?" order-row-ghost":""}${moment?" order-row-moment":""}${twin?" order-row-twin":""}" data-id="${escapeHtml(event.id)}"><label class="order-pick" title="Pick this to combine it with another action"><input type="checkbox" class="order-pick-box" data-id="${escapeHtml(event.id)}" aria-label="Pick this action to combine" /></label><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><div class="order-facts"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i>${actionSubjectLine(event)?`<b class="order-subject">${escapeHtml(actionSubjectLine(event))}</b>`:""}${twin?`<b class="order-twin" title="This does exactly what action ${twin} in this chapter already does — if it was meant for somebody else, open it and change the name">same action as ${twin}</b>`:""}${actionEffectProblem(event)?`<b class="order-inert" title="${escapeHtml(actionEffectProblem(event))} — as it stands the graph ignores this action">changes nothing</b>`:""}${messageMismatch(event)?`<b class="order-mismatch" title="${escapeHtml(messageMismatch(event))} — the graph follows the action, not the sentence">message names someone else</b>`:""}</div>${messageBoxHtml("order-message",event)}</div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===total-1?" disabled":""}>↓</button></div></li>`;
 }
 // The head names a moment and carries the one sentence it is read by; its parts stay listed
 // underneath, because they are still separate actions and are still reordered and edited there.
