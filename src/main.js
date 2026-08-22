@@ -263,7 +263,7 @@ app.innerHTML = `
           <div class="controls">
             <label class="field"><span>Find character, organization, location, or alias</span><input id="search" list="entity-options" placeholder="Start typing…"><datalist id="entity-options"></datalist></label>
             <label class="field"><span>Volume</span><select id="volume"></select></label>
-            <div class="field timeline-field"><span class="chapter-label"><span>Chapter <strong id="chapter-value">80</strong></span><span id="event-position"></span><button type="button" id="collapse-chapter-events" class="collapse-chapter-events" hidden>Collapse events ×</button></span><div class="range-row"><button class="step" id="previous" aria-label="Previous stop">−</button><div class="main-range-wrap"><input id="timeline" type="range"><div id="timeline-marks" class="main-timeline-marks"></div></div><button class="step" id="next" aria-label="Next stop">+</button></div></div>
+            <div class="field timeline-field"><span class="chapter-label"><span>Chapter <strong id="chapter-value">—</strong></span><span id="event-position"></span><button type="button" id="collapse-chapter-events" class="collapse-chapter-events" hidden>Collapse events ×</button></span><div class="range-row"><button class="step" id="previous" aria-label="Previous stop">−</button><div class="main-range-wrap"><input id="timeline" type="range"><div id="timeline-marks" class="main-timeline-marks"></div></div><button class="step" id="next" aria-label="Next stop">+</button></div></div>
           </div>
           <div class="graph-layout" id="graph-layout">
             <div class="graph-card"><svg id="graph" viewBox="0 0 720 520" role="img" aria-label="Chapter-aware novel relationship graph"></svg><div id="edge-tip" class="edge-tip" role="status" hidden></div><div id="slider-onboarding" class="slider-onboarding" hidden><span class="slider-pointer" aria-hidden="true">↑</span><strong>Use the slider</strong></div><div class="graph-zoom-controls"><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-reset" aria-label="Reset view">⟲</button><button type="button" id="zoom-out" aria-label="Zoom out">−</button></div></div>
@@ -1100,6 +1100,7 @@ function configureTimeline() {
   if(expandedChapter!==null&&action?.chapter!==expandedChapter)expandedChapter=null;
   if(expandedChapter!==null){const entries=chapterEventEntries(expandedChapter),eventIndex=Math.max(0,entries.findIndex(entry=>entry.index===currentActionIndex));timeline.min=0;timeline.max=entries.length+1;timeline.value=eventIndex+1;timeline.dataset.mode="chapter-events";$("#event-position").textContent=`event ${eventIndex+1}/${entries.length} · ends close`;$("#previous").disabled=false;$("#next").disabled=false;$("#chapter-value").textContent=expandedChapter;collapse.hidden=false;field.classList.add("events-expanded","multi-event-chapter");}
   else if(sliderStepsEvents){timeline.min=0;timeline.max=actions.length;timeline.value=currentActionIndex;timeline.dataset.mode="actions";
+    $("#chapter-value").textContent=action?action.chapter:"—";
     $("#event-position").textContent=currentActionIndex===0?`0 of ${actions.length} actions`:`action ${currentActionIndex} of ${actions.length}`;
     $("#previous").disabled=currentActionIndex<=0;$("#next").disabled=currentActionIndex>=actions.length;
     if(collapse)collapse.hidden=true;field?.classList.remove("chapter-events-mode");}
@@ -2526,7 +2527,12 @@ $("#load-entity").onclick=()=>loadEntityEditor();
 $("#cancel-entity-edit").onclick=resetEntityEditor;
 $("#delete-entity").onclick=()=>deleteIdentity($("#entity-form").elements.editingId.value);
 
-$("#event-form").addEventListener("submit",event=>{event.preventDefault();const editingId=event.currentTarget.elements.editingId.value,previous=editingId?data.events.find(item=>item.id===editingId):null,record=buildEventRecord(event.currentTarget,editingId||undefined);if(!record)return;if(editingId){const index=data.events.findIndex(item=>item.id===editingId);if(index>=0)data.events[index]=record;}else data.events.push(record);if(previous)syncPresenceFromEvents(previous.source,previous.type);syncPresenceFromEvents(record.source,record.type);saveData();resetEventEditor();renderAll();toast(`Change ${editingId?"updated":"saved"}; graph updated`);});
+$("#event-form").addEventListener("submit",event=>{event.preventDefault();const editingId=event.currentTarget.elements.editingId.value,previous=editingId?data.events.find(item=>item.id===editingId):null,record=buildEventRecord(event.currentTarget,editingId||undefined);if(!record)return;if(editingId){const index=data.events.findIndex(item=>item.id===editingId);if(index>=0)data.events[index]=record;}else data.events.push(record);if(previous)syncPresenceFromEvents(previous.source,previous.type);syncPresenceFromEvents(record.source,record.type);saveData();resetEventEditor();
+  // Point the running order at the chapter just written to. Filling in a gap — a scene remembered
+  // for chapter 2 while the story is at 40 — lands at the end of that chapter, and this is what
+  // puts it in front of the reader so the order can be changed like any other action's.
+  orderChapter=record.chapter;
+  renderAll();toast(`Change ${editingId?"updated":"saved"}; graph updated`);});
 $("#event-form").elements.type.addEventListener("change",updateEventHelp);
 $("#event-form").elements.action.addEventListener("change",updateEventHelp);
 $("#event-form").elements.track.addEventListener("change",event=>{const form=$("#event-form");fillLevelSelect(form.elements.level,event.target.value,"");form.elements.value.value="";});
@@ -2537,7 +2543,7 @@ document.addEventListener("click",event=>{const link=event.target.closest("[data
 $("#cancel-event-edit").onclick=resetEventEditor;
 $("#queue-event").onclick=()=>{const record=buildEventRecord($("#event-form"));if(!record)return;if(eventDrafts.length&&record.chapter!==eventDrafts[0].chapter){toast(`This batch is for chapter ${eventDrafts[0].chapter}. Save or clear it before changing chapters.`);return;}eventDrafts.push(record);renderEventBatch();clearEventInputsForNext();toast("Change added to the chapter batch");};
 $("#clear-event-batch").onclick=()=>{eventDrafts=[];renderEventBatch();resetEventEditor();};
-$("#save-event-batch").onclick=()=>{if(!eventDrafts.length)return;data.events.push(...eventDrafts);eventDrafts.forEach(record=>syncPresenceFromEvents(record.source,record.type));const count=eventDrafts.length;eventDrafts=[];saveData();renderEventBatch();resetEventEditor();renderAll();toast(`${count} chapter changes saved; graph updated`);};
+$("#save-event-batch").onclick=()=>{if(!eventDrafts.length)return;data.events.push(...eventDrafts);orderChapter=eventDrafts.at(-1).chapter;eventDrafts.forEach(record=>syncPresenceFromEvents(record.source,record.type));const count=eventDrafts.length;eventDrafts=[];saveData();renderEventBatch();resetEventEditor();renderAll();toast(`${count} chapter changes saved; graph updated`);};
 
 $("#profile-form").elements.entity.addEventListener("change",fillProfileEditor);
 $("#profile-form").addEventListener("submit",event=>{
