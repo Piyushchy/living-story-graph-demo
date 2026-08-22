@@ -1069,6 +1069,75 @@ test("a reward is a thing the story hands over, and a quest can pay several — 
   assert.match(source, /\.\.\.\(event\.rewardRank\?\[`Rank \$\{event\.rewardRank\}`\]:\[\]\)/, "and a stored reward rank becomes one more reward rather than being thrown away");
 });
 
+test("writing the same action twice is caught, because the message is generated and a repeat reads as if it were right", () => {
+  const ctx = { data: { events: [
+    { id: "a", chapter: 4, type: "residency", source: "gerald", location: "inn", action: "begin", description: "Gerald begins using the Inn as Home/Work." }
+  ] } };
+  vm.createContext(ctx);
+  vm.runInContext([functionBody("sameAction"), functionBody("duplicateAction")].join("\n"), ctx);
+  const twin = id => vm.runInContext(`duplicateAction({id:"b",chapter:4,type:"residency",source:${JSON.stringify(id)},location:"inn",action:"begin"})`, ctx);
+  assert.equal(twin("gerald")?.id, "a", "the same action for the same person in the same chapter");
+  assert.equal(twin("velma"), null, "the same action for somebody else is exactly what was meant");
+  assert.equal(vm.runInContext(`duplicateAction({id:"a",chapter:4,type:"residency",source:"gerald",location:"inn",action:"begin"})`, ctx), null, "editing an action is not a duplicate of itself");
+  assert.match(source, /if\(!duplicateWarning\(record\)\)return;/, "saving one goes through it");
+  assert.match(source, /if\(!duplicateWarning\(record,eventDrafts\)\)return;/, "and so does adding one to a chapter batch, where it is likeliest");
+  assert.match(functionBody("duplicateWarning"), /If this was meant for somebody else, cancel and change the name/);
+  assert.match(functionBody("renderOrderEditor"), /twin=rows\.findIndex\(other=>sameAction\(other,event\)\)/, "and one already written stays visible in the running order");
+  assert.match(functionBody("orderRowHtml"), /same action as \$\{twin\}/);
+});
+
+test("the running order says what each action really does, not only what its message says", () => {
+  const ctx = { data: { entities: [
+    { id: "velma", kind: "character", name: "Velma" },
+    { id: "inn", kind: "organization", name: "Midnight Inn" },
+    { id: "inn-estate", kind: "location", name: "Midnight Inn Estate" }
+  ] }, IDENTITY_KINDS: new Set(["character","system"]), CAN_SPEAK: new Set(["character","system","organization","location"]) };
+  vm.createContext(ctx);
+  vm.runInContext([functionBody("entity"), functionBody("actionSubjectLine"), functionBody("actionEffectProblem")].join("\n"), ctx);
+  assert.equal(vm.runInContext(`actionSubjectLine({type:"residency",source:"velma",location:"inn-estate"})`, ctx), "Velma · at Midnight Inn Estate", "the subject is read from the record, so a message left saying somebody else stands out");
+  assert.equal(vm.runInContext(`actionEffectProblem({type:"residency",source:"velma",location:"inn-estate"})`, ctx), "");
+  assert.match(vm.runInContext(`actionEffectProblem({type:"residency",source:"velma",location:"inn"})`, ctx), /a residence needs a character and a place/, "a residence at an organization is quietly ignored by the graph, and now says so");
+  assert.match(vm.runInContext(`actionEffectProblem({type:"system_host",source:"velma",target:"inn"})`, ctx), /a bond needs a system and a character/);
+  assert.match(functionBody("orderRowHtml"), /<b class="order-inert"[^>]*>changes nothing<\/b>/);
+  assert.match(functionBody("orderRowHtml"), /<b class="order-subject">\$\{escapeHtml\(actionSubjectLine\(event\)\)\}<\/b>/);
+});
+
+test("a message that names one person while the action is about another is the commonest slip, and is called out", () => {
+  const ctx = { data: { entities: [
+    { id: "gerald", kind: "character", name: "Gerald" },
+    { id: "velma", kind: "character", name: "Velma" },
+    { id: "inn", kind: "organization", name: "Midnight Inn" },
+    { id: "inn-estate", kind: "location", name: "Midnight Inn Estate" }
+  ] } };
+  vm.createContext(ctx);
+  vm.runInContext([functionBody("entity"), functionBody("namesWord"), functionBody("messageMismatch")].join("\n"), ctx);
+  const check = event => vm.runInContext(`messageMismatch(${JSON.stringify(event)})`, ctx);
+  assert.match(check({ type: "residency", source: "gerald", location: "inn-estate", description: "Velma begins using Midnight Inn as Home/Work." }),
+    /the message names Velma, but this action is about Gerald/, "the subject was never changed — only the sentence was");
+  assert.match(check({ type: "residency", source: "velma", location: "inn-estate", description: "Gerald begins using Midnight Inn as Home/Work." }),
+    /the message names Gerald, but this action is about Velma/, "and the other way round: the subject changed under a hand-written sentence");
+  assert.equal(check({ type: "residency", source: "velma", location: "inn-estate", description: "Velma settles in for good." }), "");
+  assert.equal(check({ type: "residency", source: "velma", location: "inn-estate", description: "Velma moves into the Midnight Inn." }), "", "a place written short is the same place, not somebody else");
+  assert.equal(check({ type: "note", source: "gerald", description: "" }), "");
+  assert.match(functionBody("orderRowHtml"), /<b class="order-mismatch"[^>]*>message names someone else<\/b>/);
+});
+
+test("a ghost late in a chapter has not happened yet while the reader is earlier in that chapter", () => {
+  const ctx = { currentActionIndex: 0, activeVol: () => ({ from: 1, to: 40 }),
+    data: { events: [
+      { id: "a", chapter: 4, order: 4, type: "residency", source: "gerald", location: "inn", action: "begin" },
+      { id: "b", chapter: 4, order: 7, type: "residency", source: "velma", location: "inn", action: "begin" },
+      { id: "ghost", chapter: 4, order: 24, type: "residency", source: "velma", location: "inn", action: "end", ghost: true },
+      { id: "c", chapter: 4, order: 26, type: "residency", source: "velma", location: "lobby", action: "begin" }
+    ] } };
+  vm.createContext(ctx);
+  vm.runInContext([functionBody("orderedEvents"), functionBody("volumeActions"), functionBody("ghostActions")].join("\n"), ctx);
+  const ghostsAt = index => { ctx.currentActionIndex = index; return vm.runInContext("ghostActions().map(event=>event.id).join(',')", ctx); };
+  assert.equal(ghostsAt(0), "", "nothing has happened yet");
+  assert.equal(ghostsAt(2), "", "the reader is at Velma taking up residence — the ghost that ends it is twenty actions away");
+  assert.equal(ghostsAt(3), "ghost", "and it comes into force when the reader reaches its place in the order");
+});
+
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
   assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });
@@ -1160,7 +1229,7 @@ test("a conversation can be found again after the slider moves on — selecting 
 
 test("a ghost action changes the world without taking a turn: no stop on the slider, not in the list, but everything it does is in force — and it replays in story order, not after everything else", () => {
   assert.match(functionBody("volumeActions"), /&&!event\.ghost\);/, "never a stop");
-  assert.match(functionBody("ghostActions"), /event\.ghost&&event\.chapter>=volume\.from&&event\.chapter<=volume\.to&&event\.chapter<=chapter/, "in force from its chapter onward");
+  assert.match(functionBody("ghostActions"), /event\.ghost&&index<=cutoff&&event\.chapter>=volume\.from&&event\.chapter<=volume\.to/, "in force from its own place in the running order — not from the top of its chapter, which would have it undoing things the reader has not reached yet");
   assert.match(functionBody("revealedVolumeActions"), /const chosen=new Set\(\[\.\.\.volumeActions\(\)\.slice\(0,currentActionIndex\),\.\.\.ghostActions\(\)\]\.map\(event=>event\.id\)\);\s*return orderedEvents\(\)\.filter\(event=>chosen\.has\(event\.id\)\);/);
   assert.match(functionBody("appliedEvents"), /const volume=activeVol\(\),selected=new Set\(revealedVolumeActions\(\)\.map\(event=>event\.id\)\)/, "so derivation sees it too");
   assert.match(source, /if\(form\.get\("ghost"\)\)record\.ghost=true;/);

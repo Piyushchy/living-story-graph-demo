@@ -879,7 +879,16 @@ function nextEventOrder(chapter,drafts=[]){const sameChapter=[...data.events,...
 // A ghost action still changes the world but never takes a turn: it is not a stop on the slider
 // and it is not listed, yet everything it does is in force from its chapter onward.
 function volumeActions(volume=activeVol()){return orderedEvents().filter(event=>event.chapter>=volume.from&&event.chapter<=volume.to&&!event.ghost);}
-function ghostActions(volume=activeVol(),chapter=currentChapter){return orderedEvents().filter(event=>event.ghost&&event.chapter>=volume.from&&event.chapter<=volume.to&&event.chapter<=chapter);}
+// A ghost takes no turn on the slider, but it still happens somewhere in the running order and it
+// comes into force there — not from the top of its chapter. A ghost late in chapter 4 that ends a
+// residence must not already have undone the residence the reader watches begin earlier in
+// chapter 4: everything in a chapter would otherwise arrive having already happened.
+function ghostActions(volume=activeVol()){
+  const ordered=orderedEvents(),reached=volumeActions(volume).slice(0,currentActionIndex).at(-1);
+  if(!reached)return [];
+  const cutoff=ordered.findIndex(event=>event.id===reached.id);
+  return ordered.filter((event,index)=>event.ghost&&index<=cutoff&&event.chapter>=volume.from&&event.chapter<=volume.to);
+}
 // Ghost actions have to be folded back into story order, not appended: derivation is
 // order-sensitive, so a ghost issued in chapter 26 must not be replayed after a chapter 34
 // action that settles the same thing.
@@ -2704,8 +2713,59 @@ function combinePickedActions(){
   commitEventOrder(merged);
   toast(`${ids.length} actions now happen as one moment`);
 }
-function orderRowHtml(event,index,total,moment){
-  return `<li class="order-row${event.ghost?" order-row-ghost":""}${moment?" order-row-moment":""}" data-id="${escapeHtml(event.id)}"><label class="order-pick" title="Pick this to combine it with another action"><input type="checkbox" class="order-pick-box" data-id="${escapeHtml(event.id)}" aria-label="Pick this action to combine" /></label><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i>${messageBoxHtml("order-message",event)}</div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===total-1?" disabled":""}>↓</button></div></li>`;
+// The message on an action is prose — sometimes written by hand, sometimes generated and then
+// left behind when a field changed. What the action actually does is its subject, its second
+// identity and its place, so the row shows those from the record rather than from the sentence.
+function actionSubjectLine(event){
+  const name=id=>id?(entity(id)?.name||id):"",
+    parts=[name(event.source),name(event.target),event.location?`at ${name(event.location)}`:""].filter(Boolean);
+  return parts.length?parts.join(" → ").replace(" → at "," · at ") : "";
+}
+// Derivation quietly ignores an action whose parts are the wrong kind — a residence at an
+// organisation, a subsystem of a character. It saved, it reads properly, and nothing happens on
+// the graph. Rather than leave that to be discovered by staring at it, the row says so.
+function actionEffectProblem(event){
+  const kind=id=>entity(id)?.kind||"",type=String(event.type);
+  const needs=(ok,message)=>ok?"":message;
+  if(type==="residency")return needs(kind(event.source)==="character"&&kind(event.location)==="location","a residence needs a character and a place");
+  if(type==="movement")return needs(kind(event.source)==="character"&&kind(event.location)==="location","travel needs a character and a place");
+  if(type==="organization_location")return needs(kind(event.source)==="organization"&&kind(event.location)==="location","an organization place needs an organization and a place");
+  if(type==="location_parent")return needs(kind(event.source)==="location"&&kind(event.location)==="location","nesting needs two places");
+  if(type==="system_host")return needs(kind(event.source)==="system"&&kind(event.target)==="character","a bond needs a system and a character");
+  if(type==="system_parent"||type==="system_merge")return needs(kind(event.source)==="system"&&kind(event.target)==="system","this needs two systems");
+  if(type==="system_location")return needs(kind(event.source)==="system"&&kind(event.location)==="location","a system place needs a system and a place");
+  if(type==="system_rank"||type==="system_end")return needs(kind(event.source)==="system","this needs a system");
+  if(type==="identity_parent")return needs(IDENTITY_KINDS.has(kind(event.source))&&IDENTITY_KINDS.has(kind(event.target)),"this needs two identities");
+  if(type==="membership")return needs(kind(event.source)==="character"&&Boolean(event.target),"a membership needs a character and an organization");
+  if(["awareness","meeting","relationship"].includes(type))return needs(kind(event.source)==="character"&&kind(event.target)==="character","this needs two characters");
+  if(type==="conversation")return needs([...new Set([event.source,...(event.characters||[])])].filter(id=>CAN_SPEAK.has(kind(id))).length>1,"a conversation needs at least two taking part");
+  if(type.startsWith("quest_"))return needs(kind(event.source)==="quest","a quest action needs a quest as its subject");
+  return "";
+}
+// The commonest slip of all: the message says one name and the action is about another. It
+// happens because a run of actions keeps the last subject, and because a message written by hand
+// survives a change of subject underneath it. Either way the graph obeys the record and the
+// reader believes the sentence, so the two are compared here.
+function namesWord(text,name){
+  const word=String(name||"").trim();
+  if(word.length<3)return false;
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${word.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}(?:[^\\p{L}\\p{N}]|$)`,"iu").test(String(text||""));
+}
+function messageMismatch(event){
+  const text=String(event.description||""),subject=entity(event.source);
+  if(!text||!subject)return "";
+  const own=[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean),
+    ownNames=own.map(id=>entity(id)?.name).filter(Boolean);
+  if(ownNames.some(name=>namesWord(text,name)))return "";
+  // "Midnight Inn" written where the place is the Midnight Inn Estate is a shorter way of saying
+  // the same thing, not somebody else.
+  const nearOwn=name=>ownNames.some(own=>{const a=own.toLowerCase(),b=String(name).toLowerCase();return a.includes(b)||b.includes(a);});
+  const strangers=data.entities.filter(item=>!own.includes(item.id)&&!nearOwn(item.name)&&namesWord(text,item.name))
+    .sort((a,b)=>(b.kind===subject.kind)-(a.kind===subject.kind)||b.name.length-a.name.length);
+  return strangers.length?`the message names ${strangers[0].name}, but this action is about ${subject.name}`:"";
+}
+function orderRowHtml(event,index,total,moment,twin=0){
+  return `<li class="order-row${event.ghost?" order-row-ghost":""}${moment?" order-row-moment":""}${twin?" order-row-twin":""}" data-id="${escapeHtml(event.id)}"><label class="order-pick" title="Pick this to combine it with another action"><input type="checkbox" class="order-pick-box" data-id="${escapeHtml(event.id)}" aria-label="Pick this action to combine" /></label><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><div class="order-facts"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i>${actionSubjectLine(event)?`<b class="order-subject">${escapeHtml(actionSubjectLine(event))}</b>`:""}${twin?`<b class="order-twin" title="This does exactly what action ${twin} in this chapter already does — if it was meant for somebody else, open it and change the name">same action as ${twin}</b>`:""}${actionEffectProblem(event)?`<b class="order-inert" title="${escapeHtml(actionEffectProblem(event))} — as it stands the graph ignores this action">changes nothing</b>`:""}${messageMismatch(event)?`<b class="order-mismatch" title="${escapeHtml(messageMismatch(event))} — the graph follows the action, not the sentence">message names someone else</b>`:""}</div>${messageBoxHtml("order-message",event)}</div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===total-1?" disabled":""}>↓</button></div></li>`;
 }
 // The head names a moment and carries the one sentence it is read by; its parts stay listed
 // underneath, because they are still separate actions and are still reordered and edited there.
@@ -2726,10 +2786,13 @@ function renderOrderEditor(){
   $("#order-position").textContent=`Chapter ${orderChapter} — ${rows.length} action${rows.length===1?"":"s"} · ${at+1} of ${chapters.length} chapters that have events`;
   const html=[];let openMoment=null;
   rows.forEach((event,index)=>{
-    const moment=momentOf(event.id);
+    const moment=momentOf(event.id),
+      // Two actions that do exactly the same thing are almost always one of them written under
+      // the wrong name — the message is generated, so the repeat reads as if it were right.
+      twin=rows.findIndex(other=>sameAction(other,event));
     if(moment&&moment!==openMoment)html.push(momentHeadHtml(moment,rows));
     openMoment=moment;
-    html.push(orderRowHtml(event,index,rows.length,moment));
+    html.push(orderRowHtml(event,index,rows.length,moment,twin>=0&&twin<index?twin+1:0));
   });
   list.innerHTML=html.join("");
   // Every action's message is editable in place, whatever produced it — including the ones the
@@ -2995,6 +3058,21 @@ function renderEventBatch(){
   document.querySelectorAll(".remove-draft").forEach(button=>button.onclick=()=>{eventDrafts=eventDrafts.filter(draft=>draft.id!==button.dataset.id);renderEventBatch();});
 }
 
+// Writing a run of actions keeps the chapter, the subject and the place for the next one, which
+// is what makes a batch quick — and what makes it easy to write the same action twice under the
+// wrong name. The message is written for you, so a repeat reads as if it were correct. This
+// catches it at the moment it is saved, when it is still one keystroke to fix.
+function sameAction(a,b){return a.type===b.type&&a.source===b.source&&(a.target||"")===(b.target||"")&&(a.location||"")===(b.location||"")&&(a.action||"")===(b.action||"");}
+function duplicateAction(record,drafts=[]){
+  return [...data.events,...drafts].find(event=>event.id!==record.id&&Number(event.chapter)===Number(record.chapter)&&sameAction(event,record))||null;
+}
+function duplicateWarning(record,drafts=[]){
+  const twin=duplicateAction(record,drafts);
+  if(!twin)return true;
+  const who=entity(record.source)?.name||record.source,where=record.location?` at ${entity(record.location)?.name||record.location}`:"",
+    what=String(record.type).replaceAll("_"," ");
+  return confirm(`Chapter ${record.chapter} already has this exact action: ${who} · ${what}${where}.\n\n“${twin.description||what}”\n\nIf this was meant for somebody else, cancel and change the name. Add it a second time anyway?`);
+}
 function clearEventInputsForNext(){const form=$("#event-form"),chapter=form.elements.chapter.value,source=form.elements.source.value,location=form.elements.location.value,type=form.elements.type.value;form.reset();form.elements.chapter.value=chapter;form.elements.source.value=source;form.elements.location.value=location;form.elements.type.value=type;updateEventHelp();}
 
 document.querySelectorAll(".tab").forEach(tab=>tab.addEventListener("click",()=>{activeView=tab.dataset.view;document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t===tab));$("#graph-view").classList.toggle("active",activeView==="graph");$("#admin-view").classList.toggle("active",activeView==="admin");if(activeView==="graph")renderAll();}));
@@ -3039,7 +3117,7 @@ $("#load-entity").onclick=()=>loadEntityEditor();
 $("#cancel-entity-edit").onclick=resetEntityEditor;
 $("#delete-entity").onclick=()=>deleteIdentity($("#entity-form").elements.editingId.value);
 
-$("#event-form").addEventListener("submit",event=>{event.preventDefault();const editingId=event.currentTarget.elements.editingId.value,previous=editingId?data.events.find(item=>item.id===editingId):null,record=buildEventRecord(event.currentTarget,editingId||undefined);if(!record)return;if(editingId){const index=data.events.findIndex(item=>item.id===editingId);if(index>=0)data.events[index]=record;}else data.events.push(record);if(previous)syncPresenceFromEvents(previous.source,previous.type);syncPresenceFromEvents(record.source,record.type);saveData();resetEventEditor();
+$("#event-form").addEventListener("submit",event=>{event.preventDefault();const editingId=event.currentTarget.elements.editingId.value,previous=editingId?data.events.find(item=>item.id===editingId):null,record=buildEventRecord(event.currentTarget,editingId||undefined);if(!record)return;if(!duplicateWarning(record))return;if(editingId){const index=data.events.findIndex(item=>item.id===editingId);if(index>=0)data.events[index]=record;}else data.events.push(record);if(previous)syncPresenceFromEvents(previous.source,previous.type);syncPresenceFromEvents(record.source,record.type);saveData();resetEventEditor();
   // Point the running order at the chapter just written to. Filling in a gap — a scene remembered
   // for chapter 2 while the story is at 40 — lands at the end of that chapter, and this is what
   // puts it in front of the reader so the order can be changed like any other action's.
@@ -3053,7 +3131,7 @@ $("#event-form").elements.level.addEventListener("change",()=>{const form=$("#ev
 function installWikiLinkHelpers(){document.querySelectorAll("#admin-view textarea:not([data-plain-text])").forEach(textarea=>{if(textarea.parentElement.querySelector(".inline-link-helper"))return;const button=document.createElement("button");button.type="button";button.className="inline-link-helper";button.textContent="＋ Link selected text to a wiki page";button.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd,label=textarea.value.slice(start,end).trim()||prompt("Text readers should see (for example: Protos Energy)");if(!label)return;const url=prompt("Paste the full webpage URL");if(!safeExternalUrl(url)){if(url)toast("Use a complete http:// or https:// link");return;}const chapterInput=prompt("Also cite a chapter for this? Enter a chapter number, or leave blank to skip."),chapter=validChapter(chapterInput);if(chapterInput&&!chapter){toast("Enter a whole chapter number greater than 0 — link added without a chapter citation");}textarea.setRangeText(chapter?`[[${label}|${url.trim()}|${chapter}]]`:`[[${label}|${url.trim()}]]`,start,end,"end");textarea.focus();};const chapterButton=document.createElement("button");chapterButton.type="button";chapterButton.className="inline-link-helper chapter-mark-helper";chapterButton.textContent="＋ Mark chapter for selected text";chapterButton.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd;if(start===end){toast("Select the sentence or passage this chapter reference belongs to first");return;}const selectedText=textarea.value.slice(start,end);const input=prompt("Which chapter does this belong to?"),chapter=validChapter(input);if(!chapter){if(input!==null)toast("Enter a whole chapter number greater than 0");return;}if(!chapterUrl(chapter)){const urlInput=prompt(`No link is saved for chapter ${chapter} yet. Paste its URL to save it once — every future reference to chapter ${chapter} anywhere will use it automatically. Leave blank to skip.`);const savedUrl=urlInput?safeExternalUrl(urlInput.trim()):"";if(urlInput&&!savedUrl)toast("That wasn't a complete http:// or https:// link — marker added without one");if(savedUrl){data.chapterSources={...(data.chapterSources||{}),[chapter]:savedUrl};saveData();}}textarea.setRangeText(`[[cite:${chapter}]]${selectedText}[[/cite]]`,start,end,"end");textarea.focus();};textarea.insertAdjacentElement("afterend",button);button.insertAdjacentElement("afterend",chapterButton);});}
 document.addEventListener("click",event=>{const link=event.target.closest("[data-open-event]");if(!link)return;event.preventDefault();event.stopPropagation();openProfile(link.dataset.openEvent,Number(link.dataset.eventChapter));});
 $("#cancel-event-edit").onclick=resetEventEditor;
-$("#queue-event").onclick=()=>{const record=buildEventRecord($("#event-form"));if(!record)return;if(eventDrafts.length&&record.chapter!==eventDrafts[0].chapter){toast(`This batch is for chapter ${eventDrafts[0].chapter}. Save or clear it before changing chapters.`);return;}eventDrafts.push(record);renderEventBatch();clearEventInputsForNext();toast("Change added to the chapter batch");};
+$("#queue-event").onclick=()=>{const record=buildEventRecord($("#event-form"));if(!record)return;if(!duplicateWarning(record,eventDrafts))return;if(eventDrafts.length&&record.chapter!==eventDrafts[0].chapter){toast(`This batch is for chapter ${eventDrafts[0].chapter}. Save or clear it before changing chapters.`);return;}eventDrafts.push(record);renderEventBatch();clearEventInputsForNext();toast("Change added to the chapter batch");};
 $("#clear-event-batch").onclick=()=>{eventDrafts=[];renderEventBatch();resetEventEditor();};
 $("#save-event-batch").onclick=()=>{if(!eventDrafts.length)return;data.events.push(...eventDrafts);orderChapter=eventDrafts.at(-1).chapter;eventDrafts.forEach(record=>syncPresenceFromEvents(record.source,record.type));const count=eventDrafts.length;eventDrafts=[];saveData();renderEventBatch();resetEventEditor();renderAll();toast(`${count} chapter changes saved; graph updated`);};
 

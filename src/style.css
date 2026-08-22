@@ -967,3 +967,10 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 @media (prefers-reduced-motion: reduce){.edge.forming-edge{animation:none}}
 .quest-reward-list{display:grid;gap:2px;margin:0;padding:0 0 0 13px;list-style:disc}
 .quest-reward-list li{color:inherit}
+.order-row-twin{border-color:#7a5a2a;background:#1a1508}
+.order-twin{display:inline-block;margin-left:8px;padding:2px 7px;border-radius:999px;background:rgba(242,201,94,.14);color:#f2c95e;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:help}
+.order-facts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.order-subject{color:#9fb6cc;font-size:10px;font-weight:650;letter-spacing:.02em}
+.order-inert{padding:2px 7px;border-radius:999px;background:rgba(239,93,103,.14);color:#ff9ba3;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:help}
+.order-row-inert{border-color:#6a2e34}
+.order-mismatch{padding:2px 7px;border-radius:999px;background:rgba(242,201,94,.14);color:#f2c95e;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:help}
