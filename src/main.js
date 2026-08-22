@@ -2704,8 +2704,37 @@ function combinePickedActions(){
   commitEventOrder(merged);
   toast(`${ids.length} actions now happen as one moment`);
 }
+// The message on an action is prose — sometimes written by hand, sometimes generated and then
+// left behind when a field changed. What the action actually does is its subject, its second
+// identity and its place, so the row shows those from the record rather than from the sentence.
+function actionSubjectLine(event){
+  const name=id=>id?(entity(id)?.name||id):"",
+    parts=[name(event.source),name(event.target),event.location?`at ${name(event.location)}`:""].filter(Boolean);
+  return parts.length?parts.join(" → ").replace(" → at "," · at ") : "";
+}
+// Derivation quietly ignores an action whose parts are the wrong kind — a residence at an
+// organisation, a subsystem of a character. It saved, it reads properly, and nothing happens on
+// the graph. Rather than leave that to be discovered by staring at it, the row says so.
+function actionEffectProblem(event){
+  const kind=id=>entity(id)?.kind||"",type=String(event.type);
+  const needs=(ok,message)=>ok?"":message;
+  if(type==="residency")return needs(kind(event.source)==="character"&&kind(event.location)==="location","a residence needs a character and a place");
+  if(type==="movement")return needs(kind(event.source)==="character"&&kind(event.location)==="location","travel needs a character and a place");
+  if(type==="organization_location")return needs(kind(event.source)==="organization"&&kind(event.location)==="location","an organization place needs an organization and a place");
+  if(type==="location_parent")return needs(kind(event.source)==="location"&&kind(event.location)==="location","nesting needs two places");
+  if(type==="system_host")return needs(kind(event.source)==="system"&&kind(event.target)==="character","a bond needs a system and a character");
+  if(type==="system_parent"||type==="system_merge")return needs(kind(event.source)==="system"&&kind(event.target)==="system","this needs two systems");
+  if(type==="system_location")return needs(kind(event.source)==="system"&&kind(event.location)==="location","a system place needs a system and a place");
+  if(type==="system_rank"||type==="system_end")return needs(kind(event.source)==="system","this needs a system");
+  if(type==="identity_parent")return needs(IDENTITY_KINDS.has(kind(event.source))&&IDENTITY_KINDS.has(kind(event.target)),"this needs two identities");
+  if(type==="membership")return needs(kind(event.source)==="character"&&Boolean(event.target),"a membership needs a character and an organization");
+  if(["awareness","meeting","relationship"].includes(type))return needs(kind(event.source)==="character"&&kind(event.target)==="character","this needs two characters");
+  if(type==="conversation")return needs([...new Set([event.source,...(event.characters||[])])].filter(id=>CAN_SPEAK.has(kind(id))).length>1,"a conversation needs at least two taking part");
+  if(type.startsWith("quest_"))return needs(kind(event.source)==="quest","a quest action needs a quest as its subject");
+  return "";
+}
 function orderRowHtml(event,index,total,moment,twin=0){
-  return `<li class="order-row${event.ghost?" order-row-ghost":""}${moment?" order-row-moment":""}${twin?" order-row-twin":""}" data-id="${escapeHtml(event.id)}"><label class="order-pick" title="Pick this to combine it with another action"><input type="checkbox" class="order-pick-box" data-id="${escapeHtml(event.id)}" aria-label="Pick this action to combine" /></label><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i>${twin?`<b class="order-twin" title="This does exactly what action ${twin} in this chapter already does — if it was meant for somebody else, open it and change the name">same action as ${twin}</b>`:""}${messageBoxHtml("order-message",event)}</div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===total-1?" disabled":""}>↓</button></div></li>`;
+  return `<li class="order-row${event.ghost?" order-row-ghost":""}${moment?" order-row-moment":""}${twin?" order-row-twin":""}" data-id="${escapeHtml(event.id)}"><label class="order-pick" title="Pick this to combine it with another action"><input type="checkbox" class="order-pick-box" data-id="${escapeHtml(event.id)}" aria-label="Pick this action to combine" /></label><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><div class="order-facts"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i>${actionSubjectLine(event)?`<b class="order-subject">${escapeHtml(actionSubjectLine(event))}</b>`:""}${twin?`<b class="order-twin" title="This does exactly what action ${twin} in this chapter already does — if it was meant for somebody else, open it and change the name">same action as ${twin}</b>`:""}${actionEffectProblem(event)?`<b class="order-inert" title="${escapeHtml(actionEffectProblem(event))} — as it stands the graph ignores this action">changes nothing</b>`:""}</div>${messageBoxHtml("order-message",event)}</div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===total-1?" disabled":""}>↓</button></div></li>`;
 }
 // The head names a moment and carries the one sentence it is read by; its parts stay listed
 // underneath, because they are still separate actions and are still reordered and edited there.

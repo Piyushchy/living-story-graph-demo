@@ -1086,6 +1086,22 @@ test("writing the same action twice is caught, because the message is generated 
   assert.match(functionBody("orderRowHtml"), /same action as \$\{twin\}/);
 });
 
+test("the running order says what each action really does, not only what its message says", () => {
+  const ctx = { data: { entities: [
+    { id: "velma", kind: "character", name: "Velma" },
+    { id: "inn", kind: "organization", name: "Midnight Inn" },
+    { id: "inn-estate", kind: "location", name: "Midnight Inn Estate" }
+  ] }, IDENTITY_KINDS: new Set(["character","system"]), CAN_SPEAK: new Set(["character","system","organization","location"]) };
+  vm.createContext(ctx);
+  vm.runInContext([functionBody("entity"), functionBody("actionSubjectLine"), functionBody("actionEffectProblem")].join("\n"), ctx);
+  assert.equal(vm.runInContext(`actionSubjectLine({type:"residency",source:"velma",location:"inn-estate"})`, ctx), "Velma · at Midnight Inn Estate", "the subject is read from the record, so a message left saying somebody else stands out");
+  assert.equal(vm.runInContext(`actionEffectProblem({type:"residency",source:"velma",location:"inn-estate"})`, ctx), "");
+  assert.match(vm.runInContext(`actionEffectProblem({type:"residency",source:"velma",location:"inn"})`, ctx), /a residence needs a character and a place/, "a residence at an organization is quietly ignored by the graph, and now says so");
+  assert.match(vm.runInContext(`actionEffectProblem({type:"system_host",source:"velma",target:"inn"})`, ctx), /a bond needs a system and a character/);
+  assert.match(functionBody("orderRowHtml"), /<b class="order-inert"[^>]*>changes nothing<\/b>/);
+  assert.match(functionBody("orderRowHtml"), /<b class="order-subject">\$\{escapeHtml\(actionSubjectLine\(event\)\)\}<\/b>/);
+});
+
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
   assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });
