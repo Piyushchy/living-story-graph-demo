@@ -670,8 +670,8 @@ test("a place a character is standing in keeps the line while it is popped out, 
 
 test("an action that merely names a place — a meeting, a note — still draws everyone it involves to that place while it is showing", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /if\(currentEvent\?\.location&&entity\(currentEvent\.location\)\?\.kind==="location"&&!\["movement","residency","organization_location","location_parent"\]\.includes\(currentEvent\.type\)\)/, "the link types that already draw their own line are left alone");
-  assert.match(body, /locationCharacterIds\(currentEvent\)\.forEach\(who=>\{noteEdge\(who,place,currentEvent\.chapter,"Here for this action"\);straightEdge\(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place\);\}\)/);
+  assert.match(body, /beatEvents\.filter\(event=>event\.location&&entity\(event\.location\)\?\.kind==="location"&&!\["movement","residency","organization_location","location_parent"\]\.includes\(event\.type\)\)/, "the link types that already draw their own line are left alone, and every part of a moment names its own place");
+  assert.match(body, /locationCharacterIds\(event\)\.forEach\(who=>\{noteEdge\(who,place,event\.chapter,"Here for this action"\);straightEdge\(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place\);\}\)/);
 });
 
 test("the view eases into a new framing instead of jumping, and a reader's own zoom or pan drops the tween immediately", () => {
@@ -699,9 +699,9 @@ test("hovering a link answers which chapter that connection last changed in, hit
   assert.match(source, /if\(physics\.dragId\|\|panStart\|\|event\.target\.closest\("\.node,\.location-pod"\)\)\{hideEdgeTip\(\);return;\}/, "dragging, panning and hovering a node all suppress it");
   const body = functionBody("renderGraph");
   assert.match(body, /const noteEdge=\(a,b,chapter,note\)=>\{if\(a&&b&&a!==b&&chapter\)edgeIndex\.push\(\{a,b,chapter:Number\(chapter\),note\}\);\}/);
-  assert.match(body, /locationEdge\(character,visit\.location,"location-edge",[^,]*,visit\.chapter,"Travelled here"\)/, "travel");
+  assert.match(body, /locationEdge\(character,visit\.location,`location-edge\$\{forming\(visit\)\}`,beatDoes\("movement",[^)]*\),visit\.chapter,visit\.pending\?/, "travel, and travel still under way");
   assert.match(body, /noteEdge\(m\.character,m\.organization,m\.from/, "membership");
-  assert.match(body, /noteEdge\(child,parent,link\.from,"Sits inside"\)/, "location nesting");
+  assert.match(body, /noteEdge\(child,parent,link\.from,`Sits inside\$\{formingNote\(link\)\}`\)/, "location nesting, and whether it is still being made");
   assert.match(source, /pair\.from = event\.chapter;/, "awareness had no chapter of its own to report until now");
 });
 
@@ -830,7 +830,10 @@ test("the slider treats a combined moment as one stop, and an index inside one i
 
 test("everything in one moment lands together on the graph", () => {
   const graph = functionBody("renderGraph");
-  assert.match(graph, /beatEvents=currentBeatEvents\(\),previousApplied=volumeActions\(\)\.slice\(0,Math\.max\(0,currentActionIndex-Math\.max\(1,beatEvents\.length\)\)\)/, "what came before is everything before the whole moment");
+  assert.match(graph, /previousApplied=volumeActions\(\)\.slice\(0,Math\.max\(0,currentActionIndex-Math\.max\(1,beatEvents\.length\)\)\)/, "what came before is everything before the whole moment");
+  assert.match(graph, /beatDoes=\(type,test\)=>beatEvents\.some\(event=>event\.type===type&&test\(event\)\)/, "and every part of it lights up, not only the last");
+  assert.match(graph, /cultivationReveal=beatDoes\("cultivation",event=>event\.source===item\.id\)/, "a cultivation revealed inside a moment still plays its reveal");
+  assert.match(graph, /priorCultivationDerived=beatCultivations\.length\?derive\(currentChapter,appliedNow\.filter\(event=>!beatCultivations\.some\(item=>item\.id===event\.id\)\)\)/, "measured against what it was before the whole moment");
   assert.match(graph, /const activeIds=new Set\(beatEvents\.flatMap\(/, "every part of it is lit, not only the last");
   assert.match(functionBody("eventPodIds"), /\[\]\.concat\(beatEvents\|\|\[\]\)/, "and every place it puts on the graph comes out at once");
 });
@@ -855,7 +858,7 @@ test("combining is done in the running order, writes no event of its own, and ca
 });
 
 test("the demo ships a moment, and a stored copy is brought up to it", () => {
-  assert.match(source, /schemaVersion: 19,/);
+  assert.match(source, /schemaVersion: 20,/);
   assert.match(source, /\{ id: "m-inn-place", message: "The Midnight Inn Lobby stands in the Midnight Inn Estate, in the city of Stonevale, on the world Verdan\.", members: \["hier-1","hier-2","hier-3"\] \}/);
   assert.match(source, /if\(!Array\.isArray\(migrated\.moments\)\)migrated\.moments=\[\];/);
   assert.match(source, /if\(sample\.members\.every\(id=>\(migrated\.events\|\|\[\]\)\.some\(event=>event\.id===id\)\)\)migrated\.moments\.push\(deepClone\(sample\)\)/, "a reader who deleted one of those actions is left alone");
@@ -944,10 +947,10 @@ test("a chapter filter takes one chapter, a range, or an open end", () => {
 
 test("what an action carries is searchable by the name of the thing it carries", () => {
   const haystack = functionBody("actionHaystack");
-  assert.match(haystack, /event\.rewardRank\?`reward rank \$\{event\.rewardRank\}`:""/);
+  assert.match(haystack, /event\.rewards\?\.length\?`rewards reward \$\{event\.rewards\.join\(" "\)\}`:""/);
   assert.match(haystack, /String\(event\.type\)==="quest_end"&&event\.value\?`rewards reward \$\{event\.value\}`:""/, "so quest:rewards finds the quests that ended with one");
   assert.match(haystack, /questSearchText\(event\.source\)/);
-  assert.match(functionBody("questSearchText"), /quest\.rewards\?`rewards \$\{quest\.rewards\}`:""/, "a term is findable by the name of the term as well as by what it says");
+  assert.match(functionBody("questSearchText"), /quest\.rewards\?\.length\?`rewards \$\{quest\.rewards\.join\(" "\)\}`:"",quest\.rating\?`rating \$\{quest\.rating\}`:""/, "a term is findable by the name of the term as well as by what it says");
   const filter = functionBody("actionMatchesFilter");
   assert.match(filter, /filter\.field==="from"\?event\.source===read\.id\|\|\(String\(event\.type\)\.startsWith\("quest_"\)&&entity\(event\.source\)\?\.issuer===read\.id\)/, "a quest belongs to the system that issued it");
   assert.match(filter, /flag==="moment"\|\|flag==="combined"\|\|flag==="together"\?Boolean\(momentOf\(event\.id\)\)/);
@@ -1006,19 +1009,64 @@ test("a conversation is not only people talking — a system speaks to its host,
 test("a linked word is written however it comes to hand, and the mark-up helpers keep out of fields that are not prose", () => {
   const ctx = { data: {}, URL };
   vm.createContext(ctx);
-  vm.runInContext([functionBody("safeExternalUrl"), functionBody("readLexiconLine")].join("\n"), ctx);
+  vm.runInContext([functionBody("safeExternalUrl"), functionBody("validChapter"), functionBody("readLexiconLine")].join("\n"), ctx);
   const read = line => JSON.parse(vm.runInContext(`JSON.stringify(readLexiconLine(${JSON.stringify(line)}))`, ctx));
-  assert.deepEqual(read("Starter Pack|https://wiki.example.com/starter"), { term: "Starter Pack", url: "https://wiki.example.com/starter", note: "" }, "bars with no spaces around them — the way anyone would type it");
-  assert.deepEqual(read("Starter Pack | https://wiki.example.com/starter | what it is"), { term: "Starter Pack", url: "https://wiki.example.com/starter", note: "what it is" });
-  assert.deepEqual(read("Starter Pack   https://wiki.example.com/starter"), { term: "Starter Pack", url: "https://wiki.example.com/starter", note: "" }, "no bar at all: the link is found and the word is what stands in front of it");
-  assert.deepEqual(read("Host Attire - https://wiki.example.com/a  the clothes"), { term: "Host Attire", url: "https://wiki.example.com/a", note: "the clothes" });
-  assert.deepEqual(read("just some words"), { term: "just some words", url: "", note: "" }, "with no link there is nothing to carry, and that is what the error says");
+  assert.deepEqual(read("Starter Pack|https://wiki.example.com/starter"), { term: "Starter Pack", url: "https://wiki.example.com/starter", chapter: null, note: "" }, "bars with no spaces around them — the way anyone would type it");
+  assert.deepEqual(read("Starter Pack | https://wiki.example.com/starter | what it is"), { term: "Starter Pack", url: "https://wiki.example.com/starter", chapter: null, note: "what it is" });
+  assert.deepEqual(read("Starter Pack   https://wiki.example.com/starter"), { term: "Starter Pack", url: "https://wiki.example.com/starter", chapter: null, note: "" }, "no bar at all: the link is found and the word is what stands in front of it");
+  assert.deepEqual(read("Host Attire - https://wiki.example.com/a  the clothes"), { term: "Host Attire", url: "https://wiki.example.com/a", chapter: null, note: "the clothes" });
+  assert.deepEqual(read("just some words"), { term: "just some words", url: "", chapter: null, note: "" }, "with no link there is nothing to carry, and that is what the error says");
+  // The chapter a word is first mentioned in is read wherever it is written down.
+  assert.deepEqual(read("Starter Pack|https://wiki.example.com/starter|3"), { term: "Starter Pack", url: "https://wiki.example.com/starter", chapter: 3, note: "" });
+  assert.deepEqual(read("Starter Pack | 3 | https://wiki.example.com/starter | what it is"), { term: "Starter Pack", url: "https://wiki.example.com/starter", chapter: 3, note: "what it is" }, "the order after the word does not matter");
+  assert.deepEqual(read("Starter Pack https://wiki.example.com/starter 3 what it is"), { term: "Starter Pack", url: "https://wiki.example.com/starter", chapter: 3, note: "what it is" });
   assert.match(functionBody("installWikiLinkHelpers"), /querySelectorAll\("#admin-view textarea:not\(\[data-plain-text\]\)"\)/, "inserting [[…]] into a list of words would break the list");
   assert.match(source, /<textarea id="lexicon-text" data-plain-text/);
   assert.match(source, /<textarea id="chapter-sources-text" name="sources" data-plain-text/);
   assert.match(source, /<button class="button primary" type="submit" id="lexicon-add">Add this word<\/button>/, "one word at a time, with the bulk text tucked away");
   assert.match(source, /<details class="lexicon-bulk"><summary>Paste or edit them all as text<\/summary>/);
   assert.match(functionBody("renderLexiconEditor"), /class="button ghost lexicon-remove" data-term=/, "each word can be edited or taken away without retyping the rest");
+});
+
+test("a linked word can say which chapter it is first mentioned in, and cites it the way everything else does", () => {
+  const ctx = sandbox({ lexicon: [{ term: "Starter Pack", url: "https://wiki.example.com/sp", chapter: 3, note: "What Lex was given" }], chapterUrlTemplate: "https://example.com/ch-{n}" });
+  const html = vm.runInContext(`richInline("The starter pack arrives with the deed.")`, ctx);
+  assert.match(html, /<span class="prose-chapter-ref"><a class="lexicon-link"/, "quiet until the reader turns chapter references on, like every other citation");
+  assert.match(html, /title="What Lex was given · First mentioned in chapter 3"/);
+  assert.match(html, /href="https:\/\/example\.com\/ch-3"/, "and the citation resolves through the same chapter links as the rest of the site");
+  const plain = sandbox({ lexicon: [{ term: "Hearth", url: "https://wiki.example.com/h" }] });
+  assert.doesNotMatch(vm.runInContext(`richInline("Keep the hearth lit.")`, plain), /prose-chapter-ref/, "a word with no first mention carries no citation");
+  assert.match(functionBody("lexiconToText"), /\[entry\.term,entry\.url,entry\.chapter\|\|"",entry\.note\]/);
+  assert.match(source, /<input id="lexicon-chapter" type="text" inputmode="numeric"/, "a number input with a min silently refuses to submit, hiding the message");
+  assert.match(source, /First mentioned · chapter \$\{validChapter\(entry\.chapter\)\}/, "and the editor's list says so at a glance");
+  assert.match(functionBody("renderSearchResults"), /first mentioned in chapter \$\{entry\.chapter\}/);
+});
+
+test("a connection can take chapters to finish, and says so until it does", () => {
+  const derived = functionBody("derive");
+  assert.match(derived, /const since=event\.action==="forming"\?event\.chapter:previous\?\.since;/);
+  assert.match(derived, /\.\.\.\(event\.action==="forming"\?\{pending:true\}:\{\}\)/, "and the next event of the same kind settles it");
+  assert.match(derived, /locationParents\.set\(event\.source,forming\(locationParents\.get\(event\.source\)/);
+  assert.match(derived, /systemHosts\.set\(key,forming\(systemHosts\.get\(key\)/);
+  assert.match(functionBody("locationParentOf"), /return link&&!link\.pending\?link\.parent:null;/, "a place still connecting is not inside its parent yet, so it keeps its own place on the graph");
+  assert.match(functionBody("buildSystemView"), /derived\.systemParents\.filter\(link=>!link\.pending\)/);
+  const graph = functionBody("renderGraph");
+  assert.match(graph, /const forming=link=>link\?\.pending\?" forming-edge":""/);
+  assert.match(graph, /formingNote=link=>link\?\.pending\?` · still connecting since chapter \$\{link\.since\|\|link\.from\}`:""/, "and hovering the line says since when");
+  assert.match(styleSource, /\.edge\.forming-edge\{stroke-dasharray/);
+  assert.match(styleSource, /@keyframes forming-flow/);
+  assert.match(source, /<option value="forming">Bond is forming — not sealed yet<\/option>/);
+  assert.match(source, /<option value="forming">On the way — has not arrived yet<\/option>/, "a journey can be under way for chapters too");
+});
+
+test("a reward is a thing the story hands over, and a quest can pay several — only the mission is rated", () => {
+  assert.match(source, /<textarea name="rewards" data-plain-text rows="2"/, "several rewards, one per line");
+  assert.match(functionBody("buildEventRecord"), /const rewards=listFromText\(form\.get\("rewards"\),true\),performance=String\(form\.get\("performance"\)\|\|""\)\.trim\(\)/);
+  assert.doesNotMatch(source, /name="rewardRank"/, "a reward has no rank of its own");
+  assert.match(source, /<span>Quest rating \(optional\)<\/span><input name="rating"/, "the mission is what carries a rating");
+  assert.match(functionBody("questCardHtml"), /rewardList\.length>1\?\{label:"Rewards",value:`<ul class="quest-reward-list">/, "several rewards are read as several things, not one run-on line");
+  assert.match(source, /if\(item\.rewardRank&&!item\.rating\)item\.rating=item\.rewardRank;delete item\.rewardRank;/, "a stored quest keeps what it said, under the name that now fits");
+  assert.match(source, /\.\.\.\(event\.rewardRank\?\[`Rank \$\{event\.rewardRank\}`\]:\[\]\)/, "and a stored reward rank becomes one more reward rather than being thrown away");
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
@@ -1074,7 +1122,7 @@ test("a conversation is one action covering everyone in it, not a pile of pairwi
   assert.match(record, /const speaking=\[source,\.\.\.named\],mute=speaking\.find\(item=>!CAN_SPEAK\.has\(item\.kind\)\)/, "a quest is a record of terms, not a voice");
   assert.match(source, /const CAN_SPEAK = new Set\(\["character","system","organization","location"\]\);/);
   assert.match(record, /if\(named\.some\(item=>!item\)\)\{toast\("One of the conversation names does not match an identity"\)/, "a name that matches nothing is refused rather than silently dropped");
-  assert.match(functionBody("renderGraph"), /derived\.conversations\.filter\(convo=>currentEvent\?\.id===convo\.id\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)\)/, "and the whole group is drawn joined up");
+  assert.match(functionBody("renderGraph"), /derived\.conversations\.filter\(convo=>beatEvents\.some\(event=>event\.id===convo\.id\)\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)\)/, "and the whole group is drawn joined up");
 });
 
 test("the demo story exercises systems and conversations, so both are visible without building a story first", () => {
@@ -1105,7 +1153,7 @@ test("three or more in a conversation meet at one marker joined to each, rather 
 
 test("a conversation can be found again after the slider moves on — selecting anyone who was in it brings it back, and it counts as part of that focus", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /currentEvent\?\.id===convo\.id\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)/);
+  assert.match(body, /beatEvents\.some\(event=>event\.id===convo\.id\)\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)/);
   assert.match(functionBody("applyGraphFocus"), /String\(edge\.dataset\.a\)\.startsWith\("conversation:"\)\|\|String\(edge\.dataset\.b\)\.startsWith\("conversation:"\)/, "so the other spokes are not dimmed away from the one that touches the selection");
   assert.match(functionBody("edgeEndpointName"), /String\(id\)\.startsWith\("conversation:"\)\?"this conversation"/, "and hovering a spoke names it rather than printing an id");
 });
@@ -1262,7 +1310,7 @@ test("a node folded into something else is seen going there, rather than blinkin
 
 test("a place known only to be inside a realm can later be placed exactly, without confusing the hierarchy", () => {
   // The link is keyed by the child, so the newest statement replaces the older, broader one.
-  assert.match(functionBody("derive"), /else locationParents\.set\(event\.source,\{child:event\.source,parent:event\.location,from:event\.chapter\}\)/);
+  assert.match(functionBody("derive"), /else locationParents\.set\(event\.source,forming\(locationParents\.get\(event\.source\),\{child:event\.source,parent:event\.location\}\)\)/);
   assert.match(functionBody("buildDrillView"), /while\(true\)\{const parent=parentOfRaw\(cursor\);if\(!parent\|\|seen\.has\(parent\)\)break;/, "and the walk up cannot loop, whatever order the statements arrive in");
   assert.match(source, /if\(type==="location_parent"&&source\.id===location\.id\)\{toast\("A location cannot contain itself"\)/);
   assert.match(source, /if\(type==="location_parent"&&action!=="remove"&&locationLineage\(location\.id,derive\(chapter\)\)\.includes\(source\.id\)\)\{toast\("That would create a circular location hierarchy"\)/);
@@ -1335,7 +1383,7 @@ test("quests from different systems are kept apart, and whatever just moved is l
 test("a quest never becomes a node, but carrying one shows on the character and the handing over shows on the graph", () => {
   const body = functionBody("renderGraph");
   assert.match(body, /derived\.quests\.filter\(run=>run\.status==="active"\)\.forEach\(run=>run\.holders\.forEach/, "who is carrying what, right now");
-  assert.match(body, /\.\.\.\(derived\.quests\.find\(run=>run\.quest===currentEvent\.source\)\?\.holders\|\|\[\]\)/, "only an issue names who it goes to; everything after belongs to whoever holds it");
+  assert.match(body, /\.\.\.\(derived\.quests\.find\(run=>run\.quest===questAction\.source\)\?\.holders\|\|\[\]\)/, "only an issue names who it goes to; everything after belongs to whoever holds it");
   assert.match(body, /straightEdge\(issuer,holder,"edge quest-issue-edge newly-revealed-edge",issuer,holder\)/, "the handing over is drawn from issuer to holder, for that beat only");
   assert.match(body, /if\(held\.length&&selectedId===item\.id\)\{/, "the count shows on the character being looked at, not painted on everyone for ever");
   assert.match(body, /questPulses\.push\(\{el:pulse,from:issuer,to:holder/, "and the issuing is a mote running from the system that set it to whoever took it");
@@ -1370,7 +1418,7 @@ test("a quest carries the terms the story states — and any of them may be miss
   assert.match(sample, /type: "quest_part", source: "q-stock", target: "q-hearth"/);
   assert.match(sample, /type: "quest_progress", source: "q-winter", progress: 72/);
   assert.match(sample, /type: "quest_end", source: "q-envoy", action: "fail"/);
-  assert.match(source, /if\(kind==="quest"&&!gradeIsValid\(form\.get\("rewardRank"\)\)\)/, "a reward rank is checked the same way a system grade is");
+  assert.match(source, /if\(kind==="quest"&&!gradeIsValid\(form\.get\("rating"\)\)\)/, "the mission's own rating is checked the same way a system grade is");
   assert.match(source, /if\(!percent\|\|!Number\.isFinite\(Number\(percent\)\)\|\|Number\(percent\)<0\|\|Number\(percent\)>100\)/, "and progress has to be a percentage");
   assert.match(source, /migrated\.schemaVersion=14;/, "readers already holding the demo are brought along");
   assert.match(source, /if\(event\.type==="quest_chain"\)event\.type="quest_part";/, "and anything already recorded under the old wording is renamed");
@@ -1438,13 +1486,14 @@ test("a quest's actions belong to whoever issued it, so the system that hands th
 
 test("a quest's reward is usually only named once it is finished, and it is scaled to how the host performed", () => {
   const derived = functionBody("derive");
-  assert.match(derived, /if\(event\.rewardRank\)run\.rewardRank=event\.rewardRank;/);
+  assert.match(derived, /if\(event\.rewards\?\.length\)run\.rewards=event\.rewards;/, "a quest can pay several things at once");
   assert.match(derived, /if\(event\.performance\)run\.performance=event\.performance;/);
   assert.match(derived, /if\(event\.value\)run\.reward=event\.value;/);
-  assert.match(functionBody("questCardHtml"), /rewardText=run\.reward\|\|\(item\.rewards\?\.length\?item\.rewards\.join\(", "\):settled\?"":"Told on completion"\)/, "so the card says the reward is still to come rather than showing none");
+  assert.match(functionBody("questCardHtml"), /rewardText=rewardList\.length\?rewardList\.join\(" · "\):run\.reward\|\|\(settled\?"":"Told on completion"\)/, "so the card says the reward is still to come rather than showing none");
+  assert.match(functionBody("questCardHtml"), /rank=item\.rating\|\|""/, "the rank on the card is the mission's rating — a reward has none");
   assert.match(functionBody("questCardHtml"), /rank\?`<span class="quest-rank">\$\{escapeHtml\(rank\)\}<\/span>`:""/, "the rank is written as the story writes it, with nothing bolted on the front");
   const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
-  assert.match(sample, /type: "quest_end", source: "q-anomaly", action: "complete", value: "Realm Seed", rewardRank: "Destiny", performance: "SSS\+"/);
+  assert.match(sample, /type: "quest_end", source: "q-anomaly", action: "complete", rewards: \["Realm Seed", "Warden rank raised to Destiny", "3,000 contribution points"\], performance: "SSS\+"/, "several rewards at once, one of which happens to be a rank");
   assert.match(source, /const SPECIAL_GRADES = \["destiny","fate","divine","oblivion","death","spirit","life","chaos"\];/, "the named ranks above the letters all count as ranks");
 });
 
@@ -1464,13 +1513,13 @@ test("a joint quest is worked by more than one person and paid by contribution, 
   assert.match(functionBody("questCardHtml"), /run\.contributions\.length\?`<dl class="quest-facts quest-shares">/, "each contributor's share and reward is listed separately");
   const sample = source.slice(source.indexOf("const sampleData"), source.indexOf("\nfunction deepClone"));
   assert.match(sample, /type: "quest_issue", source: "q-caravan", target: "lex", characters: \["lex","vane"\]/);
-  assert.match(sample, /type: "quest_contribution", source: "q-caravan", target: "lex", value: "Held the rear against the frost", rewardRank: "S", performance: "A\+"/);
-  assert.match(sample, /type: "quest_contribution", source: "q-caravan", target: "vane", value: "Broke the road ahead", rewardRank: "A", performance: "B\+"/);
+  assert.match(sample, /type: "quest_contribution", source: "q-caravan", target: "lex", value: "Held the rear against the frost", rewards: \["Frostbound Cloak", "600 contribution points"\], performance: "A\+"/);
+  assert.match(sample, /type: "quest_contribution", source: "q-caravan", target: "vane", value: "Broke the road ahead", rewards: \["300 contribution points"\], performance: "B\+"/);
 });
 
 test("a rank change is visible when it happens: the system comes up for its own action even with no host selected, and says which way it moved", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /const actionSystem=currentEvent&&String\(currentEvent\.type\)\.startsWith\("system_"\)\?\[currentEvent\.source,currentEvent\.target\]\.find\(id=>entity\(id\)\?\.kind==="system"\):null/);
+  assert.match(body, /const systemAction=beatEvents\.find\(event=>String\(event\.type\)\.startsWith\("system_"\)\),\s*actionSystem=systemAction\?\[systemAction\.source,systemAction\.target\]\.find\(id=>entity\(id\)\?\.kind==="system"\):null/, "a system acting inside a combined moment still comes up for it");
   assert.match(body, /if\(actionSystem\)\{queue\.push\(actionSystem\);focusSystems\.add\(actionSystem\);\}/);
   assert.match(body, /\(retired\.has\(id\)&&id!==actionSystem\)/, "a system destroyed by the very action being played is still drawn for that beat");
   assert.match(body, /moves\.push\(`\$\{rankWord\(state\.previousGrade\)\} → \$\{rankWord\(state\.grade\)\}`\)/);
