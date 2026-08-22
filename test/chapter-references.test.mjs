@@ -1047,6 +1047,18 @@ test("ending something does not demand the wording of what it was — the form s
   assert.match(source, /\$\("#event-form"\)\.elements\.action\.addEventListener\("change",updateEventHelp\);/);
 });
 
+test("stepping by action still says which chapter the reader is in", () => {
+  assert.match(functionBody("configureTimeline"), /timeline\.dataset\.mode="actions";\s*\$\("#chapter-value"\)\.textContent=action\?action\.chapter:"—";/, "the other two slider modes set it; this one did not, so it kept whatever was there");
+  assert.doesNotMatch(source, /<strong id="chapter-value">80<\/strong>/, "and the placeholder is no longer a real-looking chapter number that reads as live data");
+  assert.match(source, /<strong id="chapter-value">—<\/strong>/);
+});
+
+test("an action written into an earlier chapter lands at the end of it and can be reordered there straight away", () => {
+  assert.match(functionBody("nextEventOrder"), /const sameChapter=\[\.\.\.data\.events,\.\.\.drafts\]\.filter\(event=>event\.chapter===chapter\)/, "the order is the end of that chapter, not the end of the story");
+  assert.match(source, /saveData\(\);resetEventEditor\(\);\s*\/\/[^\n]*\n[^\n]*\n[^\n]*\n\s*orderChapter=record\.chapter;/, "and the running order opens on the chapter just written to, so it is in front of the reader");
+  assert.match(source, /orderChapter=eventDrafts\.at\(-1\)\.chapter;/, "the batch path does the same");
+});
+
 test("the slider steps a chapter at a time or one action at a time, and the reader decides which", () => {
   assert.match(source, /const SLIDER_MODE_KEY = "living-story-graph-slider-mode-v1";/);
   assert.match(source, /id="toggle-slider-mode"[^>]*aria-pressed="false"/, "offered beside the chapter-refs toggle it is modelled on");
