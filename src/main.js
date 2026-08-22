@@ -330,14 +330,15 @@ app.innerHTML = `
             <div class="form-grid">
               <label class="field"><span>The word</span><input id="lexicon-term" placeholder="Starter Pack" autocomplete="off"></label>
               <label class="field"><span>Its link</span><input id="lexicon-url" placeholder="https://the-innkeeper.fandom.com/wiki/Starter_Pack" autocomplete="off"></label>
-              <label class="field span-2"><span>Note <small>(optional — this is what shows on hover)</small></span><input id="lexicon-note" placeholder="What Lex was given in the starting pack" autocomplete="off"></label>
+              <label class="field"><span>First mentioned in chapter <small>(optional)</small></span><input id="lexicon-chapter" type="text" inputmode="numeric" maxlength="6" placeholder="3" autocomplete="off"></label>
+              <label class="field"><span>Note <small>(optional — this is what shows on hover)</small></span><input id="lexicon-note" placeholder="What Lex was given in the starting pack" autocomplete="off"></label>
             </div>
             <p id="lexicon-error" class="volume-error" role="alert"></p>
             <div class="form-actions"><button type="button" class="button ghost" id="lexicon-cancel" hidden>Cancel</button><button class="button primary" type="submit" id="lexicon-add">Add this word</button></div>
             <ul class="lexicon-list" id="lexicon-list"></ul>
             <details class="lexicon-bulk"><summary>Paste or edit them all as text</summary>
-              <label class="field"><span>One per line: the word, its link, and a note — separated by <code>|</code></span><textarea id="lexicon-text" data-plain-text rows="5" placeholder="Starter Pack | https://the-innkeeper.fandom.com/wiki/Starter_Pack | What Lex was given in the starting pack&#10;Protos Energy | https://the-innkeeper.fandom.com/wiki/Protos_Energy"></textarea></label>
-              <p class="order-hint">The bars are optional — <code>Starter Pack https://…</code> on its own line is read the same way.</p>
+              <label class="field"><span>One per line: the word, its link, the chapter it is first mentioned in, and a note — separated by <code>|</code></span><textarea id="lexicon-text" data-plain-text rows="5" placeholder="Starter Pack | https://the-innkeeper.fandom.com/wiki/Starter_Pack | 3 | What Lex was given in the starting pack&#10;Protos Energy | https://the-innkeeper.fandom.com/wiki/Protos_Energy"></textarea></label>
+              <p class="order-hint">The bars are optional, and the order after the word does not matter — <code>Starter Pack https://… 3</code> on its own line is read the same way.</p>
               <div class="form-actions"><button type="button" class="button" id="lexicon-save-text">Replace the list with this</button></div>
             </details>
           </form>
@@ -688,20 +689,32 @@ function storyLexicon(){return Array.isArray(data.lexicon)?data.lexicon:[];}
 // the link is found by looking for it, and the word is whatever stands in front of it.
 function readLexiconLine(line){
   const text=String(line||"").trim();
-  if(!text)return {term:"",url:"",note:""};
-  const parts=text.split(/\s*\|\s*/);
-  if(parts.length>1){const [term="",url="",...rest]=parts;return {term:term.trim(),url:safeExternalUrl(url.trim()),note:rest.join(" | ").trim()};}
+  if(!text)return {term:"",url:"",chapter:null,note:""};
+  const parts=text.split(/\s*\|\s*/).map(part=>part.trim()).filter(Boolean);
+  if(parts.length>1){
+    // After the word, each part is taken for what it plainly is: the link is the one that looks
+    // like a link, a bare number is the chapter it is first mentioned in, the rest is the note.
+    const term=parts.shift(),rest=[];let url="",chapter=null;
+    parts.forEach(part=>{
+      if(!url&&safeExternalUrl(part)){url=safeExternalUrl(part);return;}
+      if(chapter===null&&/^\d{1,6}$/.test(part)){chapter=validChapter(part);return;}
+      rest.push(part);
+    });
+    return {term,url,chapter,note:rest.join(" | ")};
+  }
   const at=text.search(/https?:\/\//i);
-  if(at<0)return {term:text,url:"",note:""};
-  const url=text.slice(at).split(/\s+/)[0];
-  return {term:text.slice(0,at).replace(/[|,:;–—-]+\s*$/,"").trim(),url:safeExternalUrl(url),note:text.slice(at+url.length).replace(/^\s*[|,:;–—-]+/,"").trim()};
+  if(at<0)return {term:text,url:"",chapter:null,note:""};
+  const url=text.slice(at).split(/\s+/)[0],
+    tail=text.slice(at+url.length).replace(/^\s*[|,:;–—-]+\s*/,"").trim(),
+    lead=tail.match(/^(\d{1,6})\b\s*[|,:;–—-]?\s*/);
+  return {term:text.slice(0,at).replace(/[|,:;–—-]+\s*$/,"").trim(),url:safeExternalUrl(url),chapter:lead?validChapter(lead[1]):null,note:(lead?tail.slice(lead[0].length):tail).trim()};
 }
-function lexiconEntry(term,url,note){const clean={term:String(term||"").trim(),url:safeExternalUrl(url)};if(String(note||"").trim())clean.note=String(note).trim();return clean;}
-function lexiconFromText(raw){return listFromText(raw).map(line=>{const read=readLexiconLine(line);return lexiconEntry(read.term,read.url,read.note);}).filter(entry=>entry.term&&entry.url);}
-function lexiconToText(){return storyLexicon().map(entry=>[entry.term,entry.url,entry.note].filter(Boolean).join(" | ")).join("\n");}
+function lexiconEntry(term,url,note,chapter){const clean={term:String(term||"").trim(),url:safeExternalUrl(url)},first=validChapter(chapter);if(first)clean.chapter=first;if(String(note||"").trim())clean.note=String(note).trim();return clean;}
+function lexiconFromText(raw){return listFromText(raw).map(line=>{const read=readLexiconLine(line);return lexiconEntry(read.term,read.url,read.note,read.chapter);}).filter(entry=>entry.term&&entry.url);}
+function lexiconToText(){return storyLexicon().map(entry=>[entry.term,entry.url,entry.chapter||"",entry.note].filter(Boolean).join(" | ")).join("\n");}
 function badLexiconLine(raw){return listFromText(raw).find(line=>{const read=readLexiconLine(line);return !(read.term&&read.url);});}
 function lexiconTerms(){
-  return storyLexicon().map(entry=>({term:String(entry.term||"").trim(),url:safeExternalUrl(entry.url),note:String(entry.note||"").trim()}))
+  return storyLexicon().map(entry=>({term:String(entry.term||"").trim(),url:safeExternalUrl(entry.url),note:String(entry.note||"").trim(),chapter:validChapter(entry.chapter)}))
     .filter(entry=>entry.term&&entry.url).sort((a,b)=>b.term.length-a.term.length);
 }
 let lexiconPattern={version:-1,regex:null,byWord:new Map()};
@@ -726,7 +739,11 @@ function lexiconLink(html){
     const entry=byWord.get(match.toLowerCase());
     if(!entry||used.has(entry.term))return match;
     used.add(entry.term);
-    return `<a class="lexicon-link" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(entry.note||`Open ${entry.term}`)}">${match}<span aria-hidden="true">↗</span></a>`;
+    const hover=[entry.note,entry.chapter?`First mentioned in chapter ${entry.chapter}`:""].filter(Boolean).join(" · ")||`Open ${entry.term}`,
+      link=`<a class="lexicon-link" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(hover)}">${match}<span aria-hidden="true">↗</span></a>`;
+    // The chapter it was first mentioned in cites itself the way everything else does: out of the
+    // way until the reader turns chapter references on.
+    return entry.chapter?`<span class="prose-chapter-ref">${link}${chapterCitation({chapter:entry.chapter})}</span>`:link;
   });
 }
 function proseText(value){return lexiconLink(escapeHtml(value));}
@@ -1032,7 +1049,7 @@ function renderSearchResults(){
     panel.hidden=document.activeElement!==searchInput;searchInput.setAttribute("aria-expanded",String(!panel.hidden));return;
   }
   const {entries,loose}=searchActions(query),identities=searchIdentities(query),terms=searchTerms(query),rows=[];
-  if(terms.length)rows.push(`<li class="search-group">Linked words</li>`,...terms.map(entry=>`<li><a class="search-row search-term" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer"><span class="search-meta">opens the wiki</span><strong>${escapeHtml(entry.term)}</strong>${entry.note?`<span class="search-note">${escapeHtml(entry.note)}</span>`:""}</a></li>`));
+  if(terms.length)rows.push(`<li class="search-group">Linked words</li>`,...terms.map(entry=>`<li><a class="search-row search-term" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer"><span class="search-meta">opens the wiki${entry.chapter?` · first mentioned in chapter ${entry.chapter}`:""}</span><strong>${escapeHtml(entry.term)}</strong>${entry.note?`<span class="search-note">${escapeHtml(entry.note)}</span>`:""}</a></li>`));
   if(identities.length)rows.push(`<li class="search-group">On the graph</li>`,...identities.map(row=>{const shown=revealedVolumeActions().some(event=>eventInvolves(event,row.id));return `<li><button type="button" class="search-row${shown?"":" search-ahead"}" data-search-entity="${escapeHtml(row.id)}"><span class="search-meta">${escapeHtml(row.kind)}${shown?"":" · not reached yet"}</span><strong>${escapeHtml(stateName(currentDerived(),row.id)||row.names[0])}</strong></button></li>`;}));
   if(entries.length){
     rows.push(`<li class="search-group">Actions · ${entries.length}${loose?" · nothing also mentions every word":""}</li>`);
@@ -2719,14 +2736,14 @@ function renderLexiconEditor(){
   if(field&&document.activeElement!==field&&renderedLexicon!==data.lexicon){field.value=lexiconToText();renderedLexicon=data.lexicon;}
   const words=storyLexicon();
   list.innerHTML=words.length
-    ?words.map(entry=>`<li class="lexicon-row${entry.term.toLowerCase()===editingLexiconTerm?" lexicon-editing":""}"><div><strong>${escapeHtml(entry.term)}</strong>${entry.note?`<small>${escapeHtml(entry.note)}</small>`:""}<a href="${escapeHtml(safeExternalUrl(entry.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(entry.url)}</a></div><div class="table-actions"><button type="button" class="button ghost lexicon-edit" data-term="${escapeHtml(entry.term)}">Edit</button><button type="button" class="button ghost lexicon-remove" data-term="${escapeHtml(entry.term)}">Remove</button></div></li>`).join("")
+    ?words.map(entry=>`<li class="lexicon-row${entry.term.toLowerCase()===editingLexiconTerm?" lexicon-editing":""}"><div><strong>${escapeHtml(entry.term)}${validChapter(entry.chapter)?`<b class="lexicon-chapter">First mentioned · chapter ${validChapter(entry.chapter)}</b>`:""}</strong>${entry.note?`<small>${escapeHtml(entry.note)}</small>`:""}<a href="${escapeHtml(safeExternalUrl(entry.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(entry.url)}</a></div><div class="table-actions"><button type="button" class="button ghost lexicon-edit" data-term="${escapeHtml(entry.term)}">Edit</button><button type="button" class="button ghost lexicon-remove" data-term="${escapeHtml(entry.term)}">Remove</button></div></li>`).join("")
     :'<li class="lexicon-empty">No linked words yet. The first one you add starts linking itself everywhere it is written.</li>';
   $("#lexicon-add").textContent=editingLexiconTerm?"Save this word":"Add this word";
   $("#lexicon-cancel").hidden=!editingLexiconTerm;
   list.querySelectorAll(".lexicon-edit").forEach(button=>button.onclick=()=>{
     const entry=storyLexicon().find(item=>item.term===button.dataset.term);if(!entry)return;
     editingLexiconTerm=entry.term.toLowerCase();
-    $("#lexicon-term").value=entry.term;$("#lexicon-url").value=entry.url;$("#lexicon-note").value=entry.note||"";
+    $("#lexicon-term").value=entry.term;$("#lexicon-url").value=entry.url;$("#lexicon-note").value=entry.note||"";$("#lexicon-chapter").value=validChapter(entry.chapter)||"";
     $("#lexicon-error").textContent="";renderLexiconEditor();$("#lexicon-term").focus();
   });
   list.querySelectorAll(".lexicon-remove").forEach(button=>button.onclick=()=>{
@@ -2735,7 +2752,7 @@ function renderLexiconEditor(){
     renderedLexicon=null;saveData();renderAll();toast(`${button.dataset.term} no longer carries a link`);
   });
 }
-function clearLexiconInputs(){editingLexiconTerm="";["#lexicon-term","#lexicon-url","#lexicon-note"].forEach(id=>{const field=$(id);if(field)field.value="";});$("#lexicon-error").textContent="";}
+function clearLexiconInputs(){editingLexiconTerm="";["#lexicon-term","#lexicon-url","#lexicon-note","#lexicon-chapter"].forEach(id=>{const field=$(id);if(field)field.value="";});$("#lexicon-error").textContent="";}
 function renderAdmin(){
   renderVolumeEditor();
   const templateField=$("#chapter-url-template");if(templateField&&document.activeElement!==templateField)templateField.value=data.chapterUrlTemplate||"";
@@ -3005,11 +3022,12 @@ $("#lexicon-form").addEventListener("submit",event=>{
   event.preventDefault();
   const errorBox=$("#lexicon-error"),typed=$("#lexicon-term").value.trim(),
     // Somebody who pastes the whole line into the first box still gets what they meant.
-    read=typed.includes("|")||/https?:\/\//i.test(typed)?readLexiconLine(typed):{term:typed,url:$("#lexicon-url").value,note:$("#lexicon-note").value},
-    entry=lexiconEntry(read.term,read.url||$("#lexicon-url").value,read.note||$("#lexicon-note").value);
+    read=typed.includes("|")||/https?:\/\//i.test(typed)?readLexiconLine(typed):{term:typed,url:$("#lexicon-url").value,note:$("#lexicon-note").value,chapter:$("#lexicon-chapter").value},
+    entry=lexiconEntry(read.term,read.url||$("#lexicon-url").value,read.note||$("#lexicon-note").value,read.chapter||$("#lexicon-chapter").value);
   errorBox.textContent="";
   if(!entry.term){errorBox.textContent="Write the word first — the one that should carry the link wherever it appears.";return;}
   if(!entry.url){errorBox.textContent="That link is not a complete address. It has to start with http:// or https://.";return;}
+  if($("#lexicon-chapter").value.trim()&&!validChapter($("#lexicon-chapter").value)){errorBox.textContent="A first mention is a whole chapter number greater than 0 — or leave it empty.";return;}
   const words=storyLexicon(),at=words.findIndex(item=>item.term.toLowerCase()===(editingLexiconTerm||entry.term.toLowerCase()));
   if(at>=0)words[at]=entry;else words.push(entry);
   data.lexicon=words;

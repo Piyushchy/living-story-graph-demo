@@ -1006,19 +1006,37 @@ test("a conversation is not only people talking — a system speaks to its host,
 test("a linked word is written however it comes to hand, and the mark-up helpers keep out of fields that are not prose", () => {
   const ctx = { data: {}, URL };
   vm.createContext(ctx);
-  vm.runInContext([functionBody("safeExternalUrl"), functionBody("readLexiconLine")].join("\n"), ctx);
+  vm.runInContext([functionBody("safeExternalUrl"), functionBody("validChapter"), functionBody("readLexiconLine")].join("\n"), ctx);
   const read = line => JSON.parse(vm.runInContext(`JSON.stringify(readLexiconLine(${JSON.stringify(line)}))`, ctx));
-  assert.deepEqual(read("Starter Pack|https://wiki.example.com/starter"), { term: "Starter Pack", url: "https://wiki.example.com/starter", note: "" }, "bars with no spaces around them — the way anyone would type it");
-  assert.deepEqual(read("Starter Pack | https://wiki.example.com/starter | what it is"), { term: "Starter Pack", url: "https://wiki.example.com/starter", note: "what it is" });
-  assert.deepEqual(read("Starter Pack   https://wiki.example.com/starter"), { term: "Starter Pack", url: "https://wiki.example.com/starter", note: "" }, "no bar at all: the link is found and the word is what stands in front of it");
-  assert.deepEqual(read("Host Attire - https://wiki.example.com/a  the clothes"), { term: "Host Attire", url: "https://wiki.example.com/a", note: "the clothes" });
-  assert.deepEqual(read("just some words"), { term: "just some words", url: "", note: "" }, "with no link there is nothing to carry, and that is what the error says");
+  assert.deepEqual(read("Starter Pack|https://wiki.example.com/starter"), { term: "Starter Pack", url: "https://wiki.example.com/starter", chapter: null, note: "" }, "bars with no spaces around them — the way anyone would type it");
+  assert.deepEqual(read("Starter Pack | https://wiki.example.com/starter | what it is"), { term: "Starter Pack", url: "https://wiki.example.com/starter", chapter: null, note: "what it is" });
+  assert.deepEqual(read("Starter Pack   https://wiki.example.com/starter"), { term: "Starter Pack", url: "https://wiki.example.com/starter", chapter: null, note: "" }, "no bar at all: the link is found and the word is what stands in front of it");
+  assert.deepEqual(read("Host Attire - https://wiki.example.com/a  the clothes"), { term: "Host Attire", url: "https://wiki.example.com/a", chapter: null, note: "the clothes" });
+  assert.deepEqual(read("just some words"), { term: "just some words", url: "", chapter: null, note: "" }, "with no link there is nothing to carry, and that is what the error says");
+  // The chapter a word is first mentioned in is read wherever it is written down.
+  assert.deepEqual(read("Starter Pack|https://wiki.example.com/starter|3"), { term: "Starter Pack", url: "https://wiki.example.com/starter", chapter: 3, note: "" });
+  assert.deepEqual(read("Starter Pack | 3 | https://wiki.example.com/starter | what it is"), { term: "Starter Pack", url: "https://wiki.example.com/starter", chapter: 3, note: "what it is" }, "the order after the word does not matter");
+  assert.deepEqual(read("Starter Pack https://wiki.example.com/starter 3 what it is"), { term: "Starter Pack", url: "https://wiki.example.com/starter", chapter: 3, note: "what it is" });
   assert.match(functionBody("installWikiLinkHelpers"), /querySelectorAll\("#admin-view textarea:not\(\[data-plain-text\]\)"\)/, "inserting [[…]] into a list of words would break the list");
   assert.match(source, /<textarea id="lexicon-text" data-plain-text/);
   assert.match(source, /<textarea id="chapter-sources-text" name="sources" data-plain-text/);
   assert.match(source, /<button class="button primary" type="submit" id="lexicon-add">Add this word<\/button>/, "one word at a time, with the bulk text tucked away");
   assert.match(source, /<details class="lexicon-bulk"><summary>Paste or edit them all as text<\/summary>/);
   assert.match(functionBody("renderLexiconEditor"), /class="button ghost lexicon-remove" data-term=/, "each word can be edited or taken away without retyping the rest");
+});
+
+test("a linked word can say which chapter it is first mentioned in, and cites it the way everything else does", () => {
+  const ctx = sandbox({ lexicon: [{ term: "Starter Pack", url: "https://wiki.example.com/sp", chapter: 3, note: "What Lex was given" }], chapterUrlTemplate: "https://example.com/ch-{n}" });
+  const html = vm.runInContext(`richInline("The starter pack arrives with the deed.")`, ctx);
+  assert.match(html, /<span class="prose-chapter-ref"><a class="lexicon-link"/, "quiet until the reader turns chapter references on, like every other citation");
+  assert.match(html, /title="What Lex was given · First mentioned in chapter 3"/);
+  assert.match(html, /href="https:\/\/example\.com\/ch-3"/, "and the citation resolves through the same chapter links as the rest of the site");
+  const plain = sandbox({ lexicon: [{ term: "Hearth", url: "https://wiki.example.com/h" }] });
+  assert.doesNotMatch(vm.runInContext(`richInline("Keep the hearth lit.")`, plain), /prose-chapter-ref/, "a word with no first mention carries no citation");
+  assert.match(functionBody("lexiconToText"), /\[entry\.term,entry\.url,entry\.chapter\|\|"",entry\.note\]/);
+  assert.match(source, /<input id="lexicon-chapter" type="text" inputmode="numeric"/, "a number input with a min silently refuses to submit, hiding the message");
+  assert.match(source, /First mentioned · chapter \$\{validChapter\(entry\.chapter\)\}/, "and the editor's list says so at a glance");
+  assert.match(functionBody("renderSearchResults"), /first mentioned in chapter \$\{entry\.chapter\}/);
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
