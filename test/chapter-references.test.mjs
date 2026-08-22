@@ -987,8 +987,7 @@ test("a word the story gives its own meaning to carries its link wherever it is 
 test("linked words are written once, in their own editor card, and are searchable", () => {
   assert.match(source, /<form id="lexicon-form" class="admin-card">/);
   assert.match(source, /<textarea id="lexicon-text"/);
-  assert.match(functionBody("lexiconFromText"), /const \[term="",url="",note=""\]=line\.split\(\/\\s\+\\\|\\s\+\/,3\)/);
-  assert.match(functionBody("badLexiconLine"), /return !\(term\.trim\(\)&&safeExternalUrl\(url\)\)/, "a line that is not a full URL is refused, not silently dropped");
+  assert.match(functionBody("badLexiconLine"), /const read=readLexiconLine\(line\);return !\(read\.term&&read\.url\)/, "a line with no link is refused, not silently dropped");
   assert.match(functionBody("searchTerms"), /lexiconTerms\(\)\.filter\(entry=>\{const lower=`\$\{entry\.term\} \$\{entry\.note\}`\.toLowerCase\(\)/);
   assert.match(functionBody("renderSearchResults"), /<li class="search-group">Linked words<\/li>/);
   assert.match(source, /if\(!Array\.isArray\(migrated\.lexicon\)\)migrated\.lexicon=\[\];/);
@@ -1002,6 +1001,24 @@ test("a conversation is not only people talking — a system speaks to its host,
   assert.match(source, /sampleData\.events\.filter\(event=>\["talk-3","talk-4"\]\.includes\(event\.id\)&&!eventIds\.has\(event\.id\)\)/, "a stored copy of the demo picks them up");
   assert.match(source, /type==="conversation"\?"Who speaks first"/, "and the editor stops asking only for a character");
   assert.match(source, /charactersLabel\.textContent=type==="conversation"\?"Everyone taking part":"Who it is issued to"/);
+});
+
+test("a linked word is written however it comes to hand, and the mark-up helpers keep out of fields that are not prose", () => {
+  const ctx = { data: {}, URL };
+  vm.createContext(ctx);
+  vm.runInContext([functionBody("safeExternalUrl"), functionBody("readLexiconLine")].join("\n"), ctx);
+  const read = line => JSON.parse(vm.runInContext(`JSON.stringify(readLexiconLine(${JSON.stringify(line)}))`, ctx));
+  assert.deepEqual(read("Starter Pack|https://wiki.example.com/starter"), { term: "Starter Pack", url: "https://wiki.example.com/starter", note: "" }, "bars with no spaces around them — the way anyone would type it");
+  assert.deepEqual(read("Starter Pack | https://wiki.example.com/starter | what it is"), { term: "Starter Pack", url: "https://wiki.example.com/starter", note: "what it is" });
+  assert.deepEqual(read("Starter Pack   https://wiki.example.com/starter"), { term: "Starter Pack", url: "https://wiki.example.com/starter", note: "" }, "no bar at all: the link is found and the word is what stands in front of it");
+  assert.deepEqual(read("Host Attire - https://wiki.example.com/a  the clothes"), { term: "Host Attire", url: "https://wiki.example.com/a", note: "the clothes" });
+  assert.deepEqual(read("just some words"), { term: "just some words", url: "", note: "" }, "with no link there is nothing to carry, and that is what the error says");
+  assert.match(functionBody("installWikiLinkHelpers"), /querySelectorAll\("#admin-view textarea:not\(\[data-plain-text\]\)"\)/, "inserting [[…]] into a list of words would break the list");
+  assert.match(source, /<textarea id="lexicon-text" data-plain-text/);
+  assert.match(source, /<textarea id="chapter-sources-text" name="sources" data-plain-text/);
+  assert.match(source, /<button class="button primary" type="submit" id="lexicon-add">Add this word<\/button>/, "one word at a time, with the bulk text tucked away");
+  assert.match(source, /<details class="lexicon-bulk"><summary>Paste or edit them all as text<\/summary>/);
+  assert.match(functionBody("renderLexiconEditor"), /class="button ghost lexicon-remove" data-term=/, "each word can be edited or taken away without retyping the rest");
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {

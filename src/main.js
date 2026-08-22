@@ -320,16 +320,26 @@ app.innerHTML = `
           <form id="chapter-links-form" class="admin-card">
             <div class="volume-editor-heading"><div><span class="editor-kicker">Chapter references</span><h2>Chapter links</h2><p>Every “Chapter N” mention across the whole site — profiles, events, achievements, and inline <code>[[12]]</code> markers in prose — resolves through this, so you only ever paste a chapter's URL once.</p></div><button class="button primary" type="submit">Save chapter links</button></div>
             <p id="missing-chapter-links" class="storage-warning" hidden><strong>Missing links</strong><span></span></p>
-            <label class="field"><span>Explicit chapter links <small>(one per line: chapter number, then its URL — takes priority below)</small></span><textarea id="chapter-sources-text" name="sources" rows="4" placeholder="1 | https://www.webnovel.com/book/.../chapter-title_123456
+            <label class="field"><span>Explicit chapter links <small>(one per line: chapter number, then its URL — takes priority below)</small></span><textarea id="chapter-sources-text" name="sources" data-plain-text rows="4" placeholder="1 | https://www.webnovel.com/book/.../chapter-title_123456
 2 | https://www.webnovel.com/book/.../chapter-title_789012"></textarea></label>
             <label class="field"><span>Fallback URL template <small>(only for sites where chapter URLs are just a number — optional)</small></span><input id="chapter-url-template" name="template" type="text" placeholder="https://your-site.com/chapter-{n}"></label>
             <p id="chapter-links-error" class="volume-error" role="alert"></p>
           </form>
           <form id="lexicon-form" class="admin-card">
-            <div class="volume-editor-heading"><div><span class="editor-kicker">Linked words</span><h2>Words that carry a link</h2><p>Words the story gives its own meaning to. Write one here and every mention of it — in an action's message, a profile, a quest, anywhere — becomes a link out, without marking it up each time. They are searchable too: type one into the graph's search to jump straight to its page.</p></div><button class="button primary" type="submit">Save linked words</button></div>
-            <label class="field"><span>One per line: the word, its link, and a note <small>(the note is optional and shows on hover)</small></span><textarea id="lexicon-text" rows="5" placeholder="Host Attire | https://the-innkeeper.fandom.com/wiki/Host_Attire | What Lex was given in the starter pack&#10;Protos Energy | https://the-innkeeper.fandom.com/wiki/Protos_Energy"></textarea></label>
+            <div class="volume-editor-heading"><div><span class="editor-kicker">Linked words</span><h2>Words that carry a link</h2><p>Words the story gives its own meaning to. Add one here and every mention of it — in an action's message, a profile, a quest, anywhere — becomes a link out, without marking it up each time. They are searchable too: type one into the graph's search to jump straight to its page.</p></div></div>
+            <div class="form-grid">
+              <label class="field"><span>The word</span><input id="lexicon-term" placeholder="Starter Pack" autocomplete="off"></label>
+              <label class="field"><span>Its link</span><input id="lexicon-url" placeholder="https://the-innkeeper.fandom.com/wiki/Starter_Pack" autocomplete="off"></label>
+              <label class="field span-2"><span>Note <small>(optional — this is what shows on hover)</small></span><input id="lexicon-note" placeholder="What Lex was given in the starting pack" autocomplete="off"></label>
+            </div>
             <p id="lexicon-error" class="volume-error" role="alert"></p>
-            <p class="order-hint" id="lexicon-count"></p>
+            <div class="form-actions"><button type="button" class="button ghost" id="lexicon-cancel" hidden>Cancel</button><button class="button primary" type="submit" id="lexicon-add">Add this word</button></div>
+            <ul class="lexicon-list" id="lexicon-list"></ul>
+            <details class="lexicon-bulk"><summary>Paste or edit them all as text</summary>
+              <label class="field"><span>One per line: the word, its link, and a note — separated by <code>|</code></span><textarea id="lexicon-text" data-plain-text rows="5" placeholder="Starter Pack | https://the-innkeeper.fandom.com/wiki/Starter_Pack | What Lex was given in the starting pack&#10;Protos Energy | https://the-innkeeper.fandom.com/wiki/Protos_Energy"></textarea></label>
+              <p class="order-hint">The bars are optional — <code>Starter Pack https://…</code> on its own line is read the same way.</p>
+              <div class="form-actions"><button type="button" class="button" id="lexicon-save-text">Replace the list with this</button></div>
+            </details>
           </form>
           <form id="chapter-quick-add-form" class="admin-card">
             <div class="volume-editor-heading"><div><span class="editor-kicker">Quick add</span><h2>Add or update one chapter link</h2><p>Faster than scrolling the list above for a single chapter. Typing an existing chapter number fills in its current link so you can review or replace it.</p></div><button class="button primary" type="submit">Save</button></div>
@@ -674,9 +684,22 @@ function safeExternalUrl(value){
 // A story gives its own words their own meaning. Written once here, each of them becomes a link
 // wherever it is mentioned, so the prose never has to carry the mark-up.
 function storyLexicon(){return Array.isArray(data.lexicon)?data.lexicon:[];}
-function lexiconFromText(raw){return listFromText(raw).map(line=>{const [term="",url="",note=""]=line.split(/\s+\|\s+/,3);return {term:term.trim(),url:safeExternalUrl(url),...(note.trim()?{note:note.trim()}:{})};}).filter(entry=>entry.term&&entry.url);}
+// However the line is written down: bars with or without spaces around them, or no bar at all —
+// the link is found by looking for it, and the word is whatever stands in front of it.
+function readLexiconLine(line){
+  const text=String(line||"").trim();
+  if(!text)return {term:"",url:"",note:""};
+  const parts=text.split(/\s*\|\s*/);
+  if(parts.length>1){const [term="",url="",...rest]=parts;return {term:term.trim(),url:safeExternalUrl(url.trim()),note:rest.join(" | ").trim()};}
+  const at=text.search(/https?:\/\//i);
+  if(at<0)return {term:text,url:"",note:""};
+  const url=text.slice(at).split(/\s+/)[0];
+  return {term:text.slice(0,at).replace(/[|,:;–—-]+\s*$/,"").trim(),url:safeExternalUrl(url),note:text.slice(at+url.length).replace(/^\s*[|,:;–—-]+/,"").trim()};
+}
+function lexiconEntry(term,url,note){const clean={term:String(term||"").trim(),url:safeExternalUrl(url)};if(String(note||"").trim())clean.note=String(note).trim();return clean;}
+function lexiconFromText(raw){return listFromText(raw).map(line=>{const read=readLexiconLine(line);return lexiconEntry(read.term,read.url,read.note);}).filter(entry=>entry.term&&entry.url);}
 function lexiconToText(){return storyLexicon().map(entry=>[entry.term,entry.url,entry.note].filter(Boolean).join(" | ")).join("\n");}
-function badLexiconLine(raw){return listFromText(raw).find(line=>{const [term="",url=""]=line.split(/\s+\|\s+/,3);return !(term.trim()&&safeExternalUrl(url));});}
+function badLexiconLine(raw){return listFromText(raw).find(line=>{const read=readLexiconLine(line);return !(read.term&&read.url);});}
 function lexiconTerms(){
   return storyLexicon().map(entry=>({term:String(entry.term||"").trim(),url:safeExternalUrl(entry.url),note:String(entry.note||"").trim()}))
     .filter(entry=>entry.term&&entry.url).sort((a,b)=>b.term.length-a.term.length);
@@ -2256,7 +2279,7 @@ function renderSummary(){
 // A message can run to several lines — a note about a chapter is rarely one sentence — so the
 // in-place editors are text areas that grow with what is written, and Enter starts a new line.
 function messageRows(text){return Math.min(8,Math.max(1,String(text||"").split(/\r?\n/).length));}
-function messageBoxHtml(className,storyEvent){const text=storyEvent.description||"";return `<textarea class="${className}" data-id="${escapeHtml(storyEvent.id)}" rows="${messageRows(text)}" placeholder="${escapeHtml(storyEvent.type)} — describe what happens" aria-label="Message for this action">\n${escapeHtml(text)}</textarea>`;}
+function messageBoxHtml(className,storyEvent){const text=storyEvent.description||"";return `<textarea class="${className}" data-plain-text data-id="${escapeHtml(storyEvent.id)}" rows="${messageRows(text)}" placeholder="${escapeHtml(storyEvent.type)} — describe what happens" aria-label="Message for this action">\n${escapeHtml(text)}</textarea>`;}
 function growMessageBox(field){field.style.height="auto";if(field.scrollHeight)field.style.height=`${field.scrollHeight}px`;}
 function bindMessageBox(field){
   growMessageBox(field);
@@ -2572,7 +2595,7 @@ function stepOrderChapter(direction){
 // Reordering is scoped to one chapter because that is the only place order has any meaning:
 // events sort by chapter first. So the list never grows with the size of the novel.
 function trackRowMarkup(track){
-  return `<div class="track-row" data-id="${escapeHtml(track.id)}"><label class="field"><span>Track name</span><input class="track-name" value="${escapeHtml(track.name||"")}" placeholder="Authority" /></label><label class="field"><span>Ranks, lowest first — one per line</span><textarea class="track-levels" rows="6" placeholder="G&#10;F&#10;E&#10;S-&#10;S&#10;S+&#10;Divine">${escapeHtml((track.levels||[]).join("\n"))}</textarea></label><button type="button" class="button ghost track-remove">Remove this track</button></div>`;
+  return `<div class="track-row" data-id="${escapeHtml(track.id)}"><label class="field"><span>Track name</span><input class="track-name" value="${escapeHtml(track.name||"")}" placeholder="Authority" /></label><label class="field"><span>Ranks, lowest first — one per line</span><textarea class="track-levels" data-plain-text rows="6" placeholder="G&#10;F&#10;E&#10;S-&#10;S&#10;S+&#10;Divine">${escapeHtml((track.levels||[]).join("\n"))}</textarea></label><button type="button" class="button ghost track-remove">Remove this track</button></div>`;
 }
 function renderTrackEditor(){
   const host=$("#track-rows");if(!host)return;
@@ -2620,7 +2643,7 @@ function orderRowHtml(event,index,total,moment){
 // underneath, because they are still separate actions and are still reordered and edited there.
 function momentHeadHtml(moment,rows){
   const parts=rows.filter(event=>(moment.members||[]).includes(event.id)).length;
-  return `<li class="order-moment-head" data-moment="${escapeHtml(moment.id)}"><div class="order-moment-title"><b class="event-type event-moment">together</b><span>${parts} action${parts===1?"":"s"} land as one moment</span></div><textarea class="order-moment-message" data-moment="${escapeHtml(moment.id)}" rows="${messageRows(moment.message)}" placeholder="What this moment says — shown in place of the parts" aria-label="What this moment says">\n${escapeHtml(moment.message||"")}</textarea><button type="button" class="button ghost order-moment-split" data-moment="${escapeHtml(moment.id)}">Separate</button><label class="order-moment-open"><input type="checkbox" class="order-moment-show" data-moment="${escapeHtml(moment.id)}"${moment.showParts===false?"":" checked"} /><span>Let the reader open what the moment is made of</span></label></li>`;
+  return `<li class="order-moment-head" data-moment="${escapeHtml(moment.id)}"><div class="order-moment-title"><b class="event-type event-moment">together</b><span>${parts} action${parts===1?"":"s"} land as one moment</span></div><textarea class="order-moment-message" data-plain-text data-moment="${escapeHtml(moment.id)}" rows="${messageRows(moment.message)}" placeholder="What this moment says — shown in place of the parts" aria-label="What this moment says">\n${escapeHtml(moment.message||"")}</textarea><button type="button" class="button ghost order-moment-split" data-moment="${escapeHtml(moment.id)}">Separate</button><label class="order-moment-open"><input type="checkbox" class="order-moment-show" data-moment="${escapeHtml(moment.id)}"${moment.showParts===false?"":" checked"} /><span>Let the reader open what the moment is made of</span></label></li>`;
 }
 function renderOrderEditor(){
   const list=$("#order-list");if(!list)return;
@@ -2689,13 +2712,35 @@ function renderOrderEditor(){
     });
   });
 }
-let renderedLexicon=null;
+let renderedLexicon=null,editingLexiconTerm="";
+function renderLexiconEditor(){
+  const list=$("#lexicon-list");if(!list)return;
+  const field=$("#lexicon-text");
+  if(field&&document.activeElement!==field&&renderedLexicon!==data.lexicon){field.value=lexiconToText();renderedLexicon=data.lexicon;}
+  const words=storyLexicon();
+  list.innerHTML=words.length
+    ?words.map(entry=>`<li class="lexicon-row${entry.term.toLowerCase()===editingLexiconTerm?" lexicon-editing":""}"><div><strong>${escapeHtml(entry.term)}</strong>${entry.note?`<small>${escapeHtml(entry.note)}</small>`:""}<a href="${escapeHtml(safeExternalUrl(entry.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(entry.url)}</a></div><div class="table-actions"><button type="button" class="button ghost lexicon-edit" data-term="${escapeHtml(entry.term)}">Edit</button><button type="button" class="button ghost lexicon-remove" data-term="${escapeHtml(entry.term)}">Remove</button></div></li>`).join("")
+    :'<li class="lexicon-empty">No linked words yet. The first one you add starts linking itself everywhere it is written.</li>';
+  $("#lexicon-add").textContent=editingLexiconTerm?"Save this word":"Add this word";
+  $("#lexicon-cancel").hidden=!editingLexiconTerm;
+  list.querySelectorAll(".lexicon-edit").forEach(button=>button.onclick=()=>{
+    const entry=storyLexicon().find(item=>item.term===button.dataset.term);if(!entry)return;
+    editingLexiconTerm=entry.term.toLowerCase();
+    $("#lexicon-term").value=entry.term;$("#lexicon-url").value=entry.url;$("#lexicon-note").value=entry.note||"";
+    $("#lexicon-error").textContent="";renderLexiconEditor();$("#lexicon-term").focus();
+  });
+  list.querySelectorAll(".lexicon-remove").forEach(button=>button.onclick=()=>{
+    data.lexicon=storyLexicon().filter(entry=>entry.term!==button.dataset.term);
+    if(editingLexiconTerm===String(button.dataset.term).toLowerCase())clearLexiconInputs();
+    renderedLexicon=null;saveData();renderAll();toast(`${button.dataset.term} no longer carries a link`);
+  });
+}
+function clearLexiconInputs(){editingLexiconTerm="";["#lexicon-term","#lexicon-url","#lexicon-note"].forEach(id=>{const field=$(id);if(field)field.value="";});$("#lexicon-error").textContent="";}
 function renderAdmin(){
   renderVolumeEditor();
   const templateField=$("#chapter-url-template");if(templateField&&document.activeElement!==templateField)templateField.value=data.chapterUrlTemplate||"";
   const sourcesField=$("#chapter-sources-text");if(sourcesField&&document.activeElement!==sourcesField&&renderedChapterSources!==data.chapterSources){sourcesField.value=chapterSourcesToText(data.chapterSources);renderedChapterSources=data.chapterSources;}
-  const lexiconField=$("#lexicon-text");if(lexiconField&&document.activeElement!==lexiconField&&renderedLexicon!==data.lexicon){lexiconField.value=lexiconToText();renderedLexicon=data.lexicon;}
-  const lexiconCount=$("#lexicon-count");if(lexiconCount)lexiconCount.textContent=storyLexicon().length?`${storyLexicon().length} word${storyLexicon().length===1?"":"s"} link out wherever they are written.`:"No linked words yet.";
+  renderLexiconEditor();
   const missingBox=$("#missing-chapter-links");if(missingBox){const missing=referencedChaptersWithoutLinks();missingBox.hidden=!missing.length;if(missing.length)missingBox.querySelector("span").textContent=`Chapter${missing.length===1?"":"s"} ${missing.join(", ")} ${missing.length===1?"is":"are"} referenced somewhere but ${missing.length===1?"has":"have"} no saved link yet.`;}
   const sorted=[...data.events].sort((a,b)=>a.chapter-b.chapter||(a.order||0)-(b.order||0)||String(a.type).localeCompare(String(b.type)));$("#data-count").textContent=`${data.events.length} events`;$("#entity-count").textContent=`${data.entities.length} identities`;$("#entity-table").innerHTML=[...data.entities].sort((a,b)=>a.name.localeCompare(b.name)).map(item=>{const connected=data.events.filter(event=>eventInvolves(event,item.id)).length,intro=item.kind==="character"?(firstMention(item)||firstAppearance(item)||item.intro):item.intro;return `<tr class="${connected?"":"orphan-identity"}"><td><strong>${escapeHtml(item.name)}</strong>${connected?"":'<small class="orphan-warning">Not yet visible on graph</small>'}</td><td><span class="chip">${escapeHtml(item.kind)}</span></td><td>${intro?`Chapter ${intro}`:"—"}</td><td>${connected||'<span class="orphan-warning">0 — repair needed</span>'}</td><td><div class="table-actions"><button class="button ghost edit-identity" data-id="${escapeHtml(item.id)}">Edit identity</button><button class="button ghost delete-identity-row" data-id="${escapeHtml(item.id)}">Delete</button></div></td></tr>`;}).join("");$("#event-table").innerHTML=sorted.map(e=>{const creationManaged=isCreationManagedEvent(e);return `<tr data-event-id="${escapeHtml(e.id)}" data-event-owner="${creationManaged?"identity":"chapter"}"><td>${e.chapter}</td><td><span class="chip">${escapeHtml(e.type)}</span>${creationManaged?'<small class="table-location">creation record</small>':""}</td><td>${escapeHtml([entity(e.source)?.name,e.target?entity(e.target)?.name:null].filter(Boolean).join(" → "))}${e.location?`<small class="table-location">at ${escapeHtml(entity(e.location)?.name||e.location)}</small>`:""}</td><td>${escapeHtml(e.description||"")}</td><td><div class="table-actions"><button class="button ghost edit-event" data-id="${escapeHtml(e.id)}">${creationManaged?"Edit creation":"Edit event"}</button><button class="button ghost delete-event" data-id="${escapeHtml(e.id)}">Delete</button></div></td></tr>`;}).join("");
   renderOrderEditor();renderTrackEditor();
@@ -2935,7 +2980,7 @@ $("#event-form").elements.action.addEventListener("change",updateEventHelp);
 $("#event-form").elements.track.addEventListener("change",event=>{const form=$("#event-form");fillLevelSelect(form.elements.level,event.target.value,"");form.elements.value.value="";});
 $("#entity-form").elements.initialTrack.addEventListener("change",event=>{const form=$("#entity-form");fillLevelSelect(form.elements.initialLevel,event.target.value,"");});
 $("#event-form").elements.level.addEventListener("change",()=>{const form=$("#event-form"),value=form.elements.value.value.trim().toLowerCase();if(form.elements.type.value==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===value))form.elements.value.value="";});
-function installWikiLinkHelpers(){document.querySelectorAll("#admin-view textarea").forEach(textarea=>{if(textarea.parentElement.querySelector(".inline-link-helper"))return;const button=document.createElement("button");button.type="button";button.className="inline-link-helper";button.textContent="＋ Link selected text to a wiki page";button.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd,label=textarea.value.slice(start,end).trim()||prompt("Text readers should see (for example: Protos Energy)");if(!label)return;const url=prompt("Paste the full webpage URL");if(!safeExternalUrl(url)){if(url)toast("Use a complete http:// or https:// link");return;}const chapterInput=prompt("Also cite a chapter for this? Enter a chapter number, or leave blank to skip."),chapter=validChapter(chapterInput);if(chapterInput&&!chapter){toast("Enter a whole chapter number greater than 0 — link added without a chapter citation");}textarea.setRangeText(chapter?`[[${label}|${url.trim()}|${chapter}]]`:`[[${label}|${url.trim()}]]`,start,end,"end");textarea.focus();};const chapterButton=document.createElement("button");chapterButton.type="button";chapterButton.className="inline-link-helper chapter-mark-helper";chapterButton.textContent="＋ Mark chapter for selected text";chapterButton.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd;if(start===end){toast("Select the sentence or passage this chapter reference belongs to first");return;}const selectedText=textarea.value.slice(start,end);const input=prompt("Which chapter does this belong to?"),chapter=validChapter(input);if(!chapter){if(input!==null)toast("Enter a whole chapter number greater than 0");return;}if(!chapterUrl(chapter)){const urlInput=prompt(`No link is saved for chapter ${chapter} yet. Paste its URL to save it once — every future reference to chapter ${chapter} anywhere will use it automatically. Leave blank to skip.`);const savedUrl=urlInput?safeExternalUrl(urlInput.trim()):"";if(urlInput&&!savedUrl)toast("That wasn't a complete http:// or https:// link — marker added without one");if(savedUrl){data.chapterSources={...(data.chapterSources||{}),[chapter]:savedUrl};saveData();}}textarea.setRangeText(`[[cite:${chapter}]]${selectedText}[[/cite]]`,start,end,"end");textarea.focus();};textarea.insertAdjacentElement("afterend",button);button.insertAdjacentElement("afterend",chapterButton);});}
+function installWikiLinkHelpers(){document.querySelectorAll("#admin-view textarea:not([data-plain-text])").forEach(textarea=>{if(textarea.parentElement.querySelector(".inline-link-helper"))return;const button=document.createElement("button");button.type="button";button.className="inline-link-helper";button.textContent="＋ Link selected text to a wiki page";button.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd,label=textarea.value.slice(start,end).trim()||prompt("Text readers should see (for example: Protos Energy)");if(!label)return;const url=prompt("Paste the full webpage URL");if(!safeExternalUrl(url)){if(url)toast("Use a complete http:// or https:// link");return;}const chapterInput=prompt("Also cite a chapter for this? Enter a chapter number, or leave blank to skip."),chapter=validChapter(chapterInput);if(chapterInput&&!chapter){toast("Enter a whole chapter number greater than 0 — link added without a chapter citation");}textarea.setRangeText(chapter?`[[${label}|${url.trim()}|${chapter}]]`:`[[${label}|${url.trim()}]]`,start,end,"end");textarea.focus();};const chapterButton=document.createElement("button");chapterButton.type="button";chapterButton.className="inline-link-helper chapter-mark-helper";chapterButton.textContent="＋ Mark chapter for selected text";chapterButton.onclick=()=>{const start=textarea.selectionStart,end=textarea.selectionEnd;if(start===end){toast("Select the sentence or passage this chapter reference belongs to first");return;}const selectedText=textarea.value.slice(start,end);const input=prompt("Which chapter does this belong to?"),chapter=validChapter(input);if(!chapter){if(input!==null)toast("Enter a whole chapter number greater than 0");return;}if(!chapterUrl(chapter)){const urlInput=prompt(`No link is saved for chapter ${chapter} yet. Paste its URL to save it once — every future reference to chapter ${chapter} anywhere will use it automatically. Leave blank to skip.`);const savedUrl=urlInput?safeExternalUrl(urlInput.trim()):"";if(urlInput&&!savedUrl)toast("That wasn't a complete http:// or https:// link — marker added without one");if(savedUrl){data.chapterSources={...(data.chapterSources||{}),[chapter]:savedUrl};saveData();}}textarea.setRangeText(`[[cite:${chapter}]]${selectedText}[[/cite]]`,start,end,"end");textarea.focus();};textarea.insertAdjacentElement("afterend",button);button.insertAdjacentElement("afterend",chapterButton);});}
 document.addEventListener("click",event=>{const link=event.target.closest("[data-open-event]");if(!link)return;event.preventDefault();event.stopPropagation();openProfile(link.dataset.openEvent,Number(link.dataset.eventChapter));});
 $("#cancel-event-edit").onclick=resetEventEditor;
 $("#queue-event").onclick=()=>{const record=buildEventRecord($("#event-form"));if(!record)return;if(eventDrafts.length&&record.chapter!==eventDrafts[0].chapter){toast(`This batch is for chapter ${eventDrafts[0].chapter}. Save or clear it before changing chapters.`);return;}eventDrafts.push(record);renderEventBatch();clearEventInputsForNext();toast("Change added to the chapter batch");};
@@ -2956,7 +3001,30 @@ $("#add-volume").onclick=()=>{const rows=$("#volume-rows"),last=rows.lastElement
 $("#volume-form").addEventListener("submit",event=>{event.preventDefault();const volumes=collectVolumeRows(),error=validateVolumes(volumes),errorBox=$("#volume-error");errorBox.textContent=error;if(error){errorBox.scrollIntoView({behavior:"smooth",block:"center"});return;}const orphanEvents=data.events.filter(storyEvent=>!volumes.some(volume=>storyEvent.chapter>=volume.from&&storyEvent.chapter<=volume.to));if(orphanEvents.length&&!confirm(`${orphanEvents.length} existing event${orphanEvents.length===1?" is":"s are"} outside these chapter ranges and will not appear in a volume. Save anyway?`))return;cancelChapterSequence();expandedChapter=null;data.volumes=volumes;activeVolume=volumes.some(volume=>volume.id===activeVolume)?activeVolume:volumes[0].id;cacheActiveVolume();currentActionIndex=0;currentChapter=activeVol().from;selectedId=null;locationPovId=null;lastAutoFitSignature="";saveData();configure();renderAll();toast(`${volumes.length} volume${volumes.length===1?"":"s"} saved`);});
 $("#chapter-links-form").addEventListener("submit",event=>{event.preventDefault();const rawTemplate=$("#chapter-url-template").value.trim(),rawSources=$("#chapter-sources-text").value,errorBox=$("#chapter-links-error");errorBox.textContent="";if(rawTemplate&&!rawTemplate.includes("{n}")){errorBox.textContent="Include {n} in the template so each chapter number can be inserted — for example https://example.com/chapter-{n}.";return;}if(rawTemplate&&!safeExternalUrl(rawTemplate.replaceAll("{n}","1"))){errorBox.textContent="The fallback template must be a complete http:// or https:// URL.";return;}const badLine=listFromText(rawSources).find(line=>{const [chapterText,urlText]=line.split(/\s+\|\s+/,2);return !(validChapter(chapterText)&&safeExternalUrl(urlText));});if(badLine){errorBox.textContent=`Couldn't read this line — use "chapter number | full URL": ${badLine}`;return;}data.chapterUrlTemplate=rawTemplate;data.chapterSources=chapterSourcesFromText(rawSources);saveData();renderAll();toast("Chapter links saved");});
 $("#quick-add-chapter").addEventListener("blur",()=>{const chapter=validChapter($("#quick-add-chapter").value);if(chapter){const existing=data.chapterSources?.[chapter];if(existing)$("#quick-add-url").value=existing;}});
-$("#lexicon-form").addEventListener("submit",event=>{event.preventDefault();const raw=$("#lexicon-text").value,errorBox=$("#lexicon-error"),bad=badLexiconLine(raw);errorBox.textContent="";if(bad){errorBox.textContent=`Couldn't read this line — use "word | full URL" and, if you like, a note after a second bar: ${bad}`;return;}data.lexicon=lexiconFromText(raw);renderedLexicon=null;saveData();renderAll();toast(`${data.lexicon.length} linked word${data.lexicon.length===1?"":"s"} saved`);});
+$("#lexicon-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  const errorBox=$("#lexicon-error"),typed=$("#lexicon-term").value.trim(),
+    // Somebody who pastes the whole line into the first box still gets what they meant.
+    read=typed.includes("|")||/https?:\/\//i.test(typed)?readLexiconLine(typed):{term:typed,url:$("#lexicon-url").value,note:$("#lexicon-note").value},
+    entry=lexiconEntry(read.term,read.url||$("#lexicon-url").value,read.note||$("#lexicon-note").value);
+  errorBox.textContent="";
+  if(!entry.term){errorBox.textContent="Write the word first — the one that should carry the link wherever it appears.";return;}
+  if(!entry.url){errorBox.textContent="That link is not a complete address. It has to start with http:// or https://.";return;}
+  const words=storyLexicon(),at=words.findIndex(item=>item.term.toLowerCase()===(editingLexiconTerm||entry.term.toLowerCase()));
+  if(at>=0)words[at]=entry;else words.push(entry);
+  data.lexicon=words;
+  const replaced=at>=0;
+  clearLexiconInputs();renderedLexicon=null;saveData();renderAll();
+  toast(`${entry.term} ${replaced?"updated":"now links out wherever it is written"}`);
+});
+$("#lexicon-cancel").onclick=()=>{clearLexiconInputs();renderLexiconEditor();};
+$("#lexicon-save-text").onclick=()=>{
+  const raw=$("#lexicon-text").value,errorBox=$("#lexicon-error"),bad=badLexiconLine(raw);
+  errorBox.textContent="";
+  if(bad){errorBox.textContent=`Couldn't read this line — it needs a word and a full http:// or https:// link: ${bad}`;return;}
+  data.lexicon=lexiconFromText(raw);clearLexiconInputs();renderedLexicon=null;saveData();renderAll();
+  toast(`${data.lexicon.length} linked word${data.lexicon.length===1?"":"s"} saved`);
+};
 $("#chapter-quick-add-form").addEventListener("submit",event=>{event.preventDefault();const chapter=validChapter($("#quick-add-chapter").value),url=safeExternalUrl($("#quick-add-url").value),errorBox=$("#quick-add-error");errorBox.textContent="";if(!chapter){errorBox.textContent="Enter a whole chapter number greater than 0.";return;}if(!url){errorBox.textContent="Enter a complete http:// or https:// URL.";return;}data.chapterSources={...(data.chapterSources||{}),[chapter]:url};saveData();renderAll();$("#quick-add-chapter").value="";$("#quick-add-url").value="";toast(`Chapter ${chapter} link saved`);});
 
 $("#export-data").onclick=()=>{const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="living-story-graph-data.json";link.click();URL.revokeObjectURL(url);};
