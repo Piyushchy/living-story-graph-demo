@@ -659,7 +659,7 @@ test("spring rest lengths clear both nodes, so a link can never pull two shapes 
 
 test("a place a character is standing in keeps the line while it is popped out, and the line rides back into the parent as the pod retracts rather than snapping across", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /const podIds=syncPodTransitions\(locView,beatEvents\),podSet=new Set\(\[\.\.\.podIds,\.\.\.retiringPodIds\]\)/, "retracting pods stay valid endpoints so the line can follow them home");
+  assert.match(body, /const podIds=syncPodTransitions\(locView,beatEvents,derived\),podSet=new Set\(\[\.\.\.podIds,\.\.\.retiringPodIds\]\)/, "retracting pods stay valid endpoints so the line can follow them home");
   assert.ok(body.indexOf("syncPodTransitions(locView") < body.indexOf("const straightEdge="), "and the transition is decided before any link is drawn, or the line snaps home a render early");
   assert.match(body, /const edgeLocationId=id=>entity\(id\)\?\.kind!=="location"\?id:\(podSet\.has\(id\)\?id:\(locView\.anchorOf\.get\(id\)\|\|id\)\)/);
   assert.match(body, /const aPos=pointFor\(a\),bPos=pointFor\(b\)/, "edges resolve pod positions as well as physics positions");
@@ -670,7 +670,8 @@ test("a place a character is standing in keeps the line while it is popped out, 
 
 test("an action that merely names a place — a meeting, a note — still draws everyone it involves to that place while it is showing", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /beatEvents\.filter\(event=>event\.location&&\["location","organization"\]\.includes\(entity\(event\.location\)\?\.kind\)&&!\["movement","residency","organization_location","location_parent"\]\.includes\(event\.type\)\)/, "the link types that already draw their own line are left alone, and every part of a moment names its own place");
+  assert.match(body, /if\(\["residency","organization_location","location_parent"\]\.includes\(event\.type\)\)return false;/, "the link types that already draw their own line are left alone, and every part of a moment names its own place");
+  assert.match(body, /return where==="organization"\|\|event\.type!=="movement";/, "a move draws its own line to where the traveller lands, but a move into a group still wants the line to the group");
   assert.match(body, /locationCharacterIds\(event\)\.forEach\(who=>\{noteEdge\(who,place,event\.chapter,note\);straightEdge\(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place\);\}\)/);
 });
 
@@ -699,7 +700,7 @@ test("hovering a link answers which chapter that connection last changed in, hit
   assert.match(source, /if\(physics\.dragId\|\|panStart\|\|event\.target\.closest\("\.node,\.location-pod"\)\)\{hideEdgeTip\(\);return;\}/, "dragging, panning and hovering a node all suppress it");
   const body = functionBody("renderGraph");
   assert.match(body, /const noteEdge=\(a,b,chapter,note\)=>\{if\(a&&b&&a!==b&&chapter\)edgeIndex\.push\(\{a,b,chapter:Number\(chapter\),note\}\);\}/);
-  assert.match(body, /locationEdge\(character,visit\.location,`location-edge\$\{forming\(visit\)\}`,beatDoes\("movement",[^)]*\),visit\.chapter,visit\.pending\?/, "travel, and travel still under way");
+  assert.match(body, /locationEdge\(character,visit\.location,`location-edge\$\{forming\(visit\)\}`,beatDoes\("movement",event=>event\.source===character&&\(event\.location===visit\.location\|\|event\.location===visit\.organization\)\),visit\.chapter,visit\.pending\?/, "travel, and travel still under way — including a move written as going to the group rather than to the place");
   assert.match(body, /noteEdge\(m\.character,m\.organization,m\.from/, "membership");
   assert.match(body, /noteEdge\(child,parent,link\.from,`Sits inside\$\{formingNote\(link\)\}`\)/, "location nesting, and whether it is still being made");
   assert.match(source, /pair\.from = event\.chapter;/, "awareness had no chapter of its own to report until now");
@@ -1928,7 +1929,7 @@ test("a scene inside a group happens at one of its places: the branch it names, 
 test("where something happened takes a group as readily as a place, and says which branch of it", () => {
   const body = functionBody("buildEventRecord");
   assert.match(body, /if\(location&&!\["location","organization"\]\.includes\(location\.kind\)\)\{toast\("Where this happened must be a place or an organization"\)/);
-  assert.match(body, /if\(\["movement","residency","location_parent","organization_location","system_location"\]\.includes\(type\)&&location&&location\.kind!=="location"\)\{toast\("This one needs a real place, not an organization"\)/, "travel, residence, and the map itself still need somewhere that exists");
+  assert.match(body, /if\(\["residency","location_parent","organization_location","system_location"\]\.includes\(type\)&&location&&location\.kind!=="location"\)\{toast\("This one needs a real place, not an organization"\)/, "residence and the map itself still need somewhere that exists, though travel does not");
   assert.match(body, /if\(branchText&&location\?\.kind!=="organization"\)\{toast\("A branch belongs to an organization/);
   assert.match(body, /if\(branch&&!organizationBranches\(location\.id,derive\(chapter\)\.organizationLocations\)\.some\(link=>link\.location===branch\.id\)\)/, "and only somewhere that group is actually based by then");
   assert.match(body, /if\(branch\)record\.branch=branch\.id;/);
@@ -1970,4 +1971,27 @@ test("a place or a group can be spoken of long before the story ever shows it", 
   assert.match(functionBody("renderGraph"), /mentionedOnly=item\.kind!=="quest"&&state\.mentioned!==null&&\(state\.appeared===null\|\|state\.appeared>currentChapter\)/);
   assert.match(functionBody("syncPresenceFromEvents"), /if\(!item\|\|item\.kind==="quest"\)return;/);
   assert.match(styleSource, /\.node\.mentioned-only \.org-shape,\.node\.mentioned-only \.location-glyph,\.node\.mentioned-only \.system-shape\{stroke-dasharray:5 5/);
+});
+
+test("somebody can travel to a group, and the graph works out which of its places that means", () => {
+  const record = functionBody("buildEventRecord");
+  assert.doesNotMatch(record, /if\(\["movement","residency"/, "going to the office is an ordinary thing to write");
+  assert.match(record, /if\(\["residency","location_parent","organization_location","system_location"\]\.includes\(type\)&&location&&location\.kind!=="location"\)/, "though a residence and the map itself still need a real place");
+  assert.match(functionBody("actionEffectProblem"), /if\(type==="movement"\)return needs\(kind\(event\.source\)==="character"&&\["location","organization"\]\.includes\(kind\(event\.location\)\),"travel needs a character and somewhere to go"\)/);
+  const derived = functionBody("derive");
+  assert.match(derived, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:branch\|\|event\.location,organization:event\.location,/, "where they now stand is the branch; the group they went to is kept beside it so both can be said");
+  assert.match(functionBody("renderGraph"), /return where==="organization"\|\|event\.type!=="movement";/, "and a move into a group is joined to the group as well as to the place");
+});
+
+test("a group's branch comes out of hiding, so the reader is told New York rather than just Earth", () => {
+  const body = functionBody("eventPodIds");
+  assert.match(body, /flatMap\(event=>\[event\.location,eventBranchId\(event,derived\),event\.type==="location_parent"\?event\.source:null\]\)/, "the branch an action resolves to is popped out of whatever it is folded inside");
+  assert.match(body, /\.filter\(id=>view\.present\.has\(id\)&&!view\.rendered\.has\(id\)&&view\.anchorOf\.get\(id\)\)/, "only when it is genuinely hidden — a place already on the graph is left where it is");
+  assert.match(functionBody("syncPodTransitions"), /const podIds=eventPodIds\(view,beatEvents,derived\)/);
+  // Popped out for an action, it carries the same ring as anybody standing there.
+  assert.match(functionBody("renderLocationPods"), /if\(liveIds\.has\(id\)&&!retiring\)shell\.append\(svgEl\("circle",\{cx:0,cy:0,r:32,class:"action-focus-ring"\}\)/);
+  const line = functionBody("eventPlaceLine");
+  assert.match(line, /if\(where\.kind!=="organization"\)return where\.name;/);
+  assert.match(line, /return branch\?`\$\{where\.name\} · \$\{entity\(branch\)\?\.name\|\|branch\}`:where\.name;/, "and it is said in words too, not only drawn");
+  assert.match(source, /<small>· \$\{escapeHtml\(eventPlaceLine\(event\)\)\}<\/small>/);
 });
