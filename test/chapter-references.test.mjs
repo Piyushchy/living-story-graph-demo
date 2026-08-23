@@ -834,7 +834,9 @@ test("everything in one moment lands together on the graph", () => {
   assert.match(graph, /beatDoes=\(type,test\)=>beatEvents\.some\(event=>event\.type===type&&test\(event\)\)/, "and every part of it lights up, not only the last");
   assert.match(graph, /cultivationReveal=beatDoes\("cultivation",event=>event\.source===item\.id\)/, "a cultivation revealed inside a moment still plays its reveal");
   assert.match(graph, /priorCultivationDerived=beatCultivations\.length\?derive\(currentChapter,appliedNow\.filter\(event=>!beatCultivations\.some\(item=>item\.id===event\.id\)\)\)/, "measured against what it was before the whole moment");
-  assert.match(graph, /const activeIds=new Set\(beatEvents\.flatMap\(/, "every part of it is lit, not only the last");
+  assert.match(graph, /const activeIds=new Set\(\[\.\.\.beatEvents\.flatMap\(/, "every part of it is lit, not only the last");
+  assert.match(graph, /\[entity\(event\.source\)\?\.issuer,\.\.\.\(derived\.quests\.find\(run=>run\.quest===event\.source\)\?\.holders\|\|\[\]\)\]/, "a quest is not a node, so what lights up is who carries it and who set it");
+  assert.match(graph, /if\(!activeIds\.size\)viewportGroup\.setAttribute\("class"/, "and nothing at all is never a reason to dim the whole graph");
   assert.match(functionBody("eventPodIds"), /\[\]\.concat\(beatEvents\|\|\[\]\)/, "and every place it puts on the graph comes out at once");
 });
 
@@ -1491,9 +1493,10 @@ test("a quest never becomes a node, but carrying one shows on the character and 
   const body = functionBody("renderGraph");
   assert.match(body, /derived\.quests\.filter\(run=>run\.status==="active"\)\.forEach\(run=>run\.holders\.forEach/, "who is carrying what, right now");
   assert.match(body, /\.\.\.\(derived\.quests\.find\(run=>run\.quest===questAction\.source\)\?\.holders\|\|\[\]\)/, "only an issue names who it goes to; everything after belongs to whoever holds it");
-  assert.match(body, /straightEdge\(issuer,holder,"edge quest-issue-edge newly-revealed-edge",issuer,holder\)/, "the handing over is drawn from issuer to holder, for that beat only");
+  assert.match(body, /straightEdge\(issuer,holder,`edge \$\{tone\} newly-revealed-edge`,issuer,holder\)/, "the handing over is drawn from issuer to holder, for that beat only");
+  assert.match(body, /if\(questBeat&&\["quest_issue","quest_end"\]\.includes\(questBeat\.type\)&&questBeat\.action!=="withdraw"\)/, "and a settling is drawn too, so an ending is seen happening");
   assert.match(body, /if\(held\.length&&selectedId===item\.id\)\{/, "the count shows on the character being looked at, not painted on everyone for ever");
-  assert.match(body, /questPulses\.push\(\{el:pulse,from:issuer,to:holder/, "and the issuing is a mote running from the system that set it to whoever took it");
+  assert.match(body, /questPulses\.push\(\{el:pulse,from:settling\?holder:issuer,to:settling\?issuer:holder/, "the issuing is a mote running from the system that set it to whoever took it — and a settling runs back");
   assert.match(functionBody("stepQuestPulses"), /arrival=Math\.max\(0,\(progress-\.72\)\/\.28\)/, "flaring as it lands, then gone");
   assert.match(body, /questNotice=\{y:r\+27,tone:settled\?/, "and the notice sits under the node, clear of the name above it");
   assert.match(source, /const kind=entity\(id\)\?\.kind;if\(kind==="system"\|\|kind==="quest"\)return false;/, "the quest itself is still never a node");
