@@ -844,7 +844,12 @@ test("a combined moment is read as one card, with what it is made of kept undern
   const row = functionBody("momentPanelRow");
   assert.match(row, /<b class="event-type event-moment">together<\/b>/);
   assert.match(row, /<p class="moment-message">\$\{richText\(beatMessage\(beat\)\)\}<\/p>/, "the sentence written for the moment stands in for the parts'");
-  assert.match(row, /\$\{beat\.moment\.showParts===false\?"":`<details class="moment-parts">/, "and the writer can keep the parts out of sight entirely");
+  assert.match(row, /\$\{beat\.moment\.showParts===false\?"":`<details class="moment-parts" data-moment-parts=/, "and the writer can keep the parts out of sight entirely");
+  assert.match(row, /\$\{momentPartsAreOpen\(beat\.moment\)\?" open":""\}/, "whether they arrive open is written on the moment itself");
+  assert.match(functionBody("momentPartsAreOpen"), /const open=moment\?\.partsOpen===true;return momentPartsFlipped\.has\(moment\?\.id\)\?!open:open;/, "and one the reader turns the other way stays that way through a re-render");
+  assert.match(functionBody("momentHeadHtml"), /<select class="order-moment-parts-mode"/, "the choice is the writer's, made where the moment is made");
+  assert.match(functionBody("momentHeadHtml"), /<option value="open"\$\{moment\.partsOpen===true\?" selected":""\}>Shown open<\/option>/);
+  assert.doesNotMatch(source, /toggle-moment-parts/, "and is not a control the reader is handed");
   assert.match(functionBody("beatPanelRow"), /beat\.moment&&beat\.events\.length>1\?momentPanelRow\(beat,options\):eventPanelRow\(beat\.event,beat\.index,options\)/);
   assert.match(styleSource, /\.event-type\.event-moment\{/);
 });
@@ -1184,6 +1189,14 @@ test("what an action only speaks of is drawn as a reference, never as a presence
   assert.match(source, /<i class="line-key mention"><\/i>Spoken of<\/span>/, "and the key says what the line means");
   assert.match(source, /mentions: \["stonevale","jotun"\]/, "the demo speaks of a city and an empire nobody is anywhere near");
   assert.match(functionBody("actionMatchesFilter"), /if\(filter\.field==="mentions"\)/, "searchable: mentions:jotun");
+});
+
+test("an action can be deleted where it is read, and says what it will take with it", () => {
+  assert.match(functionBody("orderRowHtml"), /<button type="button" class="order-delete" data-id="\$\{escapeHtml\(event\.id\)\}" aria-label="Delete this action"/);
+  const order = functionBody("renderOrderEditor");
+  assert.match(order, /Whatever it did to the graph is undone with it/, "the confirmation quotes the action rather than asking in the abstract");
+  assert.match(order, /data\.events=data\.events\.filter\(event=>event\.id!==button\.dataset\.id\);\s*syncPresenceFromEvents\(record\.source,record\.type\);/, "and a character's presence is recomputed without it");
+  assert.match(order, /if\(\$\("#event-form"\)\.elements\.editingId\.value===button\.dataset\.id\)resetEventEditor\(\);/, "deleting the action being edited closes the editor rather than leaving it pointing at nothing");
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
