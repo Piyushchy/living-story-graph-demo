@@ -1247,6 +1247,24 @@ test("having met is a standing fact: by the time two people have talked they sta
   assert.match(styleSource, /\.relation-edge\[marker-end\],\.relation-edge\[marker-start\]\{stroke-width:3/, "and having merely heard of somebody is a lighter line than standing with them");
 });
 
+test("a moment moves through the running order as one thing, and its parts cannot be carried out of it", () => {
+  const ctx = { data: { moments: [
+    { id: "m1", members: ["c","d"] },
+    { id: "m2", members: ["f","g"] }
+  ] } };
+  vm.createContext(ctx);
+  const body = functionBody("renderOrderEditor");
+  const helpers = body.slice(body.indexOf("const blockAt="), body.indexOf("list.querySelectorAll(\".order-moment-up\")"));
+  vm.runInContext([functionBody("storyMoments"), functionBody("momentOf"), helpers].join("\n"), ctx);
+  const ids = ["a","b","c","d","e","f","g"];
+  assert.deepEqual(JSON.parse(vm.runInContext(`JSON.stringify(blockAt(${JSON.stringify(ids)},3))`, ctx)), { from: 2, to: 3 }, "a member names the whole run it belongs to");
+  assert.equal(vm.runInContext(`moveBlock(${JSON.stringify(ids)},{from:2,to:3},-1).join("")`, ctx), "acdbefg", "moving earlier steps over the action above it");
+  assert.equal(vm.runInContext(`moveBlock(${JSON.stringify(ids)},{from:2,to:3},1).join("")`, ctx), "abecdfg", "and later steps over the one below");
+  assert.equal(vm.runInContext(`moveBlock(${JSON.stringify(ids)},{from:4,to:4},1).join("")`, ctx), "abcdfge", "a lone action steps over a whole moment, not into the middle of one");
+  assert.match(body, /if\(moment\)\{const block=blockAt\(ids,from\),to=from\+direction;if\(to<block\.from\|\|to>block\.to\)return;/, "inside a moment the arrows reorder its own parts and never carry one out");
+  assert.match(functionBody("momentHeadHtml"), /class="order-moment-up"/);
+});
+
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
   assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });
