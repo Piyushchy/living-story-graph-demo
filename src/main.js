@@ -20,7 +20,6 @@ const VIEW_STATE_KEY = "living-story-graph-view-state-v1";
 const PUBLISH_DIRTY_KEY = "living-story-graph-publish-dirty-v1";
 const CHAPTER_REF_TOGGLE_KEY = "living-story-graph-chapter-refs-v1";
 const SLIDER_MODE_KEY = "living-story-graph-slider-mode-v1";
-const MOMENT_PARTS_KEY = "living-story-graph-moment-parts-v1";
 const CHAPTER_REF_HINT_SEEN_KEY = "living-story-graph-chapter-ref-hint-seen-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CULTIVATION_LEVELS = ["Mortal","Body Tempering","Qi Training","Foundation Establishment","Golden Core","Nascent Soul","Earth Immortal","Heaven Immortal","Celestial Immortal","Demi Dao Lord","Dao Lord","Above Dao Lord"];
@@ -290,7 +289,7 @@ app.innerHTML = `
                 <button class="mobile-panel-tab" data-panel="legend" role="tab">Legend</button>
               </div>
               <section id="summary" class="side-card summary mobile-active" data-panel-content="info"><div class="empty">Select a character, system, organization, or place. Double-click a node for full details.</div></section>
-              <section class="side-card events-card" data-panel-content="events"><div class="events-head"><strong id="events-title">Chapter events</strong><span id="events-count"></span><button type="button" id="toggle-moment-parts" class="moment-parts-toggle" aria-pressed="false" title="Keep what a moment is made of open, instead of opening each one">Parts folded</button><span id="events-hold" class="events-hold" hidden>Paused</span></div><ul id="events-list" class="events-list"></ul></section>
+              <section class="side-card events-card" data-panel-content="events"><div class="events-head"><strong id="events-title">Chapter events</strong><span id="events-count"></span><span id="events-hold" class="events-hold" hidden>Paused</span></div><ul id="events-list" class="events-list"></ul></section>
               <section class="side-card quests-card" data-panel-content="quests" aria-label="Quests"><div class="events-head"><strong>Quests</strong><span id="quests-count"></span></div><div id="quests-list" class="quests-list"></div></section>
               <section class="side-card mobile-legend" data-panel-content="legend" aria-label="Mobile graph legend">
                 <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span><span><i class="line-key mention"></i>Spoken of</span>
@@ -2445,30 +2444,23 @@ function actionPaidHtml(event){
   return `<div class="quest-paid action-paid">${rewards.length?`<span class="quest-paid-label">${event.type==="quest_contribution"?"Their share":"Rewards"}</span>${rewards.map(reward=>`<b class="quest-reward">${richInline(reward)}</b>`).join("")}`:""}${performance?`<span class="quest-performance">performance ${escapeHtml(performance)}</span>`:""}</div>`;
 }
 function eventPanelRow(event,index,{current=false,related=false,upcoming=false}={}){return `<li class="event-summary-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}"${index?` data-focus-action="${index}" title="Show this action on the graph"`:""}><div><div class="event-panel-meta"><span>Chapter ${event.chapter}</span><b class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type.replaceAll("_"," "))}</b>${personasOf(event).size?`<b class="event-persona" title="Seen under this name, not their own">${escapeHtml(personaListText(event))}</b>`:""}${(event.mentions||[]).length?`<b class="event-mentions" title="Spoken of here, not present">speaks of ${escapeHtml(event.mentions.map(id=>entity(id)?.name||id).join(", "))}</b>`:""}</div>${canEditEvents()?messageBoxHtml("event-message-edit",event):`<p>${richText(event.description||event.type)}</p>`}${actionPaidHtml(event)}${event.location?`<p class="event-panel-place"><small>· ${escapeHtml(entity(event.location)?.name||event.location)}</small></p>`:""}</div>${eventOriginControl(event)}</li>`;}
-// Opening what a moment is made of used to last until the next render, which on a slider that
-// moves is no time at all. The reader's standing choice is kept, and any moment they turn the
-// other way stays that way.
-let momentPartsOpen=false;
+// Whether a moment arrives open is the writer's decision, made where the moment is made. Opening
+// one by hand used to last until the next render, which on a slider that moves is no time at all,
+// so a moment the reader turns the other way stays that way.
 const momentPartsFlipped=new Set();
-function momentPartsAreOpen(id){return momentPartsFlipped.has(id)?!momentPartsOpen:momentPartsOpen;}
+function momentPartsAreOpen(moment){const open=moment?.partsOpen===true;return momentPartsFlipped.has(moment?.id)?!open:open;}
 function beatPanelRow(beat,options={}){return beat.moment&&beat.events.length>1?momentPanelRow(beat,options):eventPanelRow(beat.event,beat.index,options);}
 // A combined moment is read as the one thing it is. What it is made of is still there to open,
 // because the reader may well want to know which changes the sentence covers.
 function momentPanelRow(beat,{current=false,related=false,upcoming=false}={}){
   const parts=beat.events;
-  return `<li class="event-summary-row event-moment-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}" data-focus-action="${beat.index}" title="Show this moment on the graph"><div><div class="event-panel-meta"><span>Chapter ${beat.chapter}</span><b class="event-type event-moment">together</b><small class="moment-count">${parts.length} changes</small></div><p class="moment-message">${richText(beatMessage(beat))}</p>${beat.moment.showParts===false?"":`<details class="moment-parts" data-moment-parts="${escapeHtml(beat.moment.id)}"${momentPartsAreOpen(beat.moment.id)?" open":""}><summary>What happens in it</summary><ul>${parts.map(part=>`<li><i class="event-type event-${escapeHtml(part.type)}">${escapeHtml(part.type.replaceAll("_"," "))}</i>${personasOf(part).size?`<b class="event-persona">${escapeHtml(personaListText(part))}</b>`:""}<span>${richText(part.description||part.type)}</span>${actionPaidHtml(part)}</li>`).join("")}</ul></details>`}</div>${eventOriginControl(beat.event)}</li>`;
+  return `<li class="event-summary-row event-moment-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}" data-focus-action="${beat.index}" title="Show this moment on the graph"><div><div class="event-panel-meta"><span>Chapter ${beat.chapter}</span><b class="event-type event-moment">together</b><small class="moment-count">${parts.length} changes</small></div><p class="moment-message">${richText(beatMessage(beat))}</p>${beat.moment.showParts===false?"":`<details class="moment-parts" data-moment-parts="${escapeHtml(beat.moment.id)}"${momentPartsAreOpen(beat.moment)?" open":""}><summary>What happens in it</summary><ul>${parts.map(part=>`<li><i class="event-type event-${escapeHtml(part.type)}">${escapeHtml(part.type.replaceAll("_"," "))}</i>${personasOf(part).size?`<b class="event-persona">${escapeHtml(personaListText(part))}</b>`:""}<span>${richText(part.description||part.type)}</span>${actionPaidHtml(part)}</li>`).join("")}</ul></details>`}</div>${eventOriginControl(beat.event)}</li>`;
 }
 function canEditEvents(){return isUploadRoute&&adminAuthenticated;}
-function syncMomentPartsToggle(){
-  const button=$("#toggle-moment-parts");if(!button)return;
-  button.setAttribute("aria-pressed",String(momentPartsOpen));
-  button.classList.toggle("active",momentPartsOpen);
-  button.textContent=momentPartsOpen?"Parts open":"Parts folded";
-}
 function bindMomentParts(){
   document.querySelectorAll("[data-moment-parts]").forEach(box=>box.addEventListener("toggle",()=>{
-    const id=box.dataset.momentParts;
-    if(box.open===momentPartsOpen)momentPartsFlipped.delete(id);else momentPartsFlipped.add(id);
+    const moment=storyMoments().find(item=>item.id===box.dataset.momentParts);
+    if(box.open===(moment?.partsOpen===true))momentPartsFlipped.delete(box.dataset.momentParts);else momentPartsFlipped.add(box.dataset.momentParts);
   }));
 }
 function bindEventPanelRows(){
@@ -2866,13 +2858,13 @@ function messageMismatch(event){
   return strangers.length?`the message names ${strangers[0].name}, but this action is about ${subject.name}`:"";
 }
 function orderRowHtml(event,index,total,moment,twin=0){
-  return `<li class="order-row${event.ghost?" order-row-ghost":""}${moment?" order-row-moment":""}${twin?" order-row-twin":""}" data-id="${escapeHtml(event.id)}"><label class="order-pick" title="Pick this to combine it with another action"><input type="checkbox" class="order-pick-box" data-id="${escapeHtml(event.id)}" aria-label="Pick this action to combine" /></label><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><div class="order-facts"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i>${actionSubjectLine(event)?`<b class="order-subject">${escapeHtml(actionSubjectLine(event))}</b>`:""}${twin?`<b class="order-twin" title="This does exactly what action ${twin} in this chapter already does — if it was meant for somebody else, open it and change the name">same action as ${twin}</b>`:""}${actionEffectProblem(event)?`<b class="order-inert" title="${escapeHtml(actionEffectProblem(event))} — as it stands the graph ignores this action">changes nothing</b>`:""}${messageMismatch(event)?`<b class="order-mismatch" title="${escapeHtml(messageMismatch(event))} — the graph follows the action, not the sentence">message names someone else</b>`:""}</div>${messageBoxHtml("order-message",event)}</div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===total-1?" disabled":""}>↓</button></div></li>`;
+  return `<li class="order-row${event.ghost?" order-row-ghost":""}${moment?" order-row-moment":""}${twin?" order-row-twin":""}" data-id="${escapeHtml(event.id)}"><label class="order-pick" title="Pick this to combine it with another action"><input type="checkbox" class="order-pick-box" data-id="${escapeHtml(event.id)}" aria-label="Pick this action to combine" /></label><button type="button" class="order-grip" aria-label="Drag to reorder">⠿</button><span class="order-index">${index+1}</span><div class="order-body"><div class="order-facts"><i class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type)}</i>${actionSubjectLine(event)?`<b class="order-subject">${escapeHtml(actionSubjectLine(event))}</b>`:""}${twin?`<b class="order-twin" title="This does exactly what action ${twin} in this chapter already does — if it was meant for somebody else, open it and change the name">same action as ${twin}</b>`:""}${actionEffectProblem(event)?`<b class="order-inert" title="${escapeHtml(actionEffectProblem(event))} — as it stands the graph ignores this action">changes nothing</b>`:""}${messageMismatch(event)?`<b class="order-mismatch" title="${escapeHtml(messageMismatch(event))} — the graph follows the action, not the sentence">message names someone else</b>`:""}</div>${messageBoxHtml("order-message",event)}</div><div class="order-actions"><button type="button" class="order-ghost${event.ghost?" is-ghost":""}" data-id="${escapeHtml(event.id)}" aria-label="${event.ghost?"Show this action in the list again":"Hide this action from the list, keeping its effects"}" title="${event.ghost?"Ghost — hidden from the list, still in force":"Make this a ghost action"}">${event.ghost?"◌":"◍"}</button><button type="button" class="order-edit" data-id="${escapeHtml(event.id)}" aria-label="Open the full editor for this action">✎</button><button type="button" class="order-delete" data-id="${escapeHtml(event.id)}" aria-label="Delete this action" title="Delete this action">🗑</button><button type="button" class="order-up" data-id="${escapeHtml(event.id)}" aria-label="Move earlier"${index===0?" disabled":""}>↑</button><button type="button" class="order-down" data-id="${escapeHtml(event.id)}" aria-label="Move later"${index===total-1?" disabled":""}>↓</button></div></li>`;
 }
 // The head names a moment and carries the one sentence it is read by; its parts stay listed
 // underneath, because they are still separate actions and are still reordered and edited there.
 function momentHeadHtml(moment,rows){
   const parts=rows.filter(event=>(moment.members||[]).includes(event.id)).length;
-  return `<li class="order-moment-head" data-moment="${escapeHtml(moment.id)}"><div class="order-moment-title"><b class="event-type event-moment">together</b><span>${parts} action${parts===1?"":"s"} land as one moment</span></div><textarea class="order-moment-message" data-plain-text data-moment="${escapeHtml(moment.id)}" rows="${messageRows(moment.message)}" placeholder="What this moment says — shown in place of the parts" aria-label="What this moment says">\n${escapeHtml(moment.message||"")}</textarea><button type="button" class="button ghost order-moment-split" data-moment="${escapeHtml(moment.id)}">Separate</button><label class="order-moment-open"><input type="checkbox" class="order-moment-show" data-moment="${escapeHtml(moment.id)}"${moment.showParts===false?"":" checked"} /><span>Let the reader open what the moment is made of</span></label></li>`;
+  return `<li class="order-moment-head" data-moment="${escapeHtml(moment.id)}"><div class="order-moment-title"><b class="event-type event-moment">together</b><span>${parts} action${parts===1?"":"s"} land as one moment</span></div><textarea class="order-moment-message" data-plain-text data-moment="${escapeHtml(moment.id)}" rows="${messageRows(moment.message)}" placeholder="What this moment says — shown in place of the parts" aria-label="What this moment says">\n${escapeHtml(moment.message||"")}</textarea><button type="button" class="button ghost order-moment-split" data-moment="${escapeHtml(moment.id)}">Separate</button><label class="order-moment-open"><span>What it is made of</span><select class="order-moment-parts-mode" data-moment="${escapeHtml(moment.id)}"><option value="folded"${moment.showParts===false||moment.partsOpen===true?"":" selected"}>Folded away — the reader can open it</option><option value="open"${moment.partsOpen===true?" selected":""}>Shown open</option><option value="hidden"${moment.showParts===false?" selected":""}>Not shown at all</option></select></label></li>`;
 }
 function renderOrderEditor(){
   const list=$("#order-list");if(!list)return;
@@ -2905,10 +2897,13 @@ function renderOrderEditor(){
     field.onchange=()=>{const moment=storyMoments().find(item=>item.id===field.dataset.moment);if(!moment)return;moment.message=field.value.trim();saveData();renderAll();toast("Moment updated");};
     field.onkeydown=event=>{if(event.key==="Enter"&&(event.metaKey||event.ctrlKey)){event.preventDefault();field.blur();}};
   });
-  list.querySelectorAll(".order-moment-show").forEach(box=>box.onchange=()=>{
-    const moment=storyMoments().find(item=>item.id===box.dataset.moment);if(!moment)return;
-    if(box.checked)delete moment.showParts;else moment.showParts=false;
-    saveData();renderAll();toast(box.checked?"The parts can be opened again":"Only the moment is shown");
+  list.querySelectorAll(".order-moment-parts-mode").forEach(field=>field.onchange=()=>{
+    const moment=storyMoments().find(item=>item.id===field.dataset.moment);if(!moment)return;
+    delete moment.showParts;delete moment.partsOpen;
+    if(field.value==="hidden")moment.showParts=false;else if(field.value==="open")moment.partsOpen=true;
+    momentPartsFlipped.delete(moment.id);
+    saveData();renderAll();
+    toast(field.value==="hidden"?"Only the moment is shown":field.value==="open"?"Its parts arrive open":"Its parts arrive folded away");
   });
   list.querySelectorAll(".order-moment-split").forEach(button=>button.onclick=()=>{
     data.moments=storyMoments().filter(moment=>moment.id!==button.dataset.moment);
@@ -2917,6 +2912,15 @@ function renderOrderEditor(){
   list.querySelectorAll(".order-pick-box").forEach(box=>{box.checked=pickedOrderIds.has(box.dataset.id);box.onchange=()=>{if(box.checked)pickedOrderIds.add(box.dataset.id);else pickedOrderIds.delete(box.dataset.id);renderCombineBar();};});
   renderCombineBar();
   list.querySelectorAll(".order-edit").forEach(button=>button.onclick=()=>loadEventEditor(button.dataset.id));
+  list.querySelectorAll(".order-delete").forEach(button=>button.onclick=()=>{
+    const record=data.events.find(event=>event.id===button.dataset.id);if(!record)return;
+    const subject=entity(record.source)?.name||record.source;
+    if(!confirm(`Delete this action?\n\nChapter ${record.chapter} · ${String(record.type).replaceAll("_"," ")} · ${subject}\n“${record.description||""}”\n\nWhatever it did to the graph is undone with it.`))return;
+    data.events=data.events.filter(event=>event.id!==button.dataset.id);
+    syncPresenceFromEvents(record.source,record.type);
+    if($("#event-form").elements.editingId.value===button.dataset.id)resetEventEditor();
+    saveData();renderAll();toast("Action deleted");
+  });
   list.querySelectorAll(".order-ghost").forEach(button=>button.onclick=()=>{const record=data.events.find(event=>event.id===button.dataset.id);if(!record)return;if(record.ghost)delete record.ghost;else record.ghost=true;saveData();renderAll();toast(record.ghost?"Ghost action — its effects stay, it leaves the list":"Back in the list");});
   const idsInOrder=()=>[...list.querySelectorAll(".order-row")].map(row=>row.dataset.id);
   const swap=(id,direction)=>{const ids=idsInOrder(),from=ids.indexOf(id),to=from+direction;if(from<0||to<0||to>=ids.length)return;ids.splice(to,0,ids.splice(from,1)[0]);commitEventOrder(ids);};
@@ -3323,12 +3327,6 @@ $("#toggle-slider-mode")?.addEventListener("click",()=>{
   localStorage.setItem(SLIDER_MODE_KEY,sliderStepsEvents?"events":"chapters");
   syncSliderModeToggle();renderAll();});
 syncSliderModeToggle();
-momentPartsOpen=localStorage.getItem(MOMENT_PARTS_KEY)==="open";
-$("#toggle-moment-parts")?.addEventListener("click",()=>{
-  momentPartsOpen=!momentPartsOpen;momentPartsFlipped.clear();
-  localStorage.setItem(MOMENT_PARTS_KEY,momentPartsOpen?"open":"folded");
-  syncMomentPartsToggle();renderAll();});
-syncMomentPartsToggle();
 if(localStorage.getItem(CHAPTER_REF_HINT_SEEN_KEY)!=="1"){const hint=$("#chapter-ref-hint");if(hint)hint.hidden=false;}
 $("#dismiss-chapter-ref-hint")?.addEventListener("click",event=>{event.stopPropagation();dismissChapterRefHint();});
 document.addEventListener("click",event=>{if(event.target.closest("[data-chapter-ref-toggle]"))toggleChapterRefs();});
