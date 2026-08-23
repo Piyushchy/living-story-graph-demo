@@ -834,7 +834,7 @@ test("everything in one moment lands together on the graph", () => {
   assert.match(graph, /beatDoes=\(type,test\)=>beatEvents\.some\(event=>event\.type===type&&test\(event\)\)/, "and every part of it lights up, not only the last");
   assert.match(graph, /cultivationReveal=beatDoes\("cultivation",event=>event\.source===item\.id\)/, "a cultivation revealed inside a moment still plays its reveal");
   assert.match(graph, /priorCultivationDerived=beatCultivations\.length\?derive\(currentChapter,appliedNow\.filter\(event=>!beatCultivations\.some\(item=>item\.id===event\.id\)\)\)/, "measured against what it was before the whole moment");
-  assert.match(graph, /const activeIds=new Set\(\[\.\.\.beatEvents\.flatMap\(/, "every part of it is lit, not only the last");
+  assert.match(graph, /const activeIds=new Set\(\[\.\.\.beatEvents,\.\.\.holdingEvents\]\.flatMap\(/, "every part of it is lit, not only the last — and anything still going on stays lit with it");
   assert.match(graph, /\[entity\(event\.source\)\?\.issuer,\.\.\.\(derived\.quests\.find\(run=>run\.quest===event\.source\)\?\.holders\|\|\[\]\)\]/, "a quest is not a node, so what lights up is who carries it and who set it");
   assert.match(graph, /if\(!activeIds\.size\)viewportGroup\.setAttribute\("class"/, "and nothing at all is never a reason to dim the whole graph");
   assert.match(functionBody("eventPodIds"), /\[\]\.concat\(beatEvents\|\|\[\]\)/, "and every place it puts on the graph comes out at once");
@@ -865,7 +865,7 @@ test("combining is done in the running order, writes no event of its own, and ca
 });
 
 test("the demo ships a moment, and a stored copy is brought up to it", () => {
-  assert.match(source, /schemaVersion: 23,/);
+  assert.match(source, /schemaVersion: 24,/);
   assert.match(source, /\{ id: "m-inn-place", message: "The Midnight Inn Lobby stands in the Midnight Inn Estate, in the city of Stonevale, on the world Verdan\.", members: \["hier-1","hier-2","hier-3"\] \}/);
   assert.match(source, /if\(!Array\.isArray\(migrated\.moments\)\)migrated\.moments=\[\];/);
   assert.match(source, /if\(sample\.members\.every\(id=>\(migrated\.events\|\|\[\]\)\.some\(event=>event\.id===id\)\)\)migrated\.moments\.push\(deepClone\(sample\)\)/, "a reader who deleted one of those actions is left alone");
@@ -1199,6 +1199,45 @@ test("an action can be deleted where it is read, and says what it will take with
   assert.match(order, /if\(\$\("#event-form"\)\.elements\.editingId\.value===button\.dataset\.id\)resetEventEditor\(\);/, "deleting the action being edited closes the editor rather than leaving it pointing at nothing");
 });
 
+test("an action can go on while other things happen, and says how much longer", () => {
+  const ctx = { currentActionIndex: 0, activeVol: () => ({ from: 1, to: 40 }),
+    data: { events: [
+      { id: "a", chapter: 1, order: 1, type: "note", source: "lex" },
+      { id: "talk", chapter: 1, order: 2, type: "conversation", source: "lex", holds: 3 },
+      { id: "c", chapter: 1, order: 3, type: "note", source: "mary" },
+      { id: "d", chapter: 2, order: 1, type: "note", source: "mary" },
+      { id: "e", chapter: 2, order: 2, type: "note", source: "mary" },
+      { id: "f", chapter: 3, order: 1, type: "note", source: "mary" }
+    ] } };
+  vm.createContext(ctx);
+  vm.runInContext([functionBody("orderedEvents"), functionBody("volumeActions"), functionBody("heldEvents"), functionBody("holdsLeft"), functionBody("stillHolding")].join("\n"), ctx);
+  const at = index => { ctx.currentActionIndex = index; return vm.runInContext("heldEvents().map(event=>event.id).join(',')", ctx); };
+  assert.equal(at(2), "", "on its own beat it is the thing happening, not a thing still happening");
+  assert.equal(at(3), "talk", "and it goes on while the next action plays");
+  assert.equal(at(5), "talk", "across a chapter boundary");
+  assert.equal(at(6), "", "until the count runs out");
+  ctx.currentActionIndex = 4;
+  assert.equal(vm.runInContext(`holdsLeft(data.events[1])`, ctx), 1, "the count says how much longer");
+  assert.equal(vm.runInContext(`stillHolding(data.events[1])`, ctx), true);
+  assert.equal(vm.runInContext(`stillHolding(data.events[0])`, ctx), false, "an action with no count is over when it lands");
+  ctx.currentActionIndex = 1;
+  assert.equal(vm.runInContext(`holdsLeft(data.events[1])`, ctx), 0, "an action the reader has not reached is not going on yet");
+  const graph = functionBody("renderGraph");
+  assert.match(graph, /holdingEvents=heldEvents\(\),\s*holdingIds=new Set\(holdingEvents\.map\(event=>event\.id\)\)/);
+  assert.match(graph, /held=holdingIds\.has\(convo\.id\),edgeClass=`edge conversation-edge\$\{live\?" newly-revealed-edge":""\}\$\{held\?" holding-edge":""\}`/, "still drawn, quieter than the thing happening now");
+  assert.match(functionBody("renderEvents"), /const carried=heldEvents\(\)\.filter\(item=>item\.chapter!==event\.chapter\)/, "and one begun in an earlier chapter is carried into what is happening now");
+  assert.match(source, /if\(heldFor&&!\/\^\\d\{1,3\}\$\/\.test\(heldFor\)\)/, "how long it lasts is a whole number of actions");
+});
+
+test("a conversation can settle where the people in it stand, and says nothing about it by default", () => {
+  assert.match(source, /<option value="">Unchanged — neutral until something says otherwise<\/option>/, "the default changes nothing: two who have only met are neutral already");
+  assert.match(functionBody("derive"), /if\(event\.relation\)met\.forEach\(\(a,index\)=>met\.slice\(index\+1\)\.forEach\(b=>\{/, "everyone in it ends up standing that way towards everyone else in it");
+  assert.match(functionBody("derive"), /relations\.get\(key\)\.push\(\{\.\.\.event,type:"relationship",source:a,target:b,value:event\.relation\}\)/);
+  assert.match(functionBody("buildEventRecord"), /if\(type==="conversation"&&conversationRelation\)record\.relation=conversationRelation;/);
+  assert.match(source, /\$\("#event-relation-field"\)\.hidden=type!=="conversation";/);
+  assert.match(source, /relation: "friendly", holds: 3/, "the demo shows both");
+});
+
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
   assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });
@@ -1252,7 +1291,7 @@ test("a conversation is one action covering everyone in it, not a pile of pairwi
   assert.match(record, /const speaking=\[source,\.\.\.named\],mute=speaking\.find\(item=>!CAN_SPEAK\.has\(item\.kind\)\)/, "a quest is a record of terms, not a voice");
   assert.match(source, /const CAN_SPEAK = new Set\(\["character","system","organization","location"\]\);/);
   assert.match(record, /if\(named\.some\(item=>!item\)\)\{toast\("One of the conversation names does not match an identity"\)/, "a name that matches nothing is refused rather than silently dropped");
-  assert.match(functionBody("renderGraph"), /derived\.conversations\.filter\(convo=>beatEvents\.some\(event=>event\.id===convo\.id\)\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)\)/, "and the whole group is drawn joined up");
+  assert.match(functionBody("renderGraph"), /derived\.conversations\.filter\(convo=>beatEvents\.some\(event=>event\.id===convo\.id\)\|\|holdingIds\.has\(convo\.id\)\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)\)/, "and the whole group is drawn joined up");
 });
 
 test("the demo story exercises systems and conversations, so both are visible without building a story first", () => {
@@ -1283,7 +1322,7 @@ test("three or more in a conversation meet at one marker joined to each, rather 
 
 test("a conversation can be found again after the slider moves on — selecting anyone who was in it brings it back, and it counts as part of that focus", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /beatEvents\.some\(event=>event\.id===convo\.id\)\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)/);
+  assert.match(body, /beatEvents\.some\(event=>event\.id===convo\.id\)\|\|holdingIds\.has\(convo\.id\)\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)/);
   assert.match(functionBody("applyGraphFocus"), /String\(edge\.dataset\.a\)\.startsWith\("conversation:"\)\|\|String\(edge\.dataset\.b\)\.startsWith\("conversation:"\)/, "so the other spokes are not dimmed away from the one that touches the selection");
   assert.match(functionBody("edgeEndpointName"), /String\(id\)\.startsWith\("conversation:"\)\?"this conversation"/, "and hovering a spoke names it rather than printing an id");
 });
