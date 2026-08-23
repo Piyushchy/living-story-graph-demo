@@ -1259,8 +1259,9 @@ test("having met is a standing fact: by the time two people have talked they sta
   assert.match(graph, /const pairKeys=new Set\(\[\.\.\.derived\.relations\.keys\(\),\.\.\.derived\.awareness\.keys\(\),\.\.\.derived\.meetings\.keys\(\)\]\)/, "a pair the story has brought together is a pair the graph knows about");
   assert.match(graph, /\} else if\(!history\.length&&met\)\{/, "met, with nothing said yet about how they stand: neutral");
   assert.match(graph, /class:`\$\{edgeClass\} met-edge`,stroke:COLORS\.neutral/, "drawn as the neutral it is, not as a line that waits to be asked for");
-  assert.match(styleSource, /\.edge\.met-edge\{stroke-width:3\.4/);
-  assert.match(styleSource, /\.relation-edge\[marker-end\],\.relation-edge\[marker-start\]\{stroke-width:3/, "and having merely heard of somebody is a lighter line than standing with them");
+  assert.match(styleSource, /\.edge\.met-edge\{stroke-width:2\.6;opacity:\.28\}/, "and quietly, because everyone who has met carries one and they are not what is happening");
+  assert.match(styleSource, /\.edge\.met-edge\.newly-revealed-edge\{stroke-width:4;opacity:1\}/, "unless it is the meeting being read");
+  assert.match(styleSource, /\.relation-edge\[marker-end\],\.relation-edge\[marker-start\]\{stroke-width:2\.4;opacity:\.34\}/, "and having merely heard of somebody is a lighter line than standing with them");
 });
 
 test("a moment moves through the running order as one thing, and its parts cannot be carried out of it", () => {
@@ -1283,7 +1284,8 @@ test("a moment moves through the running order as one thing, and its parts canno
 
 test("a connection already made is left alone while an action plays; only a new one is drawn in", () => {
   assert.doesNotMatch(styleSource, /has-action-focus \.edge:not\(\.newly-revealed-edge\)\{opacity/, "fading every settled line away and bringing it back made the whole graph blink on every step");
-  assert.match(styleSource, /@keyframes edge-reveal\{0%\{opacity:0\}45%\{opacity:1;filter:drop-shadow/, "what is new draws itself in and flares as it lands, which is what marks it out now");
+  assert.match(styleSource, /@keyframes edge-reveal\{0%\{opacity:0;filter:drop-shadow\(0 0 0 rgba\(255,255,255,0\)\)\}45%\{opacity:1;filter:drop-shadow\(0 0 9px/, "what is new draws itself in and flares as it lands, which is what marks it out now");
+  assert.match(styleSource, /100%\{opacity:1;filter:drop-shadow\(0 0 4px rgba\(255,255,255,\.42\)\)\}\}/, "and keeps its weight after landing, instead of settling back into looking like every other line");
   assert.match(styleSource, /\.newly-revealed-edge\{animation:edge-reveal \.52s ease \.2s both\}/);
   assert.match(styleSource, /\.graph-viewport\.has-action-focus \.node:not\(\.event-active-node\)\{/, "the nodes still step back for whatever is happening");
 });
