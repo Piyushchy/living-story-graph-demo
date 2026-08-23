@@ -20,6 +20,7 @@ const VIEW_STATE_KEY = "living-story-graph-view-state-v1";
 const PUBLISH_DIRTY_KEY = "living-story-graph-publish-dirty-v1";
 const CHAPTER_REF_TOGGLE_KEY = "living-story-graph-chapter-refs-v1";
 const SLIDER_MODE_KEY = "living-story-graph-slider-mode-v1";
+const MOMENT_PARTS_KEY = "living-story-graph-moment-parts-v1";
 const CHAPTER_REF_HINT_SEEN_KEY = "living-story-graph-chapter-ref-hint-seen-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CULTIVATION_LEVELS = ["Mortal","Body Tempering","Qi Training","Foundation Establishment","Golden Core","Nascent Soul","Earth Immortal","Heaven Immortal","Celestial Immortal","Demi Dao Lord","Dao Lord","Above Dao Lord"];
@@ -289,7 +290,7 @@ app.innerHTML = `
                 <button class="mobile-panel-tab" data-panel="legend" role="tab">Legend</button>
               </div>
               <section id="summary" class="side-card summary mobile-active" data-panel-content="info"><div class="empty">Select a character, system, organization, or place. Double-click a node for full details.</div></section>
-              <section class="side-card events-card" data-panel-content="events"><div class="events-head"><strong id="events-title">Chapter events</strong><span id="events-count"></span><span id="events-hold" class="events-hold" hidden>Paused</span></div><ul id="events-list" class="events-list"></ul></section>
+              <section class="side-card events-card" data-panel-content="events"><div class="events-head"><strong id="events-title">Chapter events</strong><span id="events-count"></span><button type="button" id="toggle-moment-parts" class="moment-parts-toggle" aria-pressed="false" title="Keep what a moment is made of open, instead of opening each one">Parts folded</button><span id="events-hold" class="events-hold" hidden>Paused</span></div><ul id="events-list" class="events-list"></ul></section>
               <section class="side-card quests-card" data-panel-content="quests" aria-label="Quests"><div class="events-head"><strong>Quests</strong><span id="quests-count"></span></div><div id="quests-list" class="quests-list"></div></section>
               <section class="side-card mobile-legend" data-panel-content="legend" aria-label="Mobile graph legend">
                 <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span><span><i class="line-key mention"></i>Spoken of</span>
@@ -2444,14 +2445,32 @@ function actionPaidHtml(event){
   return `<div class="quest-paid action-paid">${rewards.length?`<span class="quest-paid-label">${event.type==="quest_contribution"?"Their share":"Rewards"}</span>${rewards.map(reward=>`<b class="quest-reward">${richInline(reward)}</b>`).join("")}`:""}${performance?`<span class="quest-performance">performance ${escapeHtml(performance)}</span>`:""}</div>`;
 }
 function eventPanelRow(event,index,{current=false,related=false,upcoming=false}={}){return `<li class="event-summary-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}"${index?` data-focus-action="${index}" title="Show this action on the graph"`:""}><div><div class="event-panel-meta"><span>Chapter ${event.chapter}</span><b class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type.replaceAll("_"," "))}</b>${personasOf(event).size?`<b class="event-persona" title="Seen under this name, not their own">${escapeHtml(personaListText(event))}</b>`:""}${(event.mentions||[]).length?`<b class="event-mentions" title="Spoken of here, not present">speaks of ${escapeHtml(event.mentions.map(id=>entity(id)?.name||id).join(", "))}</b>`:""}</div>${canEditEvents()?messageBoxHtml("event-message-edit",event):`<p>${richText(event.description||event.type)}</p>`}${actionPaidHtml(event)}${event.location?`<p class="event-panel-place"><small>· ${escapeHtml(entity(event.location)?.name||event.location)}</small></p>`:""}</div>${eventOriginControl(event)}</li>`;}
+// Opening what a moment is made of used to last until the next render, which on a slider that
+// moves is no time at all. The reader's standing choice is kept, and any moment they turn the
+// other way stays that way.
+let momentPartsOpen=false;
+const momentPartsFlipped=new Set();
+function momentPartsAreOpen(id){return momentPartsFlipped.has(id)?!momentPartsOpen:momentPartsOpen;}
 function beatPanelRow(beat,options={}){return beat.moment&&beat.events.length>1?momentPanelRow(beat,options):eventPanelRow(beat.event,beat.index,options);}
 // A combined moment is read as the one thing it is. What it is made of is still there to open,
 // because the reader may well want to know which changes the sentence covers.
 function momentPanelRow(beat,{current=false,related=false,upcoming=false}={}){
   const parts=beat.events;
-  return `<li class="event-summary-row event-moment-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}" data-focus-action="${beat.index}" title="Show this moment on the graph"><div><div class="event-panel-meta"><span>Chapter ${beat.chapter}</span><b class="event-type event-moment">together</b><small class="moment-count">${parts.length} changes</small></div><p class="moment-message">${richText(beatMessage(beat))}</p>${beat.moment.showParts===false?"":`<details class="moment-parts"><summary>What happens in it</summary><ul>${parts.map(part=>`<li><i class="event-type event-${escapeHtml(part.type)}">${escapeHtml(part.type.replaceAll("_"," "))}</i>${personasOf(part).size?`<b class="event-persona">${escapeHtml(personaListText(part))}</b>`:""}<span>${richText(part.description||part.type)}</span>${actionPaidHtml(part)}</li>`).join("")}</ul></details>`}</div>${eventOriginControl(beat.event)}</li>`;
+  return `<li class="event-summary-row event-moment-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}" data-focus-action="${beat.index}" title="Show this moment on the graph"><div><div class="event-panel-meta"><span>Chapter ${beat.chapter}</span><b class="event-type event-moment">together</b><small class="moment-count">${parts.length} changes</small></div><p class="moment-message">${richText(beatMessage(beat))}</p>${beat.moment.showParts===false?"":`<details class="moment-parts" data-moment-parts="${escapeHtml(beat.moment.id)}"${momentPartsAreOpen(beat.moment.id)?" open":""}><summary>What happens in it</summary><ul>${parts.map(part=>`<li><i class="event-type event-${escapeHtml(part.type)}">${escapeHtml(part.type.replaceAll("_"," "))}</i>${personasOf(part).size?`<b class="event-persona">${escapeHtml(personaListText(part))}</b>`:""}<span>${richText(part.description||part.type)}</span>${actionPaidHtml(part)}</li>`).join("")}</ul></details>`}</div>${eventOriginControl(beat.event)}</li>`;
 }
 function canEditEvents(){return isUploadRoute&&adminAuthenticated;}
+function syncMomentPartsToggle(){
+  const button=$("#toggle-moment-parts");if(!button)return;
+  button.setAttribute("aria-pressed",String(momentPartsOpen));
+  button.classList.toggle("active",momentPartsOpen);
+  button.textContent=momentPartsOpen?"Parts open":"Parts folded";
+}
+function bindMomentParts(){
+  document.querySelectorAll("[data-moment-parts]").forEach(box=>box.addEventListener("toggle",()=>{
+    const id=box.dataset.momentParts;
+    if(box.open===momentPartsOpen)momentPartsFlipped.delete(id);else momentPartsFlipped.add(id);
+  }));
+}
 function bindEventPanelRows(){
   document.querySelectorAll(".event-message-edit").forEach(field=>{
     bindMessageBox(field);
@@ -2478,7 +2497,7 @@ function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),
     $("#events-title").textContent=`${stateName(currentDerived(),selectedId)} · connected events`;
     $("#events-count").textContent=`${newestFirst.length} shown`;
     list.innerHTML=`<li class="selection-event-note"><strong>Connection focus</strong><span>Click ${escapeHtml(chosen?.name||"this node")} again to return to the current event.</span></li>${rows.length?rows.join(""):'<li class="selection-event-empty">No connected event has been revealed yet.</li>'}${rest>0?`<li class="event-page-more"><button type="button" id="more-connected-events">Show ${Math.min(rest,SELECTION_EVENT_PAGE)} earlier · ${rest} left</button></li>`:""}`;
-    bindEventPanelRows();
+    bindEventPanelRows();bindMomentParts();
     $("#more-connected-events")?.addEventListener("click",()=>{selectionEventPage+=SELECTION_EVENT_PAGE;renderEvents();});
     return;
   }$("#events-title").textContent=`Chapter ${event.chapter} · Action ${beatPosition()}`;
@@ -2487,7 +2506,7 @@ function renderEvents(){const list=$("#events-list"),event=currentActionEvent(),
   const chapterRows=chapterEventEntries(event.chapter);
   $("#events-count").textContent=`${chapterRows.length} in chapter`;
   list.innerHTML=chapterRows.map(entry=>beatPanelRow(entry,{current:entry.index===currentActionIndex,upcoming:entry.index>currentActionIndex})).join("");
-  bindEventPanelRows();
+  bindEventPanelRows();bindMomentParts();
   if(!eventScrollHold)requestAnimationFrame(()=>list.querySelector(".current-action")?.scrollIntoView({block:"nearest"}));}
 
 // The quest tab shows the run of a quest, not just its terms: how far along it is, which
@@ -3304,6 +3323,12 @@ $("#toggle-slider-mode")?.addEventListener("click",()=>{
   localStorage.setItem(SLIDER_MODE_KEY,sliderStepsEvents?"events":"chapters");
   syncSliderModeToggle();renderAll();});
 syncSliderModeToggle();
+momentPartsOpen=localStorage.getItem(MOMENT_PARTS_KEY)==="open";
+$("#toggle-moment-parts")?.addEventListener("click",()=>{
+  momentPartsOpen=!momentPartsOpen;momentPartsFlipped.clear();
+  localStorage.setItem(MOMENT_PARTS_KEY,momentPartsOpen?"open":"folded");
+  syncMomentPartsToggle();renderAll();});
+syncMomentPartsToggle();
 if(localStorage.getItem(CHAPTER_REF_HINT_SEEN_KEY)!=="1"){const hint=$("#chapter-ref-hint");if(hint)hint.hidden=false;}
 $("#dismiss-chapter-ref-hint")?.addEventListener("click",event=>{event.stopPropagation();dismissChapterRefHint();});
 document.addEventListener("click",event=>{if(event.target.closest("[data-chapter-ref-toggle]"))toggleChapterRefs();});

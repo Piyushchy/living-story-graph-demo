@@ -1002,3 +1002,6 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .action-paid{margin:6px 0 0}
 .events-list .action-paid{gap:4px}
 .events-list .quest-reward,.events-list .quest-performance{font-size:9px}
+.moment-parts-toggle{margin-left:auto;padding:3px 9px;border:1px solid #2a3a4e;border-radius:999px;background:transparent;color:#7f93a8;font:inherit;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+.moment-parts-toggle:hover{border-color:#3d5876;color:#bdd6e6}
+.moment-parts-toggle.active{border-color:rgba(103,232,249,.5);background:rgba(14,116,144,.16);color:#8ce8ff}

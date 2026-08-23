@@ -844,7 +844,12 @@ test("a combined moment is read as one card, with what it is made of kept undern
   const row = functionBody("momentPanelRow");
   assert.match(row, /<b class="event-type event-moment">together<\/b>/);
   assert.match(row, /<p class="moment-message">\$\{richText\(beatMessage\(beat\)\)\}<\/p>/, "the sentence written for the moment stands in for the parts'");
-  assert.match(row, /\$\{beat\.moment\.showParts===false\?"":`<details class="moment-parts">/, "and the writer can keep the parts out of sight entirely");
+  assert.match(row, /\$\{beat\.moment\.showParts===false\?"":`<details class="moment-parts" data-moment-parts=/, "and the writer can keep the parts out of sight entirely");
+  assert.match(row, /\$\{momentPartsAreOpen\(beat\.moment\.id\)\?" open":""\}/, "while the reader decides whether they start open");
+  assert.match(functionBody("momentPartsAreOpen"), /momentPartsFlipped\.has\(id\)\?!momentPartsOpen:momentPartsOpen/, "one turned the other way stays that way through a re-render");
+  assert.match(source, /const MOMENT_PARTS_KEY = "living-story-graph-moment-parts-v1";/);
+  assert.match(source, /localStorage\.setItem\(MOMENT_PARTS_KEY,momentPartsOpen\?"open":"folded"\)/, "and the choice is kept between visits");
+  assert.match(source, /id="toggle-moment-parts"/);
   assert.match(functionBody("beatPanelRow"), /beat\.moment&&beat\.events\.length>1\?momentPanelRow\(beat,options\):eventPanelRow\(beat\.event,beat\.index,options\)/);
   assert.match(styleSource, /\.event-type\.event-moment\{/);
 });
