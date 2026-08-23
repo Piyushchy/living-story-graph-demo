@@ -562,7 +562,7 @@ function pureSandbox(names) {
 
 test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /viewportGroup\.append\(edgeLayer,departLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation and system markers");
+  assert.match(body, /viewportGroup\.append\(edgeLayer,departLayer,nodeLayer,activeEdgeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation and system markers");
   assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,tall:Boolean\(rankLabel\|\|questNotice\|\|personaNotice\),halfWidth:/);
   assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=\(entry\.tall\?entry\.group:entry\.text\)\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
   assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
@@ -583,7 +583,7 @@ test("the layout runs on a budget, so a busy action cannot leave the graph drift
 
 test("shapes are pushed apart by their real radii, not just by inverse-square repulsion which let them settle on top of each other", () => {
   const body = functionBody("stepPhysics");
-  assert.match(body, /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+SEPARATION_GAP;/);
+  assert.match(body, /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+SEPARATION_GAP\+\(physics\.spread\.get\(ids\[i\]\)\|\|0\)\+\(physics\.spread\.get\(ids\[j\]\)\|\|0\);/);
   assert.match(body, /if\(d<clearance\)\{const push=Math\.min\(6,\(clearance-d\)\*\.24\);/);
   assert.match(functionBody("renderGraph"), /visible\.forEach\(item=>physics\.radii\.set\(item\.id,nodeRadiusFor\(item,derived\.states\.get\(item\.id\),locView,currentChapter,sysView\)\)\);/);
 });
@@ -722,7 +722,7 @@ test("a node's radius is settled once, before the springs and the separation for
   assert.ok(filled > 0, "radii are filled from the same rule the renderer draws with");
   assert.ok(body.indexOf("const restLength=") > filled, "springs read them");
   assert.equal(body.split("physics.radii.clear()").length - 1, 1, "and nothing clears the map a second time");
-  assert.match(functionBody("stepPhysics"), /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+SEPARATION_GAP;/);
+  assert.match(functionBody("stepPhysics"), /const ra=physics\.radii\.get\(ids\[i\]\)\|\|24,rb=physics\.radii\.get\(ids\[j\]\)\|\|24,clearance=ra\+rb\+SEPARATION_GAP\+\(physics\.spread\.get\(ids\[i\]\)\|\|0\)\+\(physics\.spread\.get\(ids\[j\]\)\|\|0\);/);
 });
 
 test("a crowd sharing one place gets a ring wide enough to hold it, rather than everyone being pulled onto a circle with no room", () => {
@@ -1359,7 +1359,9 @@ test("the demo story exercises systems and conversations, so both are visible wi
 
 test("two pods out at once keep away from each other, since nothing in the layout holds them apart", () => {
   const body = functionBody("renderLocationPods");
-  assert.match(body, /placedPods\.forEach\(point=>\{score\+=Math\.min\(170,Math\.hypot\(point\.x-x,point\.y-y\)\)\*2\.5;\}\)/);
+  assert.match(body, /placedPods\.forEach\(point=>\{const away=Math\.hypot\(point\.x-x,point\.y-y\);closest=Math\.min\(closest,away\*\.7\);score\+=Math\.min\(170,away\)\*2\.5;\}\)/);
+  assert.match(body, /score\+=Math\.min\(POD_CLEARANCE,closest\)\*22;/, "whatever it would land nearest to decides first, so a roomy-on-average direction cannot win over one with a shape exactly where the pod goes");
+  assert.match(body, /\[reach,reach\+64\]\.forEach\(at=>\{/, "and standing further out beats standing on somebody when the whole ring is crowded");
   assert.match(body, /placedPods\.push\(\{x:anchorPos\.x\+Math\.cos\(angle\)\*distance,y:anchorPos\.y\+Math\.sin\(angle\)\*distance\}\)/);
 });
 
