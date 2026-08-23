@@ -858,7 +858,7 @@ test("combining is done in the running order, writes no event of its own, and ca
 });
 
 test("the demo ships a moment, and a stored copy is brought up to it", () => {
-  assert.match(source, /schemaVersion: 22,/);
+  assert.match(source, /schemaVersion: 23,/);
   assert.match(source, /\{ id: "m-inn-place", message: "The Midnight Inn Lobby stands in the Midnight Inn Estate, in the city of Stonevale, on the world Verdan\.", members: \["hier-1","hier-2","hier-3"\] \}/);
   assert.match(source, /if\(!Array\.isArray\(migrated\.moments\)\)migrated\.moments=\[\];/);
   assert.match(source, /if\(sample\.members\.every\(id=>\(migrated\.events\|\|\[\]\)\.some\(event=>event\.id===id\)\)\)migrated\.moments\.push\(deepClone\(sample\)\)/, "a reader who deleted one of those actions is left alone");
@@ -1093,8 +1093,9 @@ test("the running order says what each action really does, not only what its mes
     { id: "inn-estate", kind: "location", name: "Midnight Inn Estate" }
   ] }, IDENTITY_KINDS: new Set(["character","system"]), CAN_SPEAK: new Set(["character","system","organization","location"]) };
   vm.createContext(ctx);
-  vm.runInContext([functionBody("entity"), functionBody("actionSubjectLine"), functionBody("actionEffectProblem")].join("\n"), ctx);
+  vm.runInContext([functionBody("entity"), functionBody("personasOf"), functionBody("actionSubjectLine"), functionBody("actionEffectProblem")].join("\n"), ctx);
   assert.equal(vm.runInContext(`actionSubjectLine({type:"residency",source:"velma",location:"inn-estate"})`, ctx), "Velma · at Midnight Inn Estate", "the subject is read from the record, so a message left saying somebody else stands out");
+  assert.equal(vm.runInContext(`actionSubjectLine({type:"meeting",source:"velma",target:"gerald",personas:{velma:"the Innkeeper"}})`, ctx), "Velma as the Innkeeper → gerald", "and the face each side is seen under");
   assert.equal(vm.runInContext(`actionEffectProblem({type:"residency",source:"velma",location:"inn-estate"})`, ctx), "");
   assert.match(vm.runInContext(`actionEffectProblem({type:"residency",source:"velma",location:"inn"})`, ctx), /a residence needs a character and a place/, "a residence at an organization is quietly ignored by the graph, and now says so");
   assert.match(vm.runInContext(`actionEffectProblem({type:"system_host",source:"velma",target:"inn"})`, ctx), /a bond needs a system and a character/);
@@ -1138,19 +1139,25 @@ test("a ghost late in a chapter has not happened yet while the reader is earlier
   assert.equal(ghostsAt(3), "ghost", "and it comes into force when the reader reaches its place in the order");
 });
 
-test("an action can say which face was worn for it — the name the world saw, not the person behind it", () => {
-  assert.match(source, /<input name="persona" list="persona-options"/, "offered on every action, and left empty when they act as themselves");
-  assert.match(functionBody("buildEventRecord"), /if\(persona&&persona\.toLowerCase\(\)!==String\(stateName\(currentDerived\(\),source\.id\)\|\|source\.name\)\.toLowerCase\(\)\)record\.persona=persona;/, "wearing your own name is not wearing a face");
+test("a face belongs to whoever wears it, and while the action plays the graph shows the face with the person named beneath", () => {
+  const ctx = { data: { entities: [{ id: "lex", kind: "character", name: "Lex" }, { id: "luthor", kind: "character", name: "Envoy Luthor" }] } };
+  vm.createContext(ctx);
+  vm.runInContext([functionBody("entity"), functionBody("personasOf"), functionBody("personaListText")].join("\n"), ctx);
+  assert.equal(vm.runInContext(`[...personasOf({source:"lex",personas:{lex:"the Innkeeper",luthor:"the Envoy"}})].map(pair=>pair.join("=")).join("|")`, ctx),
+    "lex=the Innkeeper|luthor=the Envoy", "each side of a meeting may be seen as somebody else");
+  assert.equal(vm.runInContext(`[...personasOf({source:"lex",persona:"the Innkeeper"})].map(pair=>pair.join("=")).join("|")`, ctx),
+    "lex=the Innkeeper", "and what was written for the whole action still reads, belonging to its subject");
+  assert.equal(vm.runInContext(`personaListText({source:"lex",personas:{lex:"the Innkeeper"}})`, ctx), "Lex as the Innkeeper");
+  assert.match(source, /<input name="persona" list="persona-options" maxlength="160" placeholder="Lex as the Innkeeper"/);
+  assert.match(functionBody("buildEventRecord"), /const split=part\.match\(\/\^\(\.\*\?\)\\s\+\(\?:as\|:\)\\s\+\(\.\*\)\$\/i\)/, "written as “Name as Face”, or a bare face for the subject");
+  assert.match(functionBody("buildEventRecord"), /if\(face\.toLowerCase\(\)===String\(stateName\(currentDerived\(\),who\.id\)\|\|who\.name\)\.toLowerCase\(\)\)return;/, "wearing your own name is not wearing a face");
   const graph = functionBody("renderGraph");
-  assert.match(graph, /beatPersonas=new Map\(beatEvents\.filter\(event=>event\.persona&&event\.source\)\.map\(event=>\[event\.source,String\(event\.persona\)\]\)\)/);
-  assert.match(graph, /if\(beatPersonas\.has\(item\.id\)\)personaNotice=\{y:-r-30,text:`as \$\{beatPersonas\.get\(item\.id\)\}`\}/, "written over whoever wore it, while the action plays");
-  assert.match(functionBody("eventPanelRow"), /as \$\{escapeHtml\(event\.persona\)\}/);
-  assert.match(functionBody("actionSubjectLine"), /name\(event\.source\)\+\(event\.persona\?` as \$\{event\.persona\}`:""\)/, "and the running order says it too");
-  assert.match(source, /as:"persona",face:"persona",wearing:"persona"/, "searchable: as:the innkeeper");
-  assert.match(functionBody("actionMatchesFilter"), /if\(filter\.field==="persona"\)/);
-  assert.match(source, /persona: "the Innkeeper", description: "Lex and Luthor meet — though what Luthor meets is the Innkeeper\."/, "the demo shows one being worn");
-  assert.match(source, /<datalist id="identity-relation-options"><option value="Clone"><\/option><option value="Avatar"><\/option><option value="Persona"><\/option>/, "and a face that becomes an identity of its own can say that is what it is");
-  assert.match(styleSource, /\.persona-notice\{fill:#ffd479/);
+  assert.match(graph, /beatPersonas=new Map\(beatEvents\.flatMap\(event=>\[\.\.\.personasOf\(event\)\]\)\)/);
+  assert.match(graph, /label\.textContent=personaNotice\?beatPersonas\.get\(item\.id\):shownName;/, "the world's name stands where the node's name usually does");
+  assert.match(graph, /if\(beatPersonas\.has\(item\.id\)\)personaNotice=\{y:r\+27,text:`really \$\{shownName\}`\}/, "with the person underneath it");
+  assert.match(source, /personas: \{ lex: "the Innkeeper" \}/, "the demo shows one being worn");
+  assert.match(source, /if\(event\.source\)event\.personas=\{\.\.\.\(event\.personas\|\|\{\}\),\[event\.source\]:event\.persona\};/, "a face already written for a whole action moves onto its subject");
+  assert.match(styleSource, /\.node-label\.worn-name\{fill:#ffd479\}/);
 });
 
 test("what an action only speaks of is drawn as a reference, never as a presence", () => {
@@ -1161,7 +1168,7 @@ test("what an action only speaks of is drawn as a reference, never as a presence
   assert.match(functionBody("eventInvolves"), /\(event\.mentions \|\| \[\]\)\.includes\(id\)/, "so it belongs to the history of whatever was spoken of");
   const graph = functionBody("renderGraph");
   assert.match(graph, /\.\.\.\(event\.mentions\|\|\[\]\)\]\.filter\(Boolean\)\)\)/, "a name spoken of still comes onto the graph");
-  assert.match(graph, /noteEdge\(speaker,spoken,event\.chapter,`Spoken of, not present\$\{event\.persona\?` — by \$\{event\.persona\}`:""\}`\)/);
+  assert.match(graph, /noteEdge\(speaker,spoken,event\.chapter,`Spoken of, not present\$\{personasOf\(event\)\.get\(event\.source\)\?/);
   assert.match(graph, /straightEdge\(speaker,spoken,`edge mention-edge\$\{live\?" newly-revealed-edge":""\}`/, "while the action plays, and whenever either end is picked out");
   assert.match(styleSource, /\.edge\.mention-edge\{stroke:#c4a6ff/);
   assert.match(source, /<i class="line-key mention"><\/i>Spoken of<\/span>/, "and the key says what the line means");
