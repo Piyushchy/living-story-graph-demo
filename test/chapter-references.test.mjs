@@ -1238,6 +1238,13 @@ test("a conversation can settle where the people in it stand, and says nothing a
   assert.match(source, /relation: "friendly", holds: 3/, "the demo shows both");
 });
 
+test("having met is what lasts from a talk, and it is drawn for whoever is being looked at", () => {
+  const graph = functionBody("renderGraph");
+  assert.match(graph, /const pairKeys=new Set\(\[\.\.\.derived\.relations\.keys\(\),\.\.\.derived\.awareness\.keys\(\),\.\.\.\(selectedId\?\[\.\.\.derived\.meetings\.keys\(\)\]:\[\]\)\]\)/, "not painted on the whole graph — in a full cast everybody has met everybody");
+  assert.match(graph, /\} else if\(!history\.length&&met&&\(selectedId===aId\|\|selectedId===bId\)\)\{/, "met, with nothing said about how they stand: a quiet line rather than nothing at all");
+  assert.match(styleSource, /\.edge\.met-edge\{/);
+});
+
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
   assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });
@@ -1291,7 +1298,7 @@ test("a conversation is one action covering everyone in it, not a pile of pairwi
   assert.match(record, /const speaking=\[source,\.\.\.named\],mute=speaking\.find\(item=>!CAN_SPEAK\.has\(item\.kind\)\)/, "a quest is a record of terms, not a voice");
   assert.match(source, /const CAN_SPEAK = new Set\(\["character","system","organization","location"\]\);/);
   assert.match(record, /if\(named\.some\(item=>!item\)\)\{toast\("One of the conversation names does not match an identity"\)/, "a name that matches nothing is refused rather than silently dropped");
-  assert.match(functionBody("renderGraph"), /derived\.conversations\.filter\(convo=>beatEvents\.some\(event=>event\.id===convo\.id\)\|\|holdingIds\.has\(convo\.id\)\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)\)/, "and the whole group is drawn joined up");
+  assert.match(functionBody("renderGraph"), /derived\.conversations\.filter\(convo=>beatEvents\.some\(event=>event\.id===convo\.id\)\|\|holdingIds\.has\(convo\.id\)\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)&&convo\.chapter===currentChapter\)\)/, "and the whole group is drawn joined up");
 });
 
 test("the demo story exercises systems and conversations, so both are visible without building a story first", () => {
@@ -1322,7 +1329,7 @@ test("three or more in a conversation meet at one marker joined to each, rather 
 
 test("a conversation can be found again after the slider moves on — selecting anyone who was in it brings it back, and it counts as part of that focus", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /beatEvents\.some\(event=>event\.id===convo\.id\)\|\|holdingIds\.has\(convo\.id\)\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)\)/);
+  assert.match(body, /beatEvents\.some\(event=>event\.id===convo\.id\)\|\|holdingIds\.has\(convo\.id\)\|\|\(selectedId&&convo\.talkers\.includes\(selectedId\)&&convo\.chapter===currentChapter\)/, "a talk from twenty chapters ago is not a line between them now");
   assert.match(functionBody("applyGraphFocus"), /String\(edge\.dataset\.a\)\.startsWith\("conversation:"\)\|\|String\(edge\.dataset\.b\)\.startsWith\("conversation:"\)/, "so the other spokes are not dimmed away from the one that touches the selection");
   assert.match(functionBody("edgeEndpointName"), /String\(id\)\.startsWith\("conversation:"\)\?"this conversation"/, "and hovering a spoke names it rather than printing an id");
 });
