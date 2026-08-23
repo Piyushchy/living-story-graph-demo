@@ -1062,7 +1062,9 @@ test("a connection can take chapters to finish, and says so until it does", () =
 });
 
 test("a reward is a thing the story hands over, and a quest can pay several — only the mission is rated", () => {
-  assert.match(source, /<textarea name="rewards" data-plain-text rows="2"/, "several rewards, one per line");
+  assert.match(source, /<textarea name="rewards" rows="2"/, "several rewards, one per line — and prose enough to carry a wiki link");
+  assert.match(functionBody("questCardHtml"), /\$\{!open&&\(rewardList\.length\|\|run\.performance\)\?/, "what it paid is read without opening the card");
+  assert.match(functionBody("questCardHtml"), /<b class="quest-reward">\$\{richInline\(reward\)\}<\/b>/, "and a reward that carries a link keeps it");
   assert.match(functionBody("buildEventRecord"), /const rewards=listFromText\(form\.get\("rewards"\),true\),performance=String\(form\.get\("performance"\)\|\|""\)\.trim\(\)/);
   assert.doesNotMatch(source, /name="rewardRank"/, "a reward has no rank of its own");
   assert.match(source, /<span>Quest rating \(optional\)<\/span><input name="rating"/, "the mission is what carries a rating");
