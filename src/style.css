@@ -999,3 +999,6 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .quest-reward{padding:2px 8px;border-radius:999px;background:rgba(69,201,139,.14);color:#8ff0c0;font-size:10px;font-weight:650}
 .quest-reward a{color:inherit}
 .quest-performance{padding:2px 8px;border-radius:999px;background:rgba(96,165,250,.14);color:#93c5fd;font-size:10px;font-weight:700;letter-spacing:.03em}
+.action-paid{margin:6px 0 0}
+.events-list .action-paid{gap:4px}
+.events-list .quest-reward,.events-list .quest-performance{font-size:9px}
