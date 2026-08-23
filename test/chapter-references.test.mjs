@@ -1430,6 +1430,18 @@ test("a place known only to be inside a realm can later be placed exactly, witho
   assert.match(source, /String\(source\.locationType\|\|""\)===LOCATION_ROOT_TYPE\)\{toast\("A realm is the widest place the graph draws/);
 });
 
+test("a group named where a place belongs is given somewhere to stand, instead of the action being refused", () => {
+  const helper = functionBody("placeForOrganization");
+  assert.match(helper, /if\(places\.length===1\)return \{place:places\[0\],pending:null\}/, "a group already standing in one place is not given a second");
+  assert.match(helper, /if\(places\.length>1\)return \{place:null,pending:null,several:places\.map\(item=>item\.name\)\}/, "standing in several, and the writer has to say which");
+  assert.match(helper, /while\(resolveEntity\(name\)\)name=`\$\{organization\.name\} Premises \$\{nameSuffix\+\+\}`/, "the invented name never collides with one the story already answers to");
+  assert.match(helper, /while\(entity\(id\)\)id=slugify\(name\)\+"-"\+idSuffix\+\+/, "nor does its id");
+  const record = functionBody("buildEventRecord");
+  assert.match(record, /if\(location&&location\.kind==="organization"&&type!=="organization_location"\)\{/, "except on the action that says a group is based somewhere, where a place is the whole point");
+  assert.match(record, /placeToMake=found\.pending;location=found\.place;/, "and the action goes on against the place, not the group");
+  assert.match(record, /if\(placeToMake\)\{\s*data\.entities\.push\(placeToMake\.entity\);data\.events\.push\(placeToMake\.event\);/, "written only once the rest of the action has passed, so a refused action invents nothing");
+});
+
 test("a host bond may name where it happened — the place is optional on every action, this one included", () => {
   assert.match(source, /if\(type==="system_host"&&\(source\.kind!=="system"\|\|target\?\.kind!=="character"\)\)/, "a stray clause rejected the bond whenever a place was named");
   assert.doesNotMatch(source, /location\?\.kind==="location"\|\|target\?\.kind!=="character"/);

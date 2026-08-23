@@ -3045,11 +3045,41 @@ function generatedEventDescription(type,source,target,location,value,level,actio
 
 function isAutomaticCultivationDescription(description,previous){if(!previous||previous.type!=="cultivation")return false;const text=String(description||""),oldNames=[cultivationDisplay(previous),cultivationCanonical(previous)].filter(Boolean);return /\b(cultivation is revealed as|reaches|is introduced at)\b/i.test(text)&&oldNames.some(name=>text.toLowerCase().includes(name.toLowerCase()));}
 
+// A place a group occupies is a place in its own right: it can hold other places, be travelled
+// to, and outlive the group that keeps it. When an action needs a place and names a group, this
+// finds the one the group already stands in, or draws up a new one — named after the group, tied
+// to it, and free to be renamed — without writing either into the story until the caller says so.
+function placeForOrganization(organization,chapter){
+  const standing=new Map();
+  data.events.filter(event=>event.type==="organization_location"&&event.source===organization.id&&event.chapter<=chapter)
+    .sort((a,b)=>a.chapter-b.chapter||(Number(a.order)||0)-(Number(b.order)||0))
+    .forEach(event=>{if(event.action==="close")standing.delete(event.location);else standing.set(event.location,event);});
+  const places=[...standing.keys()].map(id=>entity(id)).filter(item=>item?.kind==="location");
+  if(places.length===1)return {place:places[0],pending:null};
+  if(places.length>1)return {place:null,pending:null,several:places.map(item=>item.name)};
+  let name=`${organization.name} Premises`,nameSuffix=2;
+  while(resolveEntity(name))name=`${organization.name} Premises ${nameSuffix++}`;
+  let id=slugify(name),idSuffix=2;
+  while(entity(id))id=slugify(name)+"-"+idSuffix++;
+  const place={id,kind:"location",locationType:"Site",name,intro:chapter};
+  return {place,pending:{organization:organization.name,entity:place,event:{id:"ev-"+crypto.randomUUID(),chapter,order:nextEventOrder(chapter),type:"organization_location",source:organization.id,location:id,action:"open",value:"Base",description:`${name} becomes ${organization.name}'s base.`}}};
+}
 function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
-  const form=new FormData(formElement),type=String(form.get("type")),source=resolveEntity(String(form.get("source")||"")),target=resolveEntity(String(form.get("target")||"")),location=resolveEntity(String(form.get("location")||"")),rawValue=String(form.get("value")||"").trim(),value=type==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===rawValue.toLowerCase())?"":rawValue,level=Number(form.get("level"))||undefined,action=String(form.get("action")||"join"),chapter=Number(form.get("chapter")),sourceUrl=String(form.get("sourceUrl")||"").trim();
+  const form=new FormData(formElement),type=String(form.get("type")),source=resolveEntity(String(form.get("source")||"")),target=resolveEntity(String(form.get("target")||"")),rawValue=String(form.get("value")||"").trim(),value=type==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===rawValue.toLowerCase())?"":rawValue,level=Number(form.get("level"))||undefined,action=String(form.get("action")||"join"),chapter=Number(form.get("chapter")),sourceUrl=String(form.get("sourceUrl")||"").trim();
+  let location=resolveEntity(String(form.get("location")||"")),placeToMake=null;
   if(!source){toast("Choose an existing character, organization, or location");return null;}
   if(!Number.isFinite(chapter)||chapter<1){toast("Enter a valid chapter");return null;}
   if(String(form.get("location")||"").trim()&&!location){toast("Choose an existing location");return null;}
+  // A group is not a place, so an organization typed where a place belongs used to be refused
+  // outright. It nearly always means the same thing to whoever is writing it — the office, the
+  // hall, the grounds the group keeps — so the graph gives the group somewhere to stand rather
+  // than sending the writer away to build it by hand. A group already standing in exactly one
+  // place is not given a second; that place is used.
+  if(location&&location.kind==="organization"&&type!=="organization_location"){
+    const found=placeForOrganization(location,chapter);
+    if(!found.place){toast(`${location.name} stands in more than one place — name the one you mean: ${found.several.join(", ")}`);return null;}
+    placeToMake=found.pending;location=found.place;
+  }
   if(location&&location.kind!=="location"){toast("The event location must be a location, not a character or organization");return null;}
   if(type==="movement"&&!location){toast("Choose the character's new location");return null;}
   if(type==="movement"&&source.kind!=="character"){toast("Only a character can change location");return null;}
@@ -3153,6 +3183,12 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   }
   if(form.get("ghost"))record.ghost=true;
   if(["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end","quest_issue","quest_end","quest_part"].includes(type))record.action=action;
+  // Nothing is invented for an action that turns out to be refused: the place and the line tying
+  // it to its group are only written once the rest of the action has passed every check.
+  if(placeToMake){
+    data.entities.push(placeToMake.entity);data.events.push(placeToMake.event);
+    toast(`${placeToMake.organization} had nowhere of its own, so ${placeToMake.entity.name} was made for it — rename it whenever the story gives it a better name`);
+  }
   return record;
 }
 
