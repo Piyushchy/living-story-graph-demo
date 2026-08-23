@@ -2911,7 +2911,7 @@ function orderRowHtml(event,index,total,moment,twin=0){
 // underneath, because they are still separate actions and are still reordered and edited there.
 function momentHeadHtml(moment,rows){
   const parts=rows.filter(event=>(moment.members||[]).includes(event.id)).length;
-  return `<li class="order-moment-head" data-moment="${escapeHtml(moment.id)}"><div class="order-moment-title"><b class="event-type event-moment">together</b><span>${parts} action${parts===1?"":"s"} land as one moment</span></div><textarea class="order-moment-message" data-plain-text data-moment="${escapeHtml(moment.id)}" rows="${messageRows(moment.message)}" placeholder="What this moment says — shown in place of the parts" aria-label="What this moment says">\n${escapeHtml(moment.message||"")}</textarea><button type="button" class="button ghost order-moment-split" data-moment="${escapeHtml(moment.id)}">Separate</button><label class="order-moment-open"><span>What it is made of</span><select class="order-moment-parts-mode" data-moment="${escapeHtml(moment.id)}"><option value="folded"${moment.showParts===false||moment.partsOpen===true?"":" selected"}>Folded away — the reader can open it</option><option value="open"${moment.partsOpen===true?" selected":""}>Shown open</option><option value="hidden"${moment.showParts===false?" selected":""}>Not shown at all</option></select></label></li>`;
+  return `<li class="order-moment-head" data-moment="${escapeHtml(moment.id)}"><div class="order-moment-title"><b class="event-type event-moment">together</b><span>${parts} action${parts===1?"":"s"} land as one moment</span></div><textarea class="order-moment-message" data-plain-text data-moment="${escapeHtml(moment.id)}" rows="${messageRows(moment.message)}" placeholder="What this moment says — shown in place of the parts" aria-label="What this moment says">\n${escapeHtml(moment.message||"")}</textarea><div class="order-moment-actions"><button type="button" class="order-moment-up" data-moment="${escapeHtml(moment.id)}" aria-label="Move this whole moment earlier" title="Move the whole moment earlier">↑</button><button type="button" class="order-moment-down" data-moment="${escapeHtml(moment.id)}" aria-label="Move this whole moment later" title="Move the whole moment later">↓</button><button type="button" class="button ghost order-moment-split" data-moment="${escapeHtml(moment.id)}">Separate</button></div><label class="order-moment-open"><span>What it is made of</span><select class="order-moment-parts-mode" data-moment="${escapeHtml(moment.id)}"><option value="folded"${moment.showParts===false||moment.partsOpen===true?"":" selected"}>Folded away — the reader can open it</option><option value="open"${moment.partsOpen===true?" selected":""}>Shown open</option><option value="hidden"${moment.showParts===false?" selected":""}>Not shown at all</option></select></label></li>`;
 }
 function renderOrderEditor(){
   const list=$("#order-list");if(!list)return;
@@ -2970,7 +2970,43 @@ function renderOrderEditor(){
   });
   list.querySelectorAll(".order-ghost").forEach(button=>button.onclick=()=>{const record=data.events.find(event=>event.id===button.dataset.id);if(!record)return;if(record.ghost)delete record.ghost;else record.ghost=true;saveData();renderAll();toast(record.ghost?"Ghost action — its effects stay, it leaves the list":"Back in the list");});
   const idsInOrder=()=>[...list.querySelectorAll(".order-row")].map(row=>row.dataset.id);
-  const swap=(id,direction)=>{const ids=idsInOrder(),from=ids.indexOf(id),to=from+direction;if(from<0||to<0||to>=ids.length)return;ids.splice(to,0,ids.splice(from,1)[0]);commitEventOrder(ids);};
+  // A moment is one thing in the running order, so it moves as one — and what it steps over is
+  // whatever stands next to it, a lone action or another moment entire.
+  const blockAt=(ids,index)=>{
+    const moment=momentOf(ids[index]);
+    if(!moment)return {from:index,to:index};
+    let from=index,to=index;
+    while(from>0&&momentOf(ids[from-1])===moment)from--;
+    while(to<ids.length-1&&momentOf(ids[to+1])===moment)to++;
+    return {from,to};
+  };
+  const moveBlock=(ids,block,direction)=>{
+    const neighbourIndex=direction<0?block.from-1:block.to+1;
+    if(neighbourIndex<0||neighbourIndex>=ids.length)return null;
+    const neighbour=blockAt(ids,neighbourIndex),
+      moving=ids.slice(block.from,block.to+1),
+      stepped=ids.slice(neighbour.from,neighbour.to+1),
+      rest=ids.filter((id,index)=>index<Math.min(block.from,neighbour.from)||index>Math.max(block.to,neighbour.to)),
+      head=ids.slice(0,Math.min(block.from,neighbour.from));
+    return [...head,...(direction<0?[...moving,...stepped]:[...stepped,...moving]),...rest.slice(head.length)];
+  };
+  const swap=(id,direction)=>{
+    const ids=idsInOrder(),from=ids.indexOf(id);if(from<0)return;
+    const moment=momentOf(id);
+    // Inside a moment the arrows reorder its own parts and never carry one out of it.
+    if(moment){const block=blockAt(ids,from),to=from+direction;if(to<block.from||to>block.to)return;ids.splice(to,0,ids.splice(from,1)[0]);commitEventOrder(ids);return;}
+    const to=from+direction;if(to<0||to>=ids.length)return;
+    const target=momentOf(ids[to]);
+    if(target){const next=moveBlock(ids,{from,to:from},direction);if(next)commitEventOrder(next);return;}
+    ids.splice(to,0,ids.splice(from,1)[0]);commitEventOrder(ids);
+  };
+  const moveMoment=(momentId,direction)=>{
+    const ids=idsInOrder(),first=ids.findIndex(id=>momentOf(id)?.id===momentId);if(first<0)return;
+    const next=moveBlock(ids,blockAt(ids,first),direction);
+    if(next)commitEventOrder(next);
+  };
+  list.querySelectorAll(".order-moment-up").forEach(button=>button.onclick=()=>moveMoment(button.dataset.moment,-1));
+  list.querySelectorAll(".order-moment-down").forEach(button=>button.onclick=()=>moveMoment(button.dataset.moment,1));
   list.querySelectorAll(".order-up").forEach(button=>button.onclick=()=>swap(button.dataset.id,-1));
   list.querySelectorAll(".order-down").forEach(button=>button.onclick=()=>swap(button.dataset.id,1));
   // The drag listens on the window rather than capturing the handle: reordering moves the row —
