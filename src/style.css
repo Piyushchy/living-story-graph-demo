@@ -435,7 +435,7 @@ th { color: var(--muted); font-weight: 600; }
 .sub-location-group section:first-child { border-top: 0; }
 .sub-location-group section > span { color: #71839b; font-size: 9px; }
 .sub-location-group section p { margin: 1px 0 0; color: #b9c5d6; font-size: 10px; line-height: 1.45; }
-.core-male { fill: var(--blue); }.core-female { fill: var(--pink); }.life-alive{fill:none;stroke:var(--green);stroke-width:4}.life-dead{fill:none;stroke:var(--red);stroke-width:4;stroke-dasharray:5 4}.life-unknown{fill:none;stroke:#7f8da3;stroke-width:3;stroke-dasharray:2 5}.ghost-core{opacity:.42;stroke:var(--muted);stroke-width:2;stroke-dasharray:5 4}.ghost-ring{fill:none;stroke:var(--muted);stroke-width:2;stroke-dasharray:2 5}.corona-on{fill:none;stroke:var(--amber);stroke-width:5;stroke-linecap:round}.corona-off{fill:none;stroke:var(--border);stroke-width:3;stroke-linecap:round}.alias-gem{fill:var(--violet);stroke:var(--panel);stroke-width:1}.relation-edge{fill:none;stroke-width:5;stroke-linecap:round;opacity:.86}.membership-edge{fill:none;stroke:var(--muted);stroke-width:2.5;stroke-dasharray:7 6;opacity:.48}
+.core-male { fill: var(--blue); }.core-female { fill: var(--pink); }.life-alive{fill:none;stroke:var(--green);stroke-width:4}.life-dead{fill:none;stroke:var(--red);stroke-width:4;stroke-dasharray:5 4}.life-unknown{fill:none;stroke:#7f8da3;stroke-width:3;stroke-dasharray:2 5}.ghost-core{opacity:.42;stroke:var(--muted);stroke-width:2;stroke-dasharray:5 4}.ghost-ring{fill:none;stroke:var(--muted);stroke-width:2;stroke-dasharray:2 5}.corona-on{fill:none;stroke:var(--amber);stroke-width:5;stroke-linecap:round}.corona-off{fill:none;stroke:var(--border);stroke-width:3;stroke-linecap:round}.alias-gem{fill:var(--violet);stroke:var(--panel);stroke-width:1}.relation-edge{fill:none;stroke-width:3.4;stroke-linecap:round;opacity:.4}.membership-edge{fill:none;stroke:var(--muted);stroke-width:2.5;stroke-dasharray:7 6;opacity:.48}
 .cultivation-new-segment{stroke-dasharray:1;stroke-dashoffset:1;animation:cultivation-segment-draw .5s cubic-bezier(.2,.85,.25,1) var(--cultivation-delay,0ms) forwards}
 .cultivation-reveal-pulse{fill:none;stroke:#ffd76a;stroke-width:3;opacity:0;transform-box:fill-box;transform-origin:center;animation:cultivation-pulse 1.15s cubic-bezier(.18,.72,.2,1) both}
 .cultivation-reveal .node-label{animation:cultivation-label-glow 1.2s ease both}
@@ -632,9 +632,15 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .slider-pointer{position:absolute;left:var(--slider-x,50%);top:22px;transform:translateX(-50%);color:#7dd3fc;font-size:clamp(46px,10vw,78px);font-weight:300;line-height:.8;filter:drop-shadow(0 0 12px rgba(125,211,252,.38));animation:point-to-slider 1.25s ease-in-out infinite}
 @keyframes point-to-slider{0%,100%{transform:translate(-50%,9px)}50%{transform:translate(-50%,-4px)}}
 @keyframes node-reveal{0%{opacity:0;transform:scale(.35)}70%{opacity:1;transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}
-@keyframes edge-reveal{0%{opacity:0}45%{opacity:1;filter:drop-shadow(0 0 6px rgba(255,255,255,.55))}100%{filter:none}}
+@keyframes edge-reveal{0%{opacity:0;filter:drop-shadow(0 0 0 rgba(255,255,255,0))}45%{opacity:1;filter:drop-shadow(0 0 9px rgba(255,255,255,.75))}100%{opacity:1;filter:drop-shadow(0 0 4px rgba(255,255,255,.42))}}
+@keyframes conversation-reveal{0%{opacity:0;filter:drop-shadow(0 0 0 rgba(255,212,121,0))}45%{opacity:1;filter:drop-shadow(0 0 11px rgba(255,212,121,.85))}100%{opacity:1;filter:drop-shadow(0 0 5px rgba(255,212,121,.6))}}
 .newly-revealed-node>*{transform-box:fill-box;transform-origin:center;animation:node-reveal .34s cubic-bezier(.2,.85,.25,1) both}
 .newly-revealed-edge{animation:edge-reveal .52s ease .2s both}
+/* What the action being read is about: the one thing on the graph that should be unmistakable. */
+.relation-edge.newly-revealed-edge{stroke-width:5;opacity:1}
+.relation-edge[marker-end].newly-revealed-edge,.relation-edge[marker-start].newly-revealed-edge{stroke-width:4;opacity:1}
+.edge.met-edge.newly-revealed-edge{stroke-width:4;opacity:1}
+.conversation-edge.newly-revealed-edge{animation-name:conversation-reveal;stroke-width:3.6;stroke-dasharray:2 5;opacity:1}
 .node.mentioned-only{opacity:.72;filter:saturate(.45)}
 .node.mentioned-only .node-label{font-style:italic;fill:#c1cad7}
 /* A place or a group the story has only spoken of yet: drawn as an outline waiting to be filled. */
@@ -655,7 +661,7 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .selection-related-event{border-left:2px solid rgba(167,139,250,.42);border-radius:7px;background:rgba(76,29,149,.055)}.selection-related-event:hover{background:rgba(76,29,149,.16)}
 .selection-event-empty{padding:10px;color:#7e8da3;font-size:11px;list-style:none}
 .event-edit-mode-note{margin:12px 0 16px;padding:11px 13px;border:1px solid rgba(125,211,252,.42);border-left:4px solid #7dd3fc;border-radius:9px;background:rgba(14,116,144,.14);color:#9eacc0;font-size:11px;line-height:1.5}.event-edit-mode-note[hidden]{display:none}.event-edit-mode-note strong{color:#d8f5ff}
-.graph-viewport.has-action-focus .node.chapter-changed-node:not(.event-active-node){opacity:.58!important;filter:saturate(.72) drop-shadow(0 0 7px rgba(125,211,252,.28))!important}
+.graph-viewport.has-action-focus .node.chapter-changed-node:not(.event-active-node){opacity:1!important;filter:brightness(.62) saturate(.6)!important}
 .cultivation-change-segment{stroke-width:7!important;opacity:1!important;filter:drop-shadow(0 0 7px currentColor);animation:cultivation-change-beat .9s ease-in-out var(--cultivation-delay,0ms) both;transform-box:fill-box;transform-origin:center}
 .cultivation-gain{stroke:#ffd166!important}.cultivation-loss{stroke:#fb7185!important;stroke-dasharray:3 2}
 .cultivation-change-label{fill:#fff1b8;text-anchor:middle;font-size:9px;font-weight:850;letter-spacing:.02em;pointer-events:none;paint-order:stroke;stroke:#081018;stroke-width:5px;stroke-linejoin:round;filter:drop-shadow(0 0 5px rgba(232,173,60,.5))}
@@ -1057,9 +1063,9 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .event-holding{padding:2px 7px;border-radius:999px;background:rgba(255,212,121,.16);color:#ffd479;font-size:9px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
 .event-holding.quiet{background:rgba(127,147,168,.14);color:#8ba7b8}
 .event-chapter-heading.still-going span{color:#ffd479}
-.edge.met-edge{stroke-width:3.4;opacity:.62}
+.edge.met-edge{stroke-width:2.6;opacity:.28}
 /* Having heard of somebody is not the same weight of tie as standing with them. */
-.relation-edge[marker-end],.relation-edge[marker-start]{stroke-width:3;opacity:.6}
+.relation-edge[marker-end],.relation-edge[marker-start]{stroke-width:2.4;opacity:.34}
 .order-moment-actions{display:flex;gap:5px;align-items:center}
 .order-moment-up,.order-moment-down{padding:4px 8px;border:1px solid #2a3a4e;border-radius:7px;background:#0e1725;color:#9fb6cc;font:inherit;font-size:11px;cursor:pointer}
 .order-moment-up:hover,.order-moment-down:hover{border-color:#6de0d5;color:#dff3ff}
