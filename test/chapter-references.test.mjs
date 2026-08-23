@@ -670,8 +670,8 @@ test("a place a character is standing in keeps the line while it is popped out, 
 
 test("an action that merely names a place — a meeting, a note — still draws everyone it involves to that place while it is showing", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /beatEvents\.filter\(event=>event\.location&&entity\(event\.location\)\?\.kind==="location"&&!\["movement","residency","organization_location","location_parent"\]\.includes\(event\.type\)\)/, "the link types that already draw their own line are left alone, and every part of a moment names its own place");
-  assert.match(body, /locationCharacterIds\(event\)\.forEach\(who=>\{noteEdge\(who,place,event\.chapter,"Here for this action"\);straightEdge\(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place\);\}\)/);
+  assert.match(body, /beatEvents\.filter\(event=>event\.location&&\["location","organization"\]\.includes\(entity\(event\.location\)\?\.kind\)&&!\["movement","residency","organization_location","location_parent"\]\.includes\(event\.type\)\)/, "the link types that already draw their own line are left alone, and every part of a moment names its own place");
+  assert.match(body, /locationCharacterIds\(event\)\.forEach\(who=>\{noteEdge\(who,place,event\.chapter,note\);straightEdge\(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place\);\}\)/);
 });
 
 test("the view eases into a new framing instead of jumping, and a reader's own zoom or pan drops the tween immediately", () => {
@@ -886,6 +886,7 @@ function searchSandbox(dataValue) {
     functionBody("safeExternalUrl"),
     functionBody("validChapter"),
     constLine("SEARCH_FIELDS"),
+    constLine("ROLL_FIELDS"),
     functionBody("searchWords"),
     functionBody("parseSearchQuery"),
     functionBody("withinOneEdit"),
@@ -904,12 +905,27 @@ test("a search reads field:value the way the story is talked about, and a name w
   assert.deepEqual(JSON.parse(parsed), { filters: [
     { field: "from", value: "Midnight Inn System" },
     { field: "type", value: "quest end rewards" }
-  ], words: [] }, "a value runs until the next field, so it may hold spaces");
+  ], words: [], rolls: [] }, "a value runs until the next field, so it may hold spaces");
   const loose = JSON.parse(vm.runInContext(`JSON.stringify(parseSearchQuery("winter from:lex"))`, ctx));
   assert.deepEqual(loose.words, ["winter"], "anything written before the first field is words to look for");
   const unknown = JSON.parse(vm.runInContext(`JSON.stringify(parseSearchQuery("colour:red"))`, ctx));
-  assert.deepEqual(unknown, { filters: [], words: ["colour", "red"] }, "a field nobody has heard of is read as ordinary words");
-  assert.deepEqual(JSON.parse(vm.runInContext(`JSON.stringify(parseSearchQuery("   "))`, ctx)), { filters: [], words: [] });
+  assert.deepEqual(unknown, { filters: [], words: ["colour", "red"], rolls: [] }, "a field nobody has heard of is read as ordinary words");
+  assert.deepEqual(JSON.parse(vm.runInContext(`JSON.stringify(parseSearchQuery("   "))`, ctx)), { filters: [], words: [], rolls: [] });
+});
+
+test("asking for somebody's chapters is a different question from asking what happened", () => {
+  const ctx = searchSandbox({ entities: [], events: [] });
+  const parse = query => JSON.parse(vm.runInContext(`JSON.stringify(parseSearchQuery(${JSON.stringify(query)}))`, ctx));
+  assert.deepEqual(parse("mention:Velma"), { filters: [], words: [], rolls: [{ kinds: ["mentioned"], value: "Velma" }] }, "mention: asks the roll, not the actions");
+  assert.deepEqual(parse("mentioned:Velma").rolls, [{ kinds: ["mentioned"], value: "Velma" }], "however it is spelt");
+  assert.deepEqual(parse("appears:Velma").rolls, [{ kinds: ["appeared"], value: "Velma" }]);
+  assert.deepEqual(parse("appearance:Velma").rolls, [{ kinds: ["appeared"], value: "Velma" }], "a ten-letter field is still read");
+  assert.deepEqual(parse("chapters:Velma").rolls, [{ kinds: ["appeared", "mentioned"], value: "Velma" }], "ticking both gets both");
+  assert.deepEqual(parse("appears:Velma mention:Velma").rolls.length, 2, "both asked separately is the same as ticking both");
+  assert.deepEqual(parse("speaks:Jotun"), { filters: [{ field: "spokenof", value: "Jotun" }], words: [], rolls: [] }, "what an action speaks of moved off mentions:");
+  const mixed = parse("from:lex chapters:Velma");
+  assert.deepEqual(mixed.filters, [{ field: "from", value: "lex" }], "a roll never narrows the actions");
+  assert.equal(mixed.rolls.length, 1);
 });
 
 test("one letter out still finds the word that was meant", () => {
@@ -1188,7 +1204,7 @@ test("what an action only speaks of is drawn as a reference, never as a presence
   assert.match(styleSource, /\.edge\.mention-edge\{stroke:#c4a6ff/);
   assert.match(source, /<i class="line-key mention"><\/i>Spoken of<\/span>/, "and the key says what the line means");
   assert.match(source, /mentions: \["stonevale","jotun"\]/, "the demo speaks of a city and an empire nobody is anywhere near");
-  assert.match(functionBody("actionMatchesFilter"), /if\(filter\.field==="mentions"\)/, "searchable: mentions:jotun");
+  assert.match(functionBody("actionMatchesFilter"), /if\(filter\.field==="spokenof"\)/, "searchable: speaks:jotun");
 });
 
 test("an action can be deleted where it is read, and says what it will take with it", () => {
@@ -1263,6 +1279,13 @@ test("a moment moves through the running order as one thing, and its parts canno
   assert.equal(vm.runInContext(`moveBlock(${JSON.stringify(ids)},{from:4,to:4},1).join("")`, ctx), "abcdfge", "a lone action steps over a whole moment, not into the middle of one");
   assert.match(body, /if\(moment\)\{const block=blockAt\(ids,from\),to=from\+direction;if\(to<block\.from\|\|to>block\.to\)return;/, "inside a moment the arrows reorder its own parts and never carry one out");
   assert.match(functionBody("momentHeadHtml"), /class="order-moment-up"/);
+});
+
+test("a connection already made is left alone while an action plays; only a new one is drawn in", () => {
+  assert.doesNotMatch(styleSource, /has-action-focus \.edge:not\(\.newly-revealed-edge\)\{opacity/, "fading every settled line away and bringing it back made the whole graph blink on every step");
+  assert.match(styleSource, /@keyframes edge-reveal\{0%\{opacity:0\}45%\{opacity:1;filter:drop-shadow/, "what is new draws itself in and flares as it lands, which is what marks it out now");
+  assert.match(styleSource, /\.newly-revealed-edge\{animation:edge-reveal \.52s ease \.2s both\}/);
+  assert.match(styleSource, /\.graph-viewport\.has-action-focus \.node:not\(\.event-active-node\)\{/, "the nodes still step back for whatever is happening");
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
@@ -1737,4 +1760,210 @@ test("a failed migration keeps the reader's own story rather than silently repla
   const body = functionBody("loadLocalData");
   assert.match(body, /let stored = null;/);
   assert.match(body, /catch \(error\) \{ console\.error\("Story data could not be brought up to date; keeping it as it was\.", error\); return stored \|\| deepClone\(sampleData\); \}/);
+});
+
+function rollSandbox(dataValue) {
+  const ctx = { data: dataValue };
+  vm.createContext(ctx);
+  vm.runInContext([
+    functionBody("validChapter"),
+    functionBody("entity"),
+    functionBody("autoChapterRoll"),
+    functionBody("rollFixes"),
+    functionBody("chapterRoll"),
+    functionBody("correctRoll"),
+  ].join("\n"), ctx);
+  return ctx;
+}
+
+const rollStory = () => ({
+  entities: [
+    { id: "velma", kind: "character", name: "Velma" },
+    { id: "lex", kind: "character", name: "Lex" },
+    { id: "hozarth", kind: "location", name: "Hozarth" }
+  ],
+  events: [
+    { chapter: 2, type: "conversation", source: "lex", characters: ["lex", "velma"] },
+    { chapter: 3, type: "movement", source: "lex", mentions: ["hozarth"] },
+    { chapter: 4, type: "appearance", source: "velma" },
+    { chapter: 4, type: "note", source: "lex", mentions: ["velma"] },
+    { chapter: 9, type: "mention", source: "hozarth" },
+    { chapter: 0, type: "note", source: "velma" }
+  ]
+});
+
+test("a chapter roll is read out of the actions: being in a chapter, and being only spoken of in one", () => {
+  const ctx = rollSandbox(rollStory());
+  const roll = id => JSON.parse(vm.runInContext(`JSON.stringify(chapterRoll(${JSON.stringify(id)}))`, ctx));
+  assert.deepEqual(roll("velma"), { appeared: [2, 4], mentioned: [] }, "chapter 4 speaks of her and has her in it, so it counts as her being there");
+  assert.deepEqual(roll("hozarth"), { appeared: [], mentioned: [3, 9] }, "a place nobody goes to is still spoken of, and a mention action counts for its own subject");
+  assert.deepEqual(roll("lex"), { appeared: [2, 3, 4], mentioned: [] });
+  assert.deepEqual(roll("nobody"), { appeared: [], mentioned: [] }, "somebody with no actions has an empty roll rather than an error");
+  assert.equal(roll("velma").appeared.includes(0), false, "chapter nought is not a chapter");
+});
+
+test("correcting a chapter roll is kept as a correction, so later actions still feed in", () => {
+  const story = rollStory(), ctx = rollSandbox(story);
+  const roll = id => JSON.parse(vm.runInContext(`JSON.stringify(chapterRoll(${JSON.stringify(id)}))`, ctx));
+  const fix = (id, kind, chapter, wanted) => vm.runInContext(`correctRoll(${JSON.stringify(id)},${JSON.stringify(kind)},${JSON.stringify(chapter)},${wanted})`, ctx);
+
+  assert.equal(fix("velma", "appeared", 2, false), true);
+  assert.deepEqual(roll("velma").appeared, [4], "a chapter the reading got wrong can be taken off");
+  assert.equal(JSON.stringify(story.entities[0].roll), '{"appeared":{"remove":[2]}}', "and it is stored as the removal it is, not as a copy of the list");
+
+  assert.equal(fix("velma", "mentioned", 7, true), true);
+  assert.deepEqual(roll("velma").mentioned, [7], "a chapter no action mentions can be added by hand");
+  assert.equal(JSON.stringify(story.entities[0].roll.mentioned), '{"add":[7]}');
+
+  story.events.push({ chapter: 12, type: "cultivation", source: "velma" });
+  assert.deepEqual(roll("velma").appeared, [4, 12], "a chapter written after the correction still feeds in");
+
+  assert.equal(fix("velma", "appeared", 2, true), true);
+  assert.equal(story.entities[0].roll.appeared, undefined, "putting a chapter back clears the correction rather than leaving a contrary one");
+  assert.deepEqual(roll("velma").appeared, [2, 4, 12]);
+
+  assert.equal(fix("velma", "appeared", "not a chapter", true), false, "a chapter number that is not one is refused");
+  assert.equal(fix("nobody", "appeared", 3, true), false);
+  assert.equal(fix("velma", "invented", 3, true), false, "and there are only the two lists");
+});
+
+test("the editor can correct where somebody turns up, chapter by chapter", () => {
+  assert.match(source, /<section id="roll-card" class="admin-card">/);
+  assert.match(source, /<input id="roll-entity" list="admin-entity-options"/, "any identity, by any name the story gave it");
+  const body = functionBody("renderRollEditor");
+  assert.match(body, /body\.innerHTML=`<div class="roll-groups">\$\{rollKinds\.map/);
+  assert.match(body, /body\.querySelectorAll\("\.roll-drop"\)\.forEach\(button=>button\.onclick=\(\)=>change\(button\.dataset\.kind,button\.dataset\.chapter,false\)\)/, "a chapter comes off with the × on its own chip");
+  assert.match(body, /body\.querySelectorAll\("\.roll-restore"\)\.forEach\(button=>button\.onclick=\(\)=>change\(button\.dataset\.kind,button\.dataset\.chapter,true\)\)/, "and one taken off by hand can be put back");
+  assert.match(body, /if\(!correctRoll\(item\.id,kind,chapter,wanted\)\)\{toast\("That is not a chapter number"\);return;\}/);
+  assert.match(body, /saveData\(\);renderAll\(\);/, "a correction is saved as soon as it is made");
+  assert.match(functionBody("rollGroupHtml"), /setAside=remove\.filter\(chapter=>autoChapterRoll\(id\)\[kind\]\.includes\(chapter\)\)/, "what was taken off is shown, so a slip is never a dead end");
+  assert.match(functionBody("renderAdmin"), /renderLexiconEditor\(\);renderRollEditor\(\);/);
+  assert.match(styleSource, /\.roll-chip\{display:inline-flex/);
+});
+
+test("asking for a chapter list is answered with chapters, and one of them takes the reader there", () => {
+  const chapters = functionBody("searchChapters");
+  assert.match(chapters, /const read=readEntityValue\(roll\.value\),key=read\.id\|\|`\?\$\{roll\.value\.toLowerCase\(\)\}`/);
+  assert.match(chapters, /roll\.kinds\.forEach\(kind=>wanted\.get\(key\)\.kinds\.add\(kind\)\)/, "appears: and mentioned: for the same person answer as one list");
+  const jump = functionBody("jumpToChapter");
+  assert.match(jump, /if\(volume&&volume\.id!==activeVolume\)\{activeVolume=volume\.id;/, "a chapter in another volume takes the reader to that volume first");
+  assert.match(jump, /const reached=volumeActions\(\)\.reduce\(\(found,event,index\)=>event\.chapter<=number\?index:found,-1\)/, "and the whole chapter is played, not just its first line");
+  const panel = functionBody("renderSearchResults");
+  assert.match(panel, /data-search-chapter="\$\{row\.chapter\}"/);
+  assert.match(panel, /panel\.querySelectorAll\("\[data-search-chapter\]"\)\.forEach\(button=>button\.onclick=\(\)=>\{closeSearch\(\);jumpToChapter\(button\.dataset\.searchChapter\);\}\)/);
+  assert.match(panel, /if\(!roll\.id\)\{if\(!suggestions\.some\(item=>item\.kind==="value"\)\)/, "a half-typed name is being written, not a name nobody has");
+  assert.match(functionBody("searchActions"), /if\(!query\.filters\.length&&!query\.words\.length\)return \{entries:\[\],loose:false\};/, "asking only for chapters never lists every action in the volume");
+  assert.match(styleSource, /\.search-chapter\.roll-mentioned\{/);
+});
+
+test("a half-written search says what it could be, and a finished filter becomes a block above the box", () => {
+  const ctx = searchSandbox({ entities: [
+    { id: "velma", kind: "character", name: "Velma" },
+    { id: "inn", kind: "location", name: "Midnight Inn" },
+    { id: "hunt", kind: "quest", name: "The Hunt" }
+  ], events: [{ chapter: 1, type: "quest_end", source: "hunt" }] });
+  vm.runInContext([
+    constLine("SEARCH_FIELD_HELP"),
+    constLine("SEARCH_FIELD_NAME"),
+    constLine("SEARCH_FIELD_NOTE"),
+    functionBody("suggestFields"),
+    functionBody("suggestValues"),
+  ].join("\n"), ctx);
+  const fields = fragment => JSON.parse(vm.runInContext(`JSON.stringify(suggestFields(${JSON.stringify(fragment)}).map(item=>item.alias))`, ctx));
+  assert.deepEqual(fields("ment"), ["mentioned"], "three spellings of the same question offer it once");
+  assert.deepEqual(fields("appea"), ["appears"]);
+  assert.deepEqual(fields("ch"), ["chapter", "chapters"], "the two that start alike are both offered");
+  assert.deepEqual(fields("zz"), []);
+  const values = (field, fragment) => JSON.parse(vm.runInContext(`JSON.stringify(suggestValues(${JSON.stringify(field)},${JSON.stringify(fragment)}).map(item=>item.value))`, ctx));
+  assert.deepEqual(values("roll_mentioned", "vel"), ["Velma"], "once the field is written, the story's own names are offered");
+  assert.deepEqual(values("roll_mentioned", "Velma"), ["Velma"], "a name written out in full is still offered, so return turns it into a block");
+  assert.deepEqual(values("at", ""), ["Midnight Inn"], "where something happens is a place, so only places are offered");
+  assert.deepEqual(values("quest", ""), ["The Hunt"], "and a quest is offered only where a quest belongs");
+  assert.deepEqual(values("type", "quest"), ["quest end"], "the kinds of change are read off the story rather than listed by hand");
+  assert.deepEqual(values("chapter", ""), [], "a chapter number is nobody's name");
+
+  assert.match(source, /<div class="search-chips" id="search-chips" hidden><\/div>/);
+  // Without a named control the label adopts its first labelable descendant — which a block's ×
+  // would become — and every click in the field would be forwarded to it.
+  assert.match(source, /<label class="field search-field" for="search">/);
+  const panel = functionBody("renderSearchResults");
+  assert.match(panel, /if\(item\.kind==="field"\)searchInput\.value=`\$\{text\.slice\(0,item\.at\)\}\$\{item\.alias\}:`;/);
+  assert.match(panel, /else\{searchChips\.push\(\{key:item\.key,value:item\.value\}\);searchInput\.value=text\.slice\(0,item\.at\)\.replace\(\/\\s\+\$\/,""\);\}/);
+  assert.match(functionBody("searchQueryText"), /\[\.\.\.searchChips\.map\(chip=>`\$\{chip\.key\}:\$\{chip\.value\}`\),searchInput\.value\]\.join\(" "\)\.trim\(\)/, "the blocks and what is still being typed are one query");
+  assert.match(source, /if\(event\.key==="Backspace"&&!searchInput\.value&&searchChips\.length\)\{event\.preventDefault\(\);searchChips\.pop\(\);/, "a block behaves like a block");
+  assert.match(styleSource, /\.search-chip\{display:inline-flex/);
+});
+
+function branchSandbox() {
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext([
+    functionBody("organizationBranches"),
+    functionBody("branchOf"),
+  ].join("\n"), ctx);
+  return ctx;
+}
+
+test("a scene inside a group happens at one of its places: the branch it names, or the original", () => {
+  const ctx = branchSandbox();
+  const links = [
+    { organization: "office", location: "chelsea", role: "Branch", from: 9 },
+    { organization: "office", location: "new-york", role: "Building", from: 1 },
+    { organization: "office", location: "unfinished", role: "Branch", from: 12, pending: true },
+    { organization: "guild", location: "hozath", role: "Hall", from: 3 }
+  ];
+  const branch = event => vm.runInContext(`branchOf(${JSON.stringify(event)},${JSON.stringify(links)})`, ctx);
+  assert.equal(branch({ location: "office" }), "new-york", "naming no branch means the original one — the first place it opened, not the first written down");
+  assert.equal(branch({ location: "office", branch: "chelsea" }), "chelsea", "and naming one narrows it to that one");
+  assert.equal(branch({ location: "office", branch: "unfinished" }), "new-york", "a branch still being established is not somewhere anything can happen yet");
+  assert.equal(branch({ location: "guild" }), "hozath", "one place and one place only is that group's original");
+  assert.equal(branch({ location: "nowhere" }), null, "a group with no place of its own resolves to no place at all");
+  assert.equal(branch({}), null);
+});
+
+test("where something happened takes a group as readily as a place, and says which branch of it", () => {
+  const body = functionBody("buildEventRecord");
+  assert.match(body, /if\(location&&!\["location","organization"\]\.includes\(location\.kind\)\)\{toast\("Where this happened must be a place or an organization"\)/);
+  assert.match(body, /if\(\["movement","residency","location_parent","organization_location","system_location"\]\.includes\(type\)&&location&&location\.kind!=="location"\)\{toast\("This one needs a real place, not an organization"\)/, "travel, residence, and the map itself still need somewhere that exists");
+  assert.match(body, /if\(branchText&&location\?\.kind!=="organization"\)\{toast\("A branch belongs to an organization/);
+  assert.match(body, /if\(branch&&!organizationBranches\(location\.id,derive\(chapter\)\.organizationLocations\)\.some\(link=>link\.location===branch\.id\)\)/, "and only somewhere that group is actually based by then");
+  assert.match(body, /if\(branch\)record\.branch=branch\.id;/);
+  assert.match(source, /<label class="field" id="event-branch-field" hidden><span>Which branch of it \(optional\)<\/span>/);
+  assert.match(source, /\$\("#location-options"\)\.innerHTML=data\.entities\.filter\(item=>\["location","organization"\]\.includes\(item\.kind\)\)/, "so a group is offered by name where a place would be");
+  const field = functionBody("updateBranchField");
+  assert.match(field, /isGroup=where\?\.kind==="organization"&&!placeOnly/, "the question only exists once the where is a group");
+  assert.match(field, /if\(!isGroup\)\{form\.elements\.branch\.value="";return;\}/, "and clearing the group clears the answer with it");
+  assert.match(field, /const branches=organizationBranches\(where\.id,derive\(validChapter\(form\.elements\.chapter\.value\)\|\|currentChapter\)\.organizationLocations\)/, "offering only the places that group has by that chapter");
+  assert.match(functionBody("actionEffectProblem"), /if\(event\.branch&&kind\(event\.location\)!=="organization"\)return "a branch needs its organization named as where this happened"/);
+});
+
+test("a group as the where lights the group, and only the branch the action means", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const group=entity\(event\.location\)\?\.kind==="organization"\?entity\(event\.location\):null,branch=eventBranchId\(event,derived\),place=edgeLocationId\(event\.location\)/, "everyone in it is tied to the group itself, which is the where the action names");
+  assert.match(body, /beatEvents\.some\(event=>event\.location===link\.organization&&eventBranchId\(event,derived\)===link\.location\)/, "and the branch it resolves to is the one whose line lights up — the group's other branches stay quiet");
+  assert.match(body, /\[event\.source,event\.target,event\.location,eventBranchId\(event,derived\),\.\.\.\(event\.characters\|\|\[\]\)\]/, "so the branch counts as part of what is happening");
+  const derived = functionBody("derive");
+  assert.match(derived, /if\(states\.get\(event\.location\)\?\.kind==="organization"&&!\['mention','membership','organization_location'\]\.includes\(event\.type\)\)\{/);
+  assert.match(derived, /if\(branch\)locationCharacterIds\(event\)\.forEach\(character=>locationVisits\.push\(\{character,location:branch,/, "and the place itself records who was there, rather than the group holding it in the abstract");
+  assert.match(functionBody("actionSubjectLine"), /event\.location\?`at \$\{name\(event\.location\)\}\$\{event\.branch\?` · \$\{name\(event\.branch\)\}`:""\}`:""/);
+});
+
+test("a place or a group can be spoken of long before the story ever shows it", () => {
+  const fields = functionBody("updateEntityFormFields");
+  assert.match(fields, /\$\("#entity-mentioned-field"\)\.hidden=isQuestKind\(kind\);/, "everything but a quest can be spoken of first");
+  assert.match(fields, /\$\("#entity-mentioned-label"\)\.textContent=isCharacter\?"First mentioned chapter \(optional\)":"First spoken-of chapter \(optional\)"/);
+  assert.match(fields, /form\.elements\.appeared\.required=isQuest;/, "so an introduction chapter is no longer the only way in");
+  assert.match(source, /if\(kind!=="quest"&&!mentioned&&!appeared\)\{toast\(kind==="character"\?"Enter either a first mention or a first appearance":/, "though one of the two is still needed");
+  assert.match(source, /mentioned:kind==="quest"\?null:mentioned,appeared:kind==="quest"\?null:appeared,intro:appeared\|\|mentioned,/);
+  assert.match(source, /if\(mentioned\)\{const sameMentionChapter=previousMention\?\.chapter===mentioned,mentionText=`\$\{name\} is mentioned for the first time\.`/, "and it gets a row of its own, exactly as a person does");
+  assert.match(source, /if\(!appeared\)\{if\(introEvent\)data\.events=data\.events\.filter\(storyEvent=>storyEvent\.id!==introEvent\.id\);\}/, "clearing the introduction chapter takes the introduction back off the graph");
+
+  // The two readings of "has it appeared yet" have to agree, or a place would flicker between
+  // introduced and merely spoken of depending on which path drew it.
+  assert.match(functionBody("firstAppearance"), /\(\["appearance","corpse_appearance"\]\.includes\(event\.type\)\|\|event\.identityIntro===true\)/);
+  assert.match(functionBody("firstAppearance"), /declared=item&&item\.kind!=="character"&&!validChapter\(item\.mentioned\)\?item\.intro:undefined/, "one written down before any row existed for it still counts as introduced");
+  assert.match(functionBody("derive"), /if\(event\.identityIntro===true&&source\)source\.appeared=source\.appeared===null\?event\.chapter:Math\.min\(source\.appeared,event\.chapter\)/);
+  assert.match(functionBody("renderGraph"), /mentionedOnly=item\.kind!=="quest"&&state\.mentioned!==null&&\(state\.appeared===null\|\|state\.appeared>currentChapter\)/);
+  assert.match(functionBody("syncPresenceFromEvents"), /if\(!item\|\|item\.kind==="quest"\)return;/);
+  assert.match(styleSource, /\.node\.mentioned-only \.org-shape,\.node\.mentioned-only \.location-glyph,\.node\.mentioned-only \.system-shape\{stroke-dasharray:5 5/);
 });

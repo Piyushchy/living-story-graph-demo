@@ -275,7 +275,7 @@ app.innerHTML = `
       <section id="graph-view" class="view active">
         <div class="graph-page">
           <div class="controls">
-            <label class="field search-field"><span>Search — a name, or <code>from:lex event:cultivation</code></span><input id="search" placeholder="Try from:, event:, at:, quest:, chapter:" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" aria-autocomplete="list"><datalist id="entity-options" hidden></datalist><div class="search-results" id="search-results" role="listbox" hidden></div></label>
+            <label class="field search-field" for="search"><span>Search — a name, or <code>mentioned:velma</code></span><div class="search-chips" id="search-chips" hidden></div><input id="search" placeholder="Try mentioned:, appears:, from:, event:, at:" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" aria-autocomplete="list"><datalist id="entity-options" hidden></datalist><div class="search-results" id="search-results" role="listbox" hidden></div></label>
             <label class="field"><span>Volume</span><select id="volume"></select></label>
             <div class="field timeline-field"><span class="chapter-label"><span>Chapter <strong id="chapter-value">—</strong></span><span id="event-position"></span><button type="button" id="collapse-chapter-events" class="collapse-chapter-events" hidden>Collapse events ×</button></span><div class="range-row"><button class="step" id="previous" aria-label="Previous stop">−</button><div class="main-range-wrap"><input id="timeline" type="range"><div id="timeline-marks" class="main-timeline-marks"></div></div><button class="step" id="next" aria-label="Next stop">+</button></div></div>
           </div>
@@ -350,6 +350,10 @@ app.innerHTML = `
             </div>
             <p id="quick-add-error" class="volume-error" role="alert"></p>
           </form>
+          <section id="roll-card" class="admin-card">
+            <div class="volume-editor-heading"><div><span class="editor-kicker">Chapter roll</span><h2>Where somebody turns up</h2><p>Read straight out of the actions: the chapters an identity is in, and the ones they are only spoken of in. Correct anything the reading got wrong. A correction is kept as a correction rather than a copy of the list, so later actions still feed in around it.</p></div><div class="manage-row"><input id="roll-entity" list="admin-entity-options" placeholder="Type a name" autocomplete="off"><button class="button ghost" id="roll-load" type="button">Show chapters</button></div></div>
+            <div id="roll-body" class="roll-body"></div>
+          </section>
           <div class="admin-grid">
             <form id="entity-form" class="admin-card"><div class="admin-card-heading"><h2 id="entity-form-title">Create character, organization, or location</h2><div class="manage-row"><input id="manage-entity" list="admin-entity-options" placeholder="Load an existing identity"><button class="button ghost" id="load-entity" type="button">Load</button></div></div><p id="creation-edit-note" class="event-edit-mode-note" hidden><strong>Editing a creation-generated row.</strong> These facts were made by this identity form, so saving here updates the original linked row instead of creating a chapter event.</p><input name="editingId" type="hidden"><input name="editingCreationEventId" type="hidden"><div class="form-grid">
               <label class="field"><span>Type</span><select name="kind"><option value="character">Character</option><option value="organization">Organization</option><option value="location">Location</option><option value="system">System</option><option value="quest">Quest</option></select></label>
@@ -366,7 +370,7 @@ app.innerHTML = `
               <label class="field" id="entity-quest-achievements-field" hidden><span>Achievements (optional)</span><input name="achievements" maxlength="240" placeholder="First Innkeeper" /><small class="field-note">Separate them with commas.</small></label>
               <label class="field" id="entity-quest-failure-field" hidden><span>On failure (optional)</span><input name="failure" maxlength="240" placeholder="Authority falls by one" /><small class="field-note">What the punishment is if the quest is failed.</small></label>
               <label class="field" id="entity-location-type-field" hidden><span>Place level / type</span><select name="locationType"><option value="Universe">Universe</option><option value="Realm">Realm</option><option value="World">World / planet</option><option value="Continent">Continent</option><option value="Country">Country / empire</option><option value="State">State / province</option><option value="City">City / settlement</option><option value="District">District</option><option value="Site" selected>Site / estate</option><option value="Building">Building</option><option value="Room">Room / area</option><option value="Other">Other</option></select></label>
-              <label class="field" id="entity-mentioned-field"><span>First mentioned chapter (optional)</span><input name="mentioned" type="number" min="1" placeholder="Leave blank if they appear directly"></label>
+              <label class="field" id="entity-mentioned-field"><span id="entity-mentioned-label">First mentioned chapter (optional)</span><input name="mentioned" type="number" min="1" placeholder="Leave blank if they appear directly"></label>
               <label class="field" id="entity-appeared-field"><span id="entity-appeared-label">First appearance chapter (optional)</span><input name="appeared" type="number" min="1" placeholder="Leave blank if they have not appeared yet"></label>
               <label class="field" id="entity-initial-track-field"><span>Progression track</span><select name="initialTrack"></select></label><label class="field" id="entity-initial-cultivation-field"><span>Known rank when introduced (optional)</span><select name="initialLevel"><option value="">Unknown / not revealed</option>${CULTIVATION_LEVELS.map((name,index)=>`<option value="${index+1}">${name}</option>`).join("")}</select><small class="field-note">Unknown adds no cultivation ring. Choose Mortal only when the novel confirms it.</small></label>
               <label class="field" id="entity-initial-cultivation-alias-field"><span>Equivalent path title (optional)</span><input name="initialCultivationAlias" placeholder="E.g. Earthen Deity"><small class="field-note">Synchronized to the canonical tier selected above.</small></label>
@@ -378,7 +382,7 @@ app.innerHTML = `
               <label class="field"><span>Event type</span><select name="type"><option value="mention">Mentioned in this chapter</option><option value="appearance">Appears alive in this chapter</option><option value="corpse_appearance">Dead body / corpse appears</option><option value="display_name">Public/display name changes</option><option value="alias">Alias revealed</option><option value="identity_parent">Clone / avatar / identity hierarchy</option><option value="movement">Character travels / changes location</option><option value="residency">Character residence / long-term base</option><option value="location_parent">Location placed inside another location</option><option value="cultivation">Cultivation change</option><option value="status">Status becomes known or changes</option><option value="gender">Gender becomes known or changes</option><option value="age">Age stated or changes</option><option value="awareness">Awareness / mentioned by</option><option value="meeting">Meeting</option><option value="conversation">Conversation — characters, systems, or a place that speaks</option><option value="relationship">Relationship change</option><option value="membership">Organization membership</option><option value="organization_location">Organization headquarters / branch</option><option value="system_host">System bonds to a host</option><option value="system_parent">Subsystem of another system</option><option value="system_location">System operates at a location</option><option value="system_rank">System authority / grade changes</option><option value="system_merge">System merges into another system</option><option value="system_end">System is destroyed</option><option value="quest_issue">Quest is issued</option><option value="quest_update">Quest update, hint, remark, or notification</option><option value="quest_progress">Quest progress changes</option><option value="quest_end">Quest completed, failed, or abandoned</option><option value="quest_part">Quest is part of a larger quest</option><option value="quest_contribution">Quest contribution and share of the reward</option><option value="note">Story event</option></select></label>
               <label class="field"><span>Chapter</span><input name="chapter" type="number" min="1" value="80" required></label>
               <label class="field" id="event-source-field"><span id="event-source-label">Character</span><input name="source" list="admin-entity-options" required placeholder="Type a name or alias"><datalist id="admin-entity-options"></datalist></label>
-              <label class="field" id="event-location-field"><span id="event-location-label">Where this happened (optional)</span><input name="location" list="location-options" placeholder="Type a location"><datalist id="location-options"></datalist></label>
+              <label class="field" id="event-location-field"><span id="event-location-label">Where this happened (optional)</span><input name="location" list="location-options" placeholder="Type a place or an organization"><datalist id="location-options"></datalist><small class="field-note" id="event-location-note">A place, or the organization it happened inside — an office, a sect hall, a guild.</small></label><label class="field" id="event-branch-field" hidden><span>Which branch of it (optional)</span><input name="branch" list="branch-options" placeholder="Leave empty for the original branch"><datalist id="branch-options"></datalist><small class="field-note" id="event-branch-note">Only when one branch takes part rather than the whole organization. Empty means the original branch — the first place it opened.</small></label>
               <label class="field" id="event-target-field"><span id="event-target-label">Second character</span><input name="target" list="admin-entity-options"></label><label class="field" id="event-authority-field"><span>New authority</span><input name="authority" list="system-unknown-options" inputmode="numeric" maxlength="12" placeholder="8" /><small class="field-note">Leave blank to keep the authority it already has. Write unknown to take it away entirely.</small></label><label class="field" id="event-grade-field"><span>New grade</span><input name="grade" list="system-grade-options" maxlength="9" placeholder="S+" /><small class="field-note">Leave blank to keep the grade it already has. Write unknown to take it away entirely.</small></label><label class="field" id="event-progress-field"><span>Progress %</span><input name="progress" inputmode="numeric" maxlength="3" placeholder="40" /><small class="field-note">Nought to a hundred. A quest made of parts, with no figure of its own, takes the average of its parts.</small></label><label class="field" id="event-note-kind-field"><span>Kind of note</span><select name="noteKind"><option value="Update">Quest update</option><option value="Hint">Quest hint</option><option value="Remark">Remark</option><option value="Notification">New notification</option><option value="Objective">Added objective</option></select><small class="field-note">A quest's terms can grow as the story turns — new objectives, hints, and the system's own remarks all belong here rather than in a second quest.</small></label><label class="field span-2" id="event-rewards-field"><span>Rewards (optional)</span><textarea name="rewards" rows="2" placeholder="Realm Seed&#10;200 contribution points&#10;Authority +1"></textarea><small class="field-note">One per line, or separated by commas — a quest can pay several things at once, and a reward can be an item, a quantity, a rank, or anything else the story gives.</small></label><label class="field" id="event-performance-field"><span>Performance grade (optional)</span><input name="performance" list="system-grade-options" maxlength="9" placeholder="A" /><small class="field-note">How the host performed, which is generally what the reward is scaled to.</small></label><label class="field checkbox-field" id="event-ghost-field"><input type="checkbox" name="ghost" /><span>Ghost action — change the world without appearing in the list</span></label><label class="field span-2" id="event-mentions-field"><span>Also spoken of (optional)</span><input name="mentions" list="admin-entity-options" placeholder="Jotun Empire, Stonevale" /><small class="field-note">People, places or groups this action only refers to. They are drawn as spoken of — a thin line to the one who spoke of them — not as being there.</small></label><label class="field" id="event-holds-field"><span>Lasts for (optional)</span><input name="holds" type="text" inputmode="numeric" maxlength="3" placeholder="3" /><small class="field-note">How many actions after its own this keeps showing on the graph, for something that is still going on while other things happen. Leave it empty for an action that is over as soon as it lands.</small></label><label class="field" id="event-relation-field"><span>How it leaves them</span><select name="relation"><option value="">Unchanged — neutral until something says otherwise</option><option value="neutral">Neutral</option><option value="friendly">Friendly</option><option value="hostile">Hostile</option></select><small class="field-note">Everyone in it ends up standing this way towards everyone else in it.</small></label><label class="field" id="event-persona-field"><span>Acting as (optional)</span><input name="persona" list="persona-options" maxlength="160" placeholder="Lex as the Innkeeper" /><datalist id="persona-options"></datalist><small class="field-note">The face the world sees here. Write <code>Name as Face</code> — or just the face, which then belongs to the subject. Several are separated by commas, because each side of a meeting may be seen as somebody else.</small></label><label class="field" id="event-characters-field"><span id="event-characters-label">Everyone in the conversation</span><input name="characters" list="admin-entity-options" placeholder="Lex, Mary, Gerald" /><small class="field-note" id="event-characters-note">Separate names with commas. One action covers the whole conversation, however many are in it.</small></label>
               <label class="field" id="event-value-field"><span id="event-value-label">Value</span><input name="value"><datalist id="location-role-options"><option value="Headquarters"></option><option value="Branch"></option><option value="Base"></option><option value="Territory"></option><option value="Outpost"></option></datalist><datalist id="identity-relation-options"><option value="Clone"></option><option value="Avatar"></option><option value="Persona"></option><option value="Public face"></option><option value="Puppet"></option><option value="Fragment"></option></datalist><datalist id="residence-role-options"><option value="Home"></option><option value="Permanent resident"></option><option value="Resident staff"></option><option value="Long-term guest"></option><option value="Camp"></option><option value="Domain"></option></datalist></label>
               <label class="field" id="event-track-field"><span>Progression track</span><select name="track"></select></label><label class="field" id="event-level-field"><span>Rank on that track</span><select name="level"><option value="">Choose a rank…</option></select><small class="field-note">The rank controls graph size and progression automatically.</small></label>
@@ -436,6 +440,7 @@ const graph = $("#graph");
 const timeline = $("#timeline");
 const volumeSelect = $("#volume");
 const searchInput = $("#search");
+let searchChips=[];
 let searchPage = 8;
 
 function parseIdentityName(value){const raw=String(value||"").trim(),match=raw.match(/^\[\[([^\]|]+?)\|([^\]]+?)\]\]$/);if(!match)return {name:raw,wikiUrl:""};const wikiUrl=safeExternalUrl(match[2].trim());return wikiUrl?{name:match[1].trim(),wikiUrl}:{name:match[1].trim(),wikiUrl:""};}
@@ -888,7 +893,14 @@ function entity(id) { return data.entities.find(item => item.id === id); }
 function validChapter(value){const chapter=Number(value);return value!==null&&value!==undefined&&value!==""&&Number.isFinite(chapter)&&chapter>0?chapter:null;}
 function earliestChapter(values){const chapters=values.map(validChapter).filter(Boolean);return chapters.length?Math.min(...chapters):null;}
 function firstMention(item){return earliestChapter([item?.mentioned,...data.events.filter(event=>event.source===item?.id&&event.type==="mention").map(event=>event.chapter)]);}
-function firstAppearance(item){return earliestChapter([item?.appeared,...data.events.filter(event=>event.source===item?.id&&["appearance","corpse_appearance"].includes(event.type)).map(event=>event.chapter)]);}
+// A place or a group does not walk on the way a person does: the row that introduces it is its
+// appearance, and until there is one it is only ever spoken of. One written down before any row
+// existed for it carries its own introduction chapter instead — unless all it has is a mention.
+function firstAppearance(item){
+  const rows=data.events.filter(event=>event.source===item?.id&&(["appearance","corpse_appearance"].includes(event.type)||event.identityIntro===true)).map(event=>event.chapter),
+    declared=item&&item.kind!=="character"&&!validChapter(item.mentioned)?item.intro:undefined;
+  return earliestChapter([item?.appeared,declared,...rows]);
+}
 function hasAppeared(item,chapter){const first=firstAppearance(item);return first!==null&&first<=chapter;}
 function pairKey(a,b) { return [a,b].sort().join("|"); }
 function activeVol() { return data.volumes.find(v => v.id === activeVolume) || data.volumes[0]; }
@@ -907,6 +919,44 @@ function personasOf(event){
 }
 function personaListText(event){
   return [...personasOf(event)].map(([id,face])=>`${entity(id)?.name||id} as ${face}`).join(", ");
+}
+// Where somebody stands in the story, chapter by chapter: the ones they turn up in and the ones
+// they are only spoken of in. Both are read out of the actions themselves, and both can be
+// corrected by hand — the reading is a good first guess, not the last word.
+function autoChapterRoll(id){
+  const appeared=new Set(),mentioned=new Set();
+  data.events.forEach(event=>{
+    const chapter=validChapter(event.chapter);
+    if(!chapter||!id)return;
+    if((event.mentions||[]).includes(id)||(event.type==="mention"&&event.source===id))mentioned.add(chapter);
+    if(event.type!=="mention"&&(event.source===id||event.target===id||(event.characters||[]).includes(id)))appeared.add(chapter);
+  });
+  return {appeared:[...appeared],mentioned:[...mentioned]};
+}
+function rollFixes(item,kind){const fix=item?.roll?.[kind]||{};return {add:(fix.add||[]).map(validChapter).filter(Boolean),remove:(fix.remove||[]).map(validChapter).filter(Boolean)};}
+function chapterRoll(id){
+  const item=entity(id),auto=autoChapterRoll(id),roll={};
+  ["appeared","mentioned"].forEach(kind=>{
+    const {add,remove}=rollFixes(item,kind),dropped=new Set(remove);
+    roll[kind]=[...new Set([...auto[kind],...add])].filter(chapter=>!dropped.has(chapter)).sort((a,b)=>a-b);
+  });
+  // Being there is more than being spoken of, so a chapter counted as both is counted as being there.
+  roll.mentioned=roll.mentioned.filter(chapter=>!roll.appeared.includes(chapter));
+  return roll;
+}
+// A correction is kept as a correction, not as a copy of the list: later actions still feed in.
+function correctRoll(id,kind,chapter,wanted){
+  const item=entity(id),number=validChapter(chapter);
+  if(!item||!number||!["appeared","mentioned"].includes(kind))return false;
+  const auto=new Set(autoChapterRoll(id)[kind]),{add,remove}=rollFixes(item,kind),
+    nextAdd=new Set(add),nextRemove=new Set(remove);
+  if(wanted){nextRemove.delete(number);if(!auto.has(number))nextAdd.add(number);}
+  else{nextAdd.delete(number);if(auto.has(number))nextRemove.add(number);}
+  const roll={...(item.roll||{})};
+  roll[kind]={...(nextAdd.size?{add:[...nextAdd].sort((a,b)=>a-b)}:{}),...(nextRemove.size?{remove:[...nextRemove].sort((a,b)=>a-b)}:{})};
+  if(!Object.keys(roll[kind]).length)delete roll[kind];
+  if(Object.keys(roll).length)item.roll=roll;else delete item.roll;
+  return true;
 }
 function eventInvolves(event,id) {
   if(event.source === id || event.target === id || event.location === id || (event.characters || []).includes(id) || (event.mentions || []).includes(id)) return true;
@@ -999,21 +1049,26 @@ function stateName(derived,id){return derived?.states?.get(id)?.displayName||ent
 // "from:Midnight Inn System quest:rewards". A field's value runs until the next field, so a name
 // with spaces in it needs no quoting, and anything the field does not account for is kept as
 // ordinary words to look for.
-const SEARCH_FIELDS={from:"from",by:"from",source:"from",issuer:"from",with:"with",to:"with",target:"with",at:"at",in:"at",place:"at",where:"at",chapter:"chapter",ch:"chapter",chap:"chapter",event:"type",type:"type",action:"type",kind:"type",quest:"quest",text:"text",says:"text",word:"text",as:"persona",face:"persona",wearing:"persona",mentions:"mentions",names:"mentions",speaks:"mentions",is:"is",about:"about",any:"about"};
-const SEARCH_FIELD_HELP=[["from:","who it comes from — a character, or the system that issued the quest"],["as:","the face worn for it — a name the world knows, not the person behind it"],["mentions:","spoken of in it, without being there"],["with:","who else it touches"],["at:","where it happens"],["event:","the kind of change — cultivation, movement, quest…"],["quest:","a quest by name, or one of its terms: rewards, rank, achievements"],["chapter:","one chapter, a range like 12-40, or >60"],["is:","ghost, moment, quest"]];
+const SEARCH_FIELDS={from:"from",by:"from",source:"from",issuer:"from",with:"with",to:"with",target:"with",at:"at",in:"at",place:"at",where:"at",chapter:"chapter",ch:"chapter",chap:"chapter",event:"type",type:"type",action:"type",kind:"type",quest:"quest",text:"text",says:"text",word:"text",as:"persona",face:"persona",wearing:"persona",speaks:"spokenof",spoken:"spokenof",spokenof:"spokenof",names:"spokenof",is:"is",about:"about",any:"about",mention:"roll_mentioned",mentioned:"roll_mentioned",mentions:"roll_mentioned",appears:"roll_appeared",appeared:"roll_appeared",appearing:"roll_appeared",appearance:"roll_appeared",chapters:"roll_both",roll:"roll_both",both:"roll_both"};
+// The roll fields do not narrow the actions at all — they ask a different question, and are
+// answered with a list of chapters rather than a list of things that happened.
+const ROLL_FIELDS={roll_appeared:["appeared"],roll_mentioned:["mentioned"],roll_both:["appeared","mentioned"]};
+const SEARCH_FIELD_HELP=[["mentioned:","every chapter somebody is only spoken of in"],["appears:","every chapter somebody is actually in"],["chapters:","both lists at once"],["from:","who it comes from — a character, or the system that issued the quest"],["as:","the face worn for it — a name the world knows, not the person behind it"],["speaks:","actions that speak of somebody without them being there"],["with:","who else it touches"],["at:","where it happens"],["event:","the kind of change — cultivation, movement, quest…"],["quest:","a quest by name, or one of its terms: rewards, rank, achievements"],["chapter:","one chapter, a range like 12-40, or >60"],["is:","ghost, moment, quest"]];
 function searchWords(text){return String(text||"").toLowerCase().split(/[^\p{L}\p{N}'’-]+/u).filter(word=>word.length>1);}
 function parseSearchQuery(raw){
   const text=String(raw||"").replace(/\s+/g," ").trim();
-  if(!text)return {filters:[],words:[]};
-  const marks=[...text.matchAll(/(?:^|\s)([A-Za-z]{2,8})\s*:\s*/g)].filter(mark=>SEARCH_FIELDS[mark[1].toLowerCase()]);
-  if(!marks.length)return {filters:[],words:searchWords(text)};
-  const filters=[],words=searchWords(text.slice(0,marks[0].index));
+  if(!text)return {filters:[],words:[],rolls:[]};
+  const marks=[...text.matchAll(/(?:^|\s)([A-Za-z]{2,10})\s*:\s*/g)].filter(mark=>SEARCH_FIELDS[mark[1].toLowerCase()]);
+  if(!marks.length)return {filters:[],words:searchWords(text),rolls:[]};
+  const filters=[],rolls=[],words=searchWords(text.slice(0,marks[0].index));
   marks.forEach((mark,index)=>{
     const start=mark.index+mark[0].length,end=index+1<marks.length?marks[index+1].index:text.length,
-      value=text.slice(start,end).trim().replace(/^"|"$/g,"").trim();
-    if(value)filters.push({field:SEARCH_FIELDS[mark[1].toLowerCase()],value});
+      value=text.slice(start,end).trim().replace(/^"|"$/g,"").trim(),field=SEARCH_FIELDS[mark[1].toLowerCase()];
+    if(!value)return;
+    if(ROLL_FIELDS[field])rolls.push({kinds:ROLL_FIELDS[field],value});
+    else filters.push({field,value});
   });
-  return {filters,words};
+  return {filters,words,rolls};
 }
 // One letter out is still the word that was meant: "cultivatoin" finds cultivation.
 function withinOneEdit(a,b){
@@ -1086,7 +1141,7 @@ function actionMatchesFilter(event,filter){
   if(filter.field==="type")return matchesTypeValue(filter.value,event.type);
   if(filter.field==="text")return searchWords(filter.value).every(word=>actionHaystack(event).includes(word));
   if(filter.field==="persona"){const worn=[...personasOf(event).values()].join(" ").toLowerCase();return Boolean(worn)&&searchWords(filter.value).every(word=>worn.includes(word));}
-  if(filter.field==="mentions"){const spoken=readEntityValue(filter.value);return spoken.id?(event.mentions||[]).includes(spoken.id):(event.mentions||[]).map(id=>entity(id)?.name||"").join(" ").toLowerCase().includes(String(filter.value).toLowerCase());}
+  if(filter.field==="spokenof"){const spoken=readEntityValue(filter.value);return spoken.id?(event.mentions||[]).includes(spoken.id):(event.mentions||[]).map(id=>entity(id)?.name||"").join(" ").toLowerCase().includes(String(filter.value).toLowerCase());}
   if(filter.field==="is"){
     return searchWords(filter.value).every(flag=>
       flag==="ghost"?Boolean(event.ghost)
@@ -1109,7 +1164,59 @@ function actionMatchesFilter(event,filter){
   }else if(!searchWords(filter.value).every(word=>haystack.includes(word)))return false;
   return read.words.every(word=>haystack.includes(word));
 }
+// What a half-typed query is reaching for. Two letters of a field name are enough to offer the
+// field, and once a field is written the values it can take are offered by name — so the reader
+// picks somebody out of the story rather than having to spell them.
+const SEARCH_FIELD_NAME={from:"from",with:"with",at:"at",chapter:"chapter",type:"event",quest:"quest",text:"text",persona:"as",spokenof:"speaks",is:"is",about:"about",roll_mentioned:"mentioned",roll_appeared:"appears",roll_both:"chapters"};
+const SEARCH_FIELD_NOTE=Object.fromEntries(SEARCH_FIELD_HELP.map(([label,note])=>[label.replace(":",""),note]));
+function suggestFields(fragment){
+  const canon=new Map();
+  Object.entries(SEARCH_FIELDS).forEach(([alias,field])=>{if(alias.startsWith(fragment)&&!canon.has(field))canon.set(field,SEARCH_FIELD_NAME[field]||alias);});
+  return [...canon.values()].map(alias=>({alias,note:SEARCH_FIELD_NOTE[alias]||""})).slice(0,6);
+}
+function suggestValues(field,fragment){
+  const words=searchWords(fragment);
+  if(field==="chapter"||field==="text"||field==="persona")return [];
+  if(field==="is")return ["ghost","moment","quest"].filter(flag=>!words.length||flag.startsWith(words[0])).map(value=>({value,note:"actions like this"}));
+  if(field==="type")return [...new Set(data.events.map(event=>String(event.type).replaceAll("_"," ")))].sort()
+    .filter(type=>!words.length||words.every(word=>type.includes(word))).slice(0,6).map(value=>({value,note:"kind of change"}));
+  const kinds=field==="quest"?["quest"]:field==="at"?["location","organization"]:null,found=[];
+  searchNameRows().filter(row=>kinds?kinds.includes(row.kind):row.kind!=="quest").forEach(row=>row.names.forEach(name=>{
+    const lower=String(name).toLowerCase();
+    if(words.length&&!words.every(word=>lower.includes(word)))return;
+    if(found.some(item=>item.value===name))return;
+    found.push({value:name,note:row.kind});
+  }));
+  return found.slice(0,6);
+}
+function searchSuggestions(){
+  const text=searchInput.value,rows=[],
+    mark=text.match(/(^|\s)([A-Za-z]{2,10})\s*:\s*([^:]*)$/),
+    word=text.match(/(^|\s)([A-Za-z]{2,})$/);
+  if(mark&&SEARCH_FIELDS[mark[2].toLowerCase()]){
+    const key=mark[2].toLowerCase(),fragment=mark[3].trim(),at=mark.index+mark[1].length;
+    suggestValues(SEARCH_FIELDS[key],fragment).forEach(item=>rows.push({kind:"value",key,value:item.value,note:item.note,at}));
+  }
+  // The last word may be the start of a new field even while a value is being written, so both are
+  // offered: whichever the reader meant is the one that has anything to show.
+  if(word)suggestFields(word[2].toLowerCase()).forEach(item=>rows.push({kind:"field",alias:item.alias,note:item.note,at:word.index+word[1].length}));
+  return rows.slice(0,8);
+}
+// A finished filter is lifted out of the box and kept as a block above it, so what is being asked
+// stays legible however many filters it grows to.
+function searchQueryText(){return [...searchChips.map(chip=>`${chip.key}:${chip.value}`),searchInput.value].join(" ").trim();}
+function renderSearchChips(){
+  const box=$("#search-chips");if(!box)return;
+  box.hidden=!searchChips.length;
+  box.innerHTML=searchChips.map((chip,index)=>`<span class="search-chip"><b>${escapeHtml(chip.key)}:</b>${escapeHtml(chip.value)}<button type="button" class="search-chip-drop" data-chip="${index}" aria-label="Drop ${escapeHtml(chip.key)} ${escapeHtml(chip.value)}">×</button></span>`).join("");
+  box.querySelectorAll("[data-chip]").forEach(button=>button.onclick=()=>{
+    searchChips.splice(Number(button.dataset.chip),1);searchPage=SEARCH_PAGE;renderSearchChips();renderSearchResults();searchInput.focus();
+  });
+}
 function searchActions(query){
+  // A query that only asks for somebody's chapters is not asking for actions at all, so it is
+  // answered with chapters alone rather than with everything that ever happened.
+  if(!query.filters.length&&!query.words.length)return {entries:[],loose:false};
   const beats=volumeBeats(),beatOf=new Map();
   beats.forEach(beat=>beat.events.forEach(event=>beatOf.set(event.id,beat)));
   const found=volumeActions().map((event,index)=>({event,index:index+1}))
@@ -1135,6 +1242,35 @@ function searchTerms(query){
   if(!wanted.length)return [];
   return lexiconTerms().filter(entry=>{const lower=`${entry.term} ${entry.note}`.toLowerCase();return wanted.some(word=>lower.includes(word));}).slice(0,5);
 }
+// "mentioned:velma" is a different question from "what happened": it asks for the chapters
+// themselves, so it is answered with a list of chapters rather than a list of actions.
+function searchChapters(query){
+  const wanted=new Map(),order=[];
+  (query.rolls||[]).forEach(roll=>{
+    const read=readEntityValue(roll.value),key=read.id||`?${roll.value.toLowerCase()}`;
+    if(!wanted.has(key)){wanted.set(key,{id:read.id,name:read.id?entity(read.id)?.name||read.id:roll.value,kinds:new Set()});order.push(key);}
+    roll.kinds.forEach(kind=>wanted.get(key).kinds.add(kind));
+  });
+  return order.map(key=>{
+    const found=wanted.get(key);
+    if(!found.id)return {...found,kinds:[...found.kinds],rows:[]};
+    const roll=chapterRoll(found.id),rows=[];
+    ["appeared","mentioned"].forEach(kind=>{if(found.kinds.has(kind))roll[kind].forEach(chapter=>rows.push({chapter,kind}));});
+    return {...found,kinds:[...found.kinds],rows:rows.sort((a,b)=>a.chapter-b.chapter)};
+  });
+}
+function volumeOfChapter(chapter){return data.volumes.find(volume=>chapter>=Number(volume.from)&&chapter<=Number(volume.to))||null;}
+// Going to a chapter plays the volume up to the end of it, so the whole chapter is on the graph
+// rather than its first line only. A chapter in another volume takes the reader there first.
+function jumpToChapter(chapter){
+  const number=validChapter(chapter);if(!number)return;
+  const volume=volumeOfChapter(number);
+  cancelChapterSequence();expandedChapter=null;
+  if(volume&&volume.id!==activeVolume){activeVolume=volume.id;if(volumeSelect)volumeSelect.value=volume.id;selectedId=null;locationPovId=null;}
+  const reached=volumeActions().reduce((found,event,index)=>event.chapter<=number?index:found,-1);
+  currentActionIndex=reached>=0?snapToBeat(reached+1):0;
+  currentChapter=number;cacheActiveVolume();setMobilePanel("events");renderAll();
+}
 function jumpToAction(index){
   cancelChapterSequence();expandedChapter=null;
   currentActionIndex=snapToBeat(index);
@@ -1144,12 +1280,21 @@ function jumpToAction(index){
 const SEARCH_PAGE=8;
 function renderSearchResults(){
   const panel=$("#search-results");if(!panel)return;
-  const raw=searchInput.value,query=parseSearchQuery(raw);
+  const raw=searchQueryText(),query=parseSearchQuery(raw);
   if(!raw.trim()){
     panel.innerHTML=`<p class="search-help-title">Search this volume</p><ul class="search-help">${SEARCH_FIELD_HELP.map(([field,note])=>`<li><code>${field}</code><span>${escapeHtml(note)}</span></li>`).join("")}</ul>`;
     panel.hidden=document.activeElement!==searchInput;searchInput.setAttribute("aria-expanded",String(!panel.hidden));return;
   }
-  const {entries,loose}=searchActions(query),identities=searchIdentities(query),terms=searchTerms(query),rows=[];
+  const {entries,loose}=searchActions(query),identities=searchIdentities(query),terms=searchTerms(query),chapterRolls=searchChapters(query),suggestions=searchSuggestions(),rows=[];
+  if(suggestions.length)rows.push('<li class="search-group">Finish the line</li>',...suggestions.map((item,index)=>`<li><button type="button" class="search-row search-suggest" data-suggest="${index}"><span class="search-meta">${item.kind==="field"?"filter":`${escapeHtml(item.key)}:`}${item.note?` · ${escapeHtml(item.note)}`:""}</span><strong>${item.kind==="field"?`${escapeHtml(item.alias)}:`:escapeHtml(item.value)}</strong></button></li>`));
+  chapterRolls.forEach(roll=>{
+    const both=roll.kinds.length>1,
+      label=both?"appears in or is spoken of in":roll.kinds[0]==="appeared"?"appears in":"is only spoken of in";
+    if(!roll.id){if(!suggestions.some(item=>item.kind==="value"))rows.push('<li class="search-group">Chapters</li>',`<li><span class="search-row search-miss">Nothing in this story is named “${escapeHtml(roll.name)}”.</span></li>`);return;}
+    rows.push(`<li class="search-group">Chapters · ${escapeHtml(roll.name)} ${label}${roll.rows.length?` · ${roll.rows.length}`:""}${both?' <span class="search-legend"><b class="roll-key appeared"></b>in it <b class="roll-key mentioned"></b>spoken of</span>':""}</li>`);
+    if(!roll.rows.length){rows.push('<li><span class="search-row search-miss">No chapter yet. The editor\u2019s chapter roll can add one by hand.</span></li>');return;}
+    rows.push(`<li class="search-chapter-set">${roll.rows.map(row=>{const away=volumeOfChapter(row.chapter),outside=away&&away.id!==activeVolume;return `<button type="button" class="search-chapter roll-${row.kind}${outside?" search-chapter-away":""}" data-search-chapter="${row.chapter}" title="${row.kind==="appeared"?"In chapter":"Spoken of in chapter"} ${row.chapter}${outside?` · ${escapeHtml(away.name)}`:""}">${row.chapter}</button>`;}).join("")}</li>`);
+  });
   if(terms.length)rows.push(`<li class="search-group">Linked words</li>`,...terms.map(entry=>`<li><a class="search-row search-term" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer"><span class="search-meta">opens the wiki${entry.chapter?` · first mentioned in chapter ${entry.chapter}`:""}</span><strong>${escapeHtml(entry.term)}</strong>${entry.note?`<span class="search-note">${escapeHtml(entry.note)}</span>`:""}</a></li>`));
   if(identities.length)rows.push(`<li class="search-group">On the graph</li>`,...identities.map(row=>{const shown=revealedVolumeActions().some(event=>eventInvolves(event,row.id));return `<li><button type="button" class="search-row${shown?"":" search-ahead"}" data-search-entity="${escapeHtml(row.id)}"><span class="search-meta">${escapeHtml(row.kind)}${shown?"":" · not reached yet"}</span><strong>${escapeHtml(stateName(currentDerived(),row.id)||row.names[0])}</strong></button></li>`;}));
   if(entries.length){
@@ -1163,6 +1308,14 @@ function renderSearchResults(){
   panel.innerHTML=rows.length?`<ul class="search-list">${rows.join("")}</ul>`:`<p class="search-empty">Nothing in ${escapeHtml(activeVol().name)} matches that.</p>`;
   panel.hidden=false;searchInput.setAttribute("aria-expanded","true");
   panel.querySelectorAll("[data-search-action]").forEach(button=>button.onclick=()=>{closeSearch();jumpToAction(Number(button.dataset.searchAction));});
+  panel.querySelectorAll("[data-suggest]").forEach(button=>button.onclick=()=>{
+    const item=suggestions[Number(button.dataset.suggest)];if(!item)return;
+    const text=searchInput.value;
+    if(item.kind==="field")searchInput.value=`${text.slice(0,item.at)}${item.alias}:`;
+    else{searchChips.push({key:item.key,value:item.value});searchInput.value=text.slice(0,item.at).replace(/\s+$/,"");}
+    searchPage=SEARCH_PAGE;renderSearchChips();renderSearchResults();searchInput.focus();
+  });
+  panel.querySelectorAll("[data-search-chapter]").forEach(button=>button.onclick=()=>{closeSearch();jumpToChapter(button.dataset.searchChapter);});
   panel.querySelectorAll("[data-search-entity]").forEach(button=>button.onclick=()=>{
     closeSearch();cancelChapterSequence();expandedChapter=null;selectedId=button.dataset.searchEntity;locationPovId=null;setMobilePanel("info");
     // Someone already on the graph is simply picked out; someone the reader has not reached yet
@@ -1187,6 +1340,16 @@ function relationHistoryFor(a,b,chapter) { return data.events.filter(e => e.type
 function meetingFor(a,b,chapter) { return data.events.find(e => e.type === "meeting" && e.chapter <= chapter && pairKey(e.source,e.target) === pairKey(a,b)); }
 function currentRelation(a,b,chapter) { const history = relationHistoryFor(a,b,chapter); return history.length ? String(history.at(-1).value || "neutral").toLowerCase() : "neutral"; }
 function locationLineage(id,derived){const chain=[],seen=new Set([id]);let cursor=id;while(true){const parent=locationParentOf(cursor,derived);if(!parent||seen.has(parent))break;chain.unshift(parent);seen.add(parent);cursor=parent;}return [...chain,id];}
+// An organization can stand in more than one place at once: a head office, a branch, an outpost.
+// Naming the organization as where something happened means one of those places — the branch the
+// action names, or, when it names none, the original one: the first the organization opened.
+function organizationBranches(id,links){return (links||[]).filter(link=>link.organization===id&&!link.pending).sort((a,b)=>(Number(a.from)||0)-(Number(b.from)||0));}
+function branchOf(event,links){
+  const branches=organizationBranches(event?.location,links);
+  if(!branches.length)return null;
+  return (branches.find(link=>link.location===event?.branch)||branches[0]).location;
+}
+function eventBranchId(event,derived){return entity(event?.location)?.kind==="organization"?branchOf(event,derived?.organizationLocations||[]):null;}
 function locationDescendants(id,derived){const result=[],queue=[id],seen=new Set([id]);while(queue.length){const parent=queue.shift();derived.locationParents.filter(link=>link.parent===parent).forEach(link=>{if(seen.has(link.child))return;seen.add(link.child);result.push(link.child);queue.push(link.child);});}return result;}
 
 // ---- Location hierarchy model -------------------------------------------------
@@ -1276,6 +1439,7 @@ function derive(chapter,eventSubset=null) {
     const source = states.get(event.source);
     if(event.type==="mention"&&source)source.mentioned=source.mentioned===null?event.chapter:Math.min(source.mentioned,event.chapter);
     if(["appearance","corpse_appearance"].includes(event.type)&&source)source.appeared=source.appeared===null?event.chapter:Math.min(source.appeared,event.chapter);
+    if(event.identityIntro===true&&source)source.appeared=source.appeared===null?event.chapter:Math.min(source.appeared,event.chapter);
     if(event.type==="appearance"&&source&&source.status==="unknown")source.status="alive";
     if(event.type==="corpse_appearance"&&source)source.status="dead";
     if (event.type === "alias" && source) source.aliases.push({chapter:event.chapter,value:event.value});
@@ -1401,6 +1565,12 @@ function derive(chapter,eventSubset=null) {
     if (event.type === "relationship" && source && states.has(event.target)) {
       const key = pairKey(event.source,event.target); if (!relations.has(key)) relations.set(key,[]); relations.get(key).push(event);
     }
+    // Whoever is in an action inside an organization is standing at the branch it resolves to, so
+    // the place itself records the visit rather than the organization holding it in the abstract.
+    if(states.get(event.location)?.kind==="organization"&&!['mention','membership','organization_location'].includes(event.type)){
+      const branch=branchOf(event,[...organizationLocations.values()]);
+      if(branch)locationCharacterIds(event).forEach(character=>locationVisits.push({character,location:branch,chapter:event.chapter,order:event.order||0,eventId:event.id,type:event.type,organization:event.location}));
+    }
     if(event.location&&states.get(event.location)?.kind==="location"&&!['mention','residency','location_parent','organization_location'].includes(event.type)){
       locationCharacterIds(event).forEach(character=>{const visit={character,location:event.location,chapter:event.chapter,order:event.order||0,eventId:event.id,type:event.type};locationVisits.push(visit);});
       if(event.type==="movement"&&source?.kind==="character")locations.set(event.source,{character:event.source,location:event.location,chapter:event.chapter,order:event.order||0,eventId:event.id,type:event.type,...(event.action==="forming"?{pending:true,since:event.chapter}:{})});
@@ -1458,7 +1628,7 @@ function updateSuggestions() {
 data.entities.forEach(item=>{const shown=stateName(d,item.id);if(knownIds.has(item.id)&&item.kind!=="quest"){publicOptions.push(`<option value="${escapeHtml(shown)}">${item.kind}</option>`);if(shown!==item.name)publicOptions.push(`<option value="${escapeHtml(item.name)}">Earlier name of ${escapeHtml(shown)}</option>`);known.filter(e=>["alias","display_name"].includes(e.type)&&e.source===item.id).forEach(e=>publicOptions.push(`<option value="${escapeHtml(e.value)}">Known name of ${escapeHtml(shown)}</option>`));}adminOptions.push(`<option value="${escapeHtml(item.name)}">${item.kind}</option>`);data.events.filter(e=>["alias","display_name"].includes(e.type)&&e.source===item.id).forEach(e=>adminOptions.push(`<option value="${escapeHtml(e.value)}">Name of ${escapeHtml(item.name)}</option>`));});
   $("#entity-options").innerHTML = publicOptions.join("");
   $("#admin-entity-options").innerHTML = adminOptions.join("");
-  $("#location-options").innerHTML=data.entities.filter(item=>item.kind==="location").map(item=>`<option value="${escapeHtml(item.name)}"></option>`).join("");
+  $("#location-options").innerHTML=data.entities.filter(item=>["location","organization"].includes(item.kind)).map(item=>`<option value="${escapeHtml(item.name)}">${item.kind==="organization"?"organization":""}</option>`).join("");
   // Any name the story has given out can be worn as a face: an alias, a display name, or another
   // identity that stands on its own.
   const personaOptions=new Set();
@@ -2024,7 +2194,7 @@ function renderGraph() {
   // Location links are re-pointed at the deepest place the reader can currently see, so a
   // collapsed realm inherits every connection of the places folded inside it.
   const locationEdgeSeen=new Set(),locationEdge=(from,to,baseClass,active,chapter,note)=>{const target=edgeLocationId(to);if(!target||from===target)return;noteEdge(from,target,chapter,note);const key=`${baseClass}|${from}|${target}`;if(locationEdgeSeen.has(key)&&!active)return;locationEdgeSeen.add(key);straightEdge(from,target,`edge ${baseClass}${active?" newly-revealed-edge":""}`,from,target);};
-  derived.organizationLocations.forEach(link=>locationEdge(link.organization,link.location,`organization-location-edge${forming(link)}`,beatDoes("organization_location",event=>event.source===link.organization&&event.location===link.location),link.from,`${link.role} based here${formingNote(link)}`));
+  derived.organizationLocations.forEach(link=>locationEdge(link.organization,link.location,`organization-location-edge${forming(link)}`,beatDoes("organization_location",event=>event.source===link.organization&&event.location===link.location)||beatEvents.some(event=>event.location===link.organization&&eventBranchId(event,derived)===link.location),link.from,`${link.role} based here${formingNote(link)}`));
   derived.residences.forEach(link=>locationEdge(link.character,link.location,`residence-edge${forming(link)}`,beatDoes("residency",event=>event.source===link.character&&event.location===link.location),link.from,`${link.role} here${formingNote(link)}`));
   derived.locations.forEach((visit,character)=>locationEdge(character,visit.location,`location-edge${forming(visit)}`,beatDoes("movement",event=>event.source===character&&event.location===visit.location),visit.chapter,visit.pending?`On the way here since chapter ${visit.since||visit.chapter}`:"Travelled here"));
   derived.locationParents.forEach(link=>{const child=edgeLocationId(link.child),parent=edgeLocationId(link.parent);if(!child||!parent||child===parent)return;noteEdge(child,parent,link.from,`Sits inside${formingNote(link)}`);straightEdge(child,parent,`edge hierarchy-edge${forming(link)}${beatDoes("location_parent",event=>event.source===link.child&&event.location===link.parent)?" newly-revealed-edge":""}`,child,parent);});
@@ -2067,9 +2237,13 @@ function renderGraph() {
       straightEdge(speaker,spoken,`edge mention-edge${live?" newly-revealed-edge":""}`,speaker,spoken);
     });
   });
-  beatEvents.filter(event=>event.location&&entity(event.location)?.kind==="location"&&!["movement","residency","organization_location","location_parent"].includes(event.type)).forEach(event=>{
-    const place=edgeLocationId(event.location);
-    locationCharacterIds(event).forEach(who=>{noteEdge(who,place,event.chapter,"Here for this action");straightEdge(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place);});
+  beatEvents.filter(event=>event.location&&["location","organization"].includes(entity(event.location)?.kind)&&!["movement","residency","organization_location","location_parent"].includes(event.type)).forEach(event=>{
+    // Inside an organization, everyone in it is tied to the organization itself, because that is
+    // the where the action names. Which of its branches is meant is said by that branch's own line
+    // lighting up rather than by putting everybody on the place.
+    const group=entity(event.location)?.kind==="organization"?entity(event.location):null,branch=eventBranchId(event,derived),place=edgeLocationId(event.location),
+      note=group?`Here for this action — ${group.name}${branch?` · ${entity(branch)?.name||branch}`:""}`:"Here for this action";
+    locationCharacterIds(event).forEach(who=>{noteEdge(who,place,event.chapter,note);straightEdge(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place);});
   });
   // On the beat a quest is handed over, draw the handing over: from whoever issued it to whoever
   // took it. It lasts only for that action, like the quest notice itself.
@@ -2098,12 +2272,12 @@ function renderGraph() {
   // happening to whoever carries the quest and to whoever set it.
   const questActive=[...beatEvents,...holdingEvents].filter(event=>String(event.type).startsWith("quest_")).flatMap(event=>
     [entity(event.source)?.issuer,...(derived.quests.find(run=>run.quest===event.source)?.holders||[])]);
-  const activeIds=new Set([...beatEvents,...holdingEvents].flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])]).concat(questActive).filter(Boolean).map(edgeLocationId));
+  const activeIds=new Set([...beatEvents,...holdingEvents].flatMap(event=>[event.source,event.target,event.location,eventBranchId(event,derived),...(event.characters||[])]).concat(questActive).filter(Boolean).map(edgeLocationId));
   // Nothing on the graph belongs to this beat: dimming everything would leave the reader looking
   // at a dark graph wondering what happened.
   if(!activeIds.size)viewportGroup.setAttribute("class",String(viewportGroup.getAttribute("class")).replace(" has-action-focus",""));
   const retractingIds=collapsingLocationId?new Set([...renderedSubtree(collapsingLocationId,locView)]):new Set();
-  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=beatDoes("cultivation",event=>event.source===item.id),priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null,questNotice=null,personaNotice=null;
+  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind!=="quest"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=beatDoes("cultivation",event=>event.source===item.id),priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null,questNotice=null,personaNotice=null;
     if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));
     }else if(item.kind==="system"){const opened=sysView.expanded.has(item.id),childCount=(sysView.children.get(item.id)||[]).length,r=systemGlyphRadius(state),
         rankMoved=beatDoes("system_rank",event=>event.source===item.id);
@@ -2858,7 +3032,7 @@ function combinePickedActions(){
 function actionSubjectLine(event){
   const name=id=>id?(entity(id)?.name||id):"",
     worn=personasOf(event),
-    parts=[name(event.source)+(worn.get(event.source)?` as ${worn.get(event.source)}`:""),name(event.target)+(worn.get(event.target)?` as ${worn.get(event.target)}`:""),event.location?`at ${name(event.location)}`:"",(event.mentions||[]).length?`speaks of ${event.mentions.map(name).join(", ")}`:""].filter(Boolean);
+    parts=[name(event.source)+(worn.get(event.source)?` as ${worn.get(event.source)}`:""),name(event.target)+(worn.get(event.target)?` as ${worn.get(event.target)}`:""),event.location?`at ${name(event.location)}${event.branch?` · ${name(event.branch)}`:""}`:"",(event.mentions||[]).length?`speaks of ${event.mentions.map(name).join(", ")}`:""].filter(Boolean);
   return parts.length?parts.join(" → ").replace(" → at "," · at ") : "";
 }
 // Derivation quietly ignores an action whose parts are the wrong kind — a residence at an
@@ -2867,6 +3041,7 @@ function actionSubjectLine(event){
 function actionEffectProblem(event){
   const kind=id=>entity(id)?.kind||"",type=String(event.type);
   const needs=(ok,message)=>ok?"":message;
+  if(event.branch&&kind(event.location)!=="organization")return "a branch needs its organization named as where this happened";
   if(type==="residency")return needs(kind(event.source)==="character"&&kind(event.location)==="location","a residence needs a character and a place");
   if(type==="movement")return needs(kind(event.source)==="character"&&kind(event.location)==="location","travel needs a character and a place");
   if(type==="organization_location")return needs(kind(event.source)==="organization"&&kind(event.location)==="location","an organization place needs an organization and a place");
@@ -3031,7 +3206,7 @@ function renderOrderEditor(){
     });
   });
 }
-let renderedLexicon=null,editingLexiconTerm="";
+let renderedLexicon=null,editingLexiconTerm="",rollEntityId="";
 function renderLexiconEditor(){
   const list=$("#lexicon-list");if(!list)return;
   const field=$("#lexicon-text");
@@ -3055,11 +3230,42 @@ function renderLexiconEditor(){
   });
 }
 function clearLexiconInputs(){editingLexiconTerm="";["#lexicon-term","#lexicon-url","#lexicon-note","#lexicon-chapter"].forEach(id=>{const field=$(id);if(field)field.value="";});$("#lexicon-error").textContent="";}
+// The two lists a reader actually asks for — every chapter somebody is in, and every chapter they
+// are only talked about in — with the reading laid open so a wrong call can be taken back by hand.
+const rollKinds=[["appeared","Appears in","Chapters this identity is actually in."],["mentioned","Mentioned in","Chapters that only speak of them. A chapter counted as both is counted as being there."]];
+function rollGroupHtml(id,kind,title,note){
+  const chapters=chapterRoll(id)[kind],{add,remove}=rollFixes(entity(id),kind),added=new Set(add),
+    setAside=remove.filter(chapter=>autoChapterRoll(id)[kind].includes(chapter)).sort((a,b)=>a-b),
+    name=entity(id)?.name||id;
+  return `<div class="roll-group" data-kind="${kind}"><div class="roll-group-head"><h3>${title}</h3><span class="chip">${chapters.length} chapter${chapters.length===1?"":"s"}</span></div><p class="roll-note">${note}</p>`
+    +(chapters.length
+      ?`<ul class="roll-chips">${chapters.map(chapter=>`<li class="roll-chip${added.has(chapter)?" roll-chip-added":""}"><span>Chapter ${chapter}</span><button type="button" class="roll-drop" data-kind="${kind}" data-chapter="${chapter}" title="Take chapter ${chapter} off this list" aria-label="Take chapter ${chapter} off ${escapeHtml(name)}'s ${title.toLowerCase()} list">×</button></li>`).join("")}</ul>`
+      :'<p class="roll-empty">Nothing here yet.</p>')
+    +(setAside.length?`<p class="roll-set-aside">Set aside by hand: ${setAside.map(chapter=>`<button type="button" class="roll-restore" data-kind="${kind}" data-chapter="${chapter}">Chapter ${chapter} ↩</button>`).join(" ")}</p>`:"")
+    +`<div class="roll-add"><input class="roll-chapter" data-kind="${kind}" type="text" inputmode="numeric" maxlength="6" placeholder="Chapter number" autocomplete="off" aria-label="Chapter to add to ${escapeHtml(name)}'s ${title.toLowerCase()} list"><button type="button" class="button ghost roll-add-button" data-kind="${kind}">Add chapter</button></div></div>`;
+}
+function renderRollEditor(){
+  const body=$("#roll-body");if(!body)return;
+  const field=$("#roll-entity"),item=rollEntityId?entity(rollEntityId):null;
+  if(!item){rollEntityId="";body.innerHTML='<p class="roll-hint">Pick an identity above to see the chapters it turns up in.</p>';return;}
+  if(field&&document.activeElement!==field)field.value=item.name;
+  body.innerHTML=`<div class="roll-groups">${rollKinds.map(([kind,title,note])=>rollGroupHtml(item.id,kind,title,note)).join("")}</div>`;
+  const change=(kind,chapter,wanted)=>{
+    if(!correctRoll(item.id,kind,chapter,wanted)){toast("That is not a chapter number");return;}
+    saveData();renderAll();
+    toast(`Chapter ${validChapter(chapter)} ${wanted?"added to":"taken off"} ${item.name}'s ${kind==="appeared"?"appearances":"mentions"}`);
+  };
+  body.querySelectorAll(".roll-drop").forEach(button=>button.onclick=()=>change(button.dataset.kind,button.dataset.chapter,false));
+  body.querySelectorAll(".roll-restore").forEach(button=>button.onclick=()=>change(button.dataset.kind,button.dataset.chapter,true));
+  const addFrom=kind=>{const input=body.querySelector(`.roll-chapter[data-kind="${kind}"]`);if(!input)return;const chapter=validChapter(input.value);if(!chapter){toast("Write a chapter number first");input.focus();return;}input.value="";change(kind,chapter,true);};
+  body.querySelectorAll(".roll-add-button").forEach(button=>button.onclick=()=>addFrom(button.dataset.kind));
+  body.querySelectorAll(".roll-chapter").forEach(input=>input.onkeydown=event=>{if(event.key==="Enter"){event.preventDefault();addFrom(input.dataset.kind);}});
+}
 function renderAdmin(){
   renderVolumeEditor();
   const templateField=$("#chapter-url-template");if(templateField&&document.activeElement!==templateField)templateField.value=data.chapterUrlTemplate||"";
   const sourcesField=$("#chapter-sources-text");if(sourcesField&&document.activeElement!==sourcesField&&renderedChapterSources!==data.chapterSources){sourcesField.value=chapterSourcesToText(data.chapterSources);renderedChapterSources=data.chapterSources;}
-  renderLexiconEditor();
+  renderLexiconEditor();renderRollEditor();
   const missingBox=$("#missing-chapter-links");if(missingBox){const missing=referencedChaptersWithoutLinks();missingBox.hidden=!missing.length;if(missing.length)missingBox.querySelector("span").textContent=`Chapter${missing.length===1?"":"s"} ${missing.join(", ")} ${missing.length===1?"is":"are"} referenced somewhere but ${missing.length===1?"has":"have"} no saved link yet.`;}
   const sorted=[...data.events].sort((a,b)=>a.chapter-b.chapter||(a.order||0)-(b.order||0)||String(a.type).localeCompare(String(b.type)));$("#data-count").textContent=`${data.events.length} events`;$("#entity-count").textContent=`${data.entities.length} identities`;$("#entity-table").innerHTML=[...data.entities].sort((a,b)=>a.name.localeCompare(b.name)).map(item=>{const connected=data.events.filter(event=>eventInvolves(event,item.id)).length,intro=item.kind==="character"?(firstMention(item)||firstAppearance(item)||item.intro):item.intro;return `<tr class="${connected?"":"orphan-identity"}"><td><strong>${escapeHtml(item.name)}</strong>${connected?"":'<small class="orphan-warning">Not yet visible on graph</small>'}</td><td><span class="chip">${escapeHtml(item.kind)}</span></td><td>${intro?`Chapter ${intro}`:"—"}</td><td>${connected||'<span class="orphan-warning">0 — repair needed</span>'}</td><td><div class="table-actions"><button class="button ghost edit-identity" data-id="${escapeHtml(item.id)}">Edit identity</button><button class="button ghost delete-identity-row" data-id="${escapeHtml(item.id)}">Delete</button></div></td></tr>`;}).join("");$("#event-table").innerHTML=sorted.map(e=>{const creationManaged=isCreationManagedEvent(e);return `<tr data-event-id="${escapeHtml(e.id)}" data-event-owner="${creationManaged?"identity":"chapter"}"><td>${e.chapter}</td><td><span class="chip">${escapeHtml(e.type)}</span>${creationManaged?'<small class="table-location">creation record</small>':""}</td><td>${escapeHtml([entity(e.source)?.name,e.target?entity(e.target)?.name:null].filter(Boolean).join(" → "))}${e.location?`<small class="table-location">at ${escapeHtml(entity(e.location)?.name||e.location)}</small>`:""}</td><td>${escapeHtml(e.description||"")}</td><td><div class="table-actions"><button class="button ghost edit-event" data-id="${escapeHtml(e.id)}">${creationManaged?"Edit creation":"Edit event"}</button><button class="button ghost delete-event" data-id="${escapeHtml(e.id)}">Delete</button></div></td></tr>`;}).join("");
   renderOrderEditor();renderTrackEditor();
@@ -3075,12 +3281,13 @@ function renderVolumeEditor(){const rows=$("#volume-rows");if(!rows)return;rows.
 function collectVolumeRows(){return [...document.querySelectorAll("#volume-rows .volume-row")].map(row=>({id:row.dataset.volumeId||`volume-${crypto.randomUUID()}`,name:row.querySelector('[name="volumeName"]').value.trim(),from:Number(row.querySelector('[name="volumeFrom"]').value),to:Number(row.querySelector('[name="volumeTo"]').value)}));}
 function validateVolumes(volumes){if(!volumes.length)return "Add at least one volume.";const names=new Set();for(let index=0;index<volumes.length;index++){const volume=volumes[index];if(!volume.name)return `Enter a name for volume ${index+1}.`;if(!Number.isInteger(volume.from)||!Number.isInteger(volume.to)||volume.from<1||volume.to<1)return `${volume.name}: chapter numbers must be whole numbers starting from 1.`;if(volume.from>volume.to)return `${volume.name}: the first chapter cannot be after the last chapter.`;const key=volume.name.toLowerCase();if(names.has(key))return `Two volumes cannot both be named “${volume.name}”.`;names.add(key);if(index&&volume.from<=volumes[index-1].to)return `${volume.name} overlaps ${volumes[index-1].name}. Start it after chapter ${volumes[index-1].to}.`;}return "";}
 
-function updateEntityFormFields(){const form=$("#entity-form"),kind=form.elements.kind.value,isCharacter=kind==="character",isLocation=kind==="location";$("#entity-gender-field").hidden=!isCharacter;$("#entity-location-type-field").hidden=!isLocation;$("#entity-mentioned-field").hidden=!isCharacter;$("#entity-initial-cultivation-field").hidden=!isCharacter;$("#entity-initial-track-field").hidden=!isCharacter;const isSystem=kind==="system",isQuest=kind==="quest";$("#entity-authority-field").hidden=!isSystem;$("#entity-grade-field").hidden=!isSystem;["issuer","alone","badge","reward-rank","time-limit","rewards","achievements","failure"].forEach(name=>{$(`#entity-quest-${name}-field`).hidden=!isQuest;});$("#entity-initial-cultivation-alias-field").hidden=!isCharacter;$("#entity-appeared-label").textContent=isCharacter?"First appearance chapter (optional)":isQuest?"Chapter the quest first exists":"Introduction chapter";form.elements.appeared.placeholder=isCharacter?"Leave blank if they have not appeared yet":`When this ${kind} becomes known`;form.elements.appeared.required=!isCharacter;$("#entity-help").textContent=isCharacter?"Presence and cultivation are separate facts. Use the cultivation fields above only for a level confirmed when the character is introduced. Leave Unknown when it has not been revealed; later breakthroughs belong in chapter events.":isLocation?"Choose the place's scale once. Use a hierarchy event to place it inside its direct parent; use movement for travel and residence for long-term homes or bases.":isQuest?"Write the quest once — its terms do not change. Issuing it, moving it along, settling it, and putting it inside a chain are all chapter actions, so the quest tab shows only as much as the reader has read.":"Create the organization once. Membership and headquarters or branch changes are recorded chapter by chapter.";}
+function isQuestKind(kind){return kind==="quest";}
+function updateEntityFormFields(){const form=$("#entity-form"),kind=form.elements.kind.value,isCharacter=kind==="character",isLocation=kind==="location";$("#entity-gender-field").hidden=!isCharacter;$("#entity-location-type-field").hidden=!isLocation;$("#entity-mentioned-field").hidden=isQuestKind(kind);$("#entity-initial-cultivation-field").hidden=!isCharacter;$("#entity-initial-track-field").hidden=!isCharacter;const isSystem=kind==="system",isQuest=kind==="quest";$("#entity-authority-field").hidden=!isSystem;$("#entity-grade-field").hidden=!isSystem;["issuer","alone","badge","reward-rank","time-limit","rewards","achievements","failure"].forEach(name=>{$(`#entity-quest-${name}-field`).hidden=!isQuest;});$("#entity-initial-cultivation-alias-field").hidden=!isCharacter;$("#entity-appeared-label").textContent=isCharacter?"First appearance chapter (optional)":isQuest?"Chapter the quest first exists":"Introduction chapter (optional)";form.elements.appeared.placeholder=isCharacter?"Leave blank if they have not appeared yet":isQuest?`When this ${kind} becomes known`:"Leave blank if it is only spoken of so far";form.elements.appeared.required=isQuest;$("#entity-mentioned-label").textContent=isCharacter?"First mentioned chapter (optional)":"First spoken-of chapter (optional)";form.elements.mentioned.placeholder=isCharacter?"Leave blank if they appear directly":`Leave blank if the story shows this ${kind} straight away`;$("#entity-help").textContent=isCharacter?"Presence and cultivation are separate facts. Use the cultivation fields above only for a level confirmed when the character is introduced. Leave Unknown when it has not been revealed; later breakthroughs belong in chapter events.":isLocation?"Choose the place's scale once. Use a hierarchy event to place it inside its direct parent; use movement for travel and residence for long-term homes or bases.":isQuest?"Write the quest once — its terms do not change. Issuing it, moving it along, settling it, and putting it inside a chain are all chapter actions, so the quest tab shows only as much as the reader has read.":"Create the organization once. Membership and headquarters or branch changes are recorded chapter by chapter.";}
 function resetEntityEditor(){const form=$("#entity-form");form.reset();form.elements.editingId.value="";form.elements.editingCreationEventId.value="";$("#creation-edit-note").hidden=true;$("#entity-creation-description-field").hidden=true;$("#entity-form-title").textContent="Create character, organization, or location";$("#save-entity").textContent="Create and add to graph";$("#delete-entity").hidden=true;$("#cancel-entity-edit").hidden=true;$("#manage-entity").value="";updateEntityFormFields();}
-function loadEntityEditor(id=null,{scroll=true,creationEventId=""}={}){const item=id?entity(id):resolveEntity($("#manage-entity").value);if(!item){toast("Choose an existing identity");return;}const form=$("#entity-form"),initialCultivation=item.kind==="character"?orderedEvents().find(event=>event.type==="cultivation"&&event.source===item.id&&event.initial===true):null,managedEvents=creationEventsFor(item),selectedCreationEvent=managedEvents.find(event=>event.id===creationEventId)||null,commonSourceUrl=selectedCreationEvent?.sourceUrl||managedEvents.find(event=>event.sourceUrl)?.sourceUrl||"";$("#manage-entity").value=item.name;form.elements.editingId.value=item.id;form.elements.editingCreationEventId.value=selectedCreationEvent?.id||"";form.elements.kind.value=item.kind;form.elements.name.value=item.name;form.elements.gender.value=item.gender||"unknown";form.elements.locationType.value=item.locationType||"Other";form.elements.authority.value=item.authority??"";form.elements.grade.value=item.grade||"";form.elements.issuer.value=item.issuer?(entity(item.issuer)?.name||item.issuer):"";form.elements.countsAlone.checked=item.countsAlone===true;form.elements.questBadge.value=item.questBadge||"";form.elements.rating.value=item.rating||"";form.elements.timeLimit.value=item.timeLimit||"";form.elements.rewards.value=(item.rewards||[]).join(", ");form.elements.achievements.value=(item.achievements||[]).join(", ");form.elements.failure.value=item.failure||"";form.elements.mentioned.value=item.kind==="character"?(firstMention(item)||""):"";form.elements.appeared.value=item.kind==="character"?(firstAppearance(item)||""):(item.intro||"");form.elements.initialLevel.value=initialCultivation?.level||"";form.elements.initialCultivationAlias.value=initialCultivation&&cultivationDisplay(initialCultivation).toLowerCase()!==cultivationCanonical(initialCultivation).toLowerCase()?cultivationDisplay(initialCultivation):"";form.elements.creationSourceUrl.value=commonSourceUrl;form.elements.creationEventDescription.value=selectedCreationEvent?.description||"";form.elements.description.value=item.description||"";updateEntityFormFields();$("#creation-edit-note").hidden=!selectedCreationEvent;$("#entity-creation-description-field").hidden=!selectedCreationEvent;$("#entity-form-title").textContent=selectedCreationEvent?`Edit creation record — ${item.name}`:`Edit ${item.name}`;$("#save-entity").textContent=selectedCreationEvent?"Update linked creation record":"Save identity";$("#delete-entity").hidden=false;$("#cancel-entity-edit").hidden=false;if(scroll){form.scrollIntoView({behavior:"smooth",block:"start"});(selectedCreationEvent?form.elements.creationEventDescription:form.elements.name).focus({preventScroll:true});}toast(selectedCreationEvent?`Editing the original creation record for ${item.name}`:`${item.name} loaded in the identity form`);}
+function loadEntityEditor(id=null,{scroll=true,creationEventId=""}={}){const item=id?entity(id):resolveEntity($("#manage-entity").value);if(!item){toast("Choose an existing identity");return;}const form=$("#entity-form"),initialCultivation=item.kind==="character"?orderedEvents().find(event=>event.type==="cultivation"&&event.source===item.id&&event.initial===true):null,managedEvents=creationEventsFor(item),selectedCreationEvent=managedEvents.find(event=>event.id===creationEventId)||null,commonSourceUrl=selectedCreationEvent?.sourceUrl||managedEvents.find(event=>event.sourceUrl)?.sourceUrl||"";$("#manage-entity").value=item.name;form.elements.editingId.value=item.id;form.elements.editingCreationEventId.value=selectedCreationEvent?.id||"";form.elements.kind.value=item.kind;form.elements.name.value=item.name;form.elements.gender.value=item.gender||"unknown";form.elements.locationType.value=item.locationType||"Other";form.elements.authority.value=item.authority??"";form.elements.grade.value=item.grade||"";form.elements.issuer.value=item.issuer?(entity(item.issuer)?.name||item.issuer):"";form.elements.countsAlone.checked=item.countsAlone===true;form.elements.questBadge.value=item.questBadge||"";form.elements.rating.value=item.rating||"";form.elements.timeLimit.value=item.timeLimit||"";form.elements.rewards.value=(item.rewards||[]).join(", ");form.elements.achievements.value=(item.achievements||[]).join(", ");form.elements.failure.value=item.failure||"";form.elements.mentioned.value=item.kind==="quest"?"":(firstMention(item)||"");form.elements.appeared.value=item.kind==="quest"?(item.intro||""):(firstAppearance(item)||"");form.elements.initialLevel.value=initialCultivation?.level||"";form.elements.initialCultivationAlias.value=initialCultivation&&cultivationDisplay(initialCultivation).toLowerCase()!==cultivationCanonical(initialCultivation).toLowerCase()?cultivationDisplay(initialCultivation):"";form.elements.creationSourceUrl.value=commonSourceUrl;form.elements.creationEventDescription.value=selectedCreationEvent?.description||"";form.elements.description.value=item.description||"";updateEntityFormFields();$("#creation-edit-note").hidden=!selectedCreationEvent;$("#entity-creation-description-field").hidden=!selectedCreationEvent;$("#entity-form-title").textContent=selectedCreationEvent?`Edit creation record — ${item.name}`:`Edit ${item.name}`;$("#save-entity").textContent=selectedCreationEvent?"Update linked creation record":"Save identity";$("#delete-entity").hidden=false;$("#cancel-entity-edit").hidden=false;if(scroll){form.scrollIntoView({behavior:"smooth",block:"start"});(selectedCreationEvent?form.elements.creationEventDescription:form.elements.name).focus({preventScroll:true});}toast(selectedCreationEvent?`Editing the original creation record for ${item.name}`:`${item.name} loaded in the identity form`);}
 function resetEventEditor(){const form=$("#event-form");form.reset();form.elements.editingId.value="";form.elements.chapter.value=eventDrafts[0]?.chapter||currentChapter;$("#event-edit-mode-note").hidden=true;$("#event-form-title").textContent="Add chapter changes";$("#save-event").textContent="Save this change";$("#cancel-event-edit").hidden=true;$("#queue-event").hidden=false;updateEventHelp();}
-function loadEventEditor(id){const record=data.events.find(event=>event.id===id);if(!record)return;if(isCreationManagedEvent(record)){resetEventEditor();loadEntityEditor(record.source,{creationEventId:record.id});return;}const form=$("#event-form"),isCanonicalCultivationName=record.type==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===String(record.value||"").trim().toLowerCase());form.elements.editingId.value=record.id;form.elements.type.value=record.type;form.elements.chapter.value=record.chapter;form.elements.source.value=entity(record.source)?.name||record.source;form.elements.location.value=record.location?(entity(record.location)?.name||record.location):"";form.elements.target.value=record.target?(entity(record.target)?.name||record.target):"";form.elements.characters.value=(record.characters||[]).filter(id=>id!==record.source).map(id=>entity(id)?.name||id).join(", ");form.elements.ghost.checked=record.ghost===true;form.elements.progress.value=record.progress??"";form.elements.rewards.value=(record.rewards||[]).join("\n");form.elements.persona.value=personaListText(record);form.elements.mentions.value=(record.mentions||[]).map(id=>entity(id)?.name||id).join(", ");form.elements.relation.value=record.relation||"";form.elements.holds.value=record.holds||"";form.elements.performance.value=record.performance||"";if(record.type==="quest_update")form.elements.noteKind.value=record.value||"Update";form.elements.authority.value=record.authority??"";form.elements.grade.value=record.grade||"";form.elements.value.value=isCanonicalCultivationName?"":record.value||"";fillTrackSelect(form.elements.track,trackIdOf(record));fillLevelSelect(form.elements.level,trackIdOf(record),record.level||"");form.elements.description.value=record.description||"";form.elements.sourceUrl.value=record.sourceUrl||"";updateEventHelp();const defaults={organization_location:"open",residency:"begin",location_parent:"add",identity_parent:"add",membership:"reveal",system_host:"add",system_parent:"add",system_location:"open",system_merge:"add",system_end:"add"};form.elements.action.value=record.action||defaults[record.type]||"join";$("#event-edit-mode-note").hidden=false;$("#event-form-title").textContent=`Edit this exact chapter ${record.chapter} event`;$("#save-event").textContent="Replace this event";$("#cancel-event-edit").hidden=false;$("#queue-event").hidden=true;form.scrollIntoView({behavior:"smooth",block:"start"});form.elements.type.focus({preventScroll:true});toast(`Editing only the selected chapter ${record.chapter} event`);}
-function syncPresenceFromEvents(id,type){if(!["mention","appearance","corpse_appearance"].includes(type))return;const item=entity(id);if(!item||item.kind!=="character")return;const field=type==="mention"?"mentioned":"appeared",types=field==="appeared"?["appearance","corpse_appearance"]:["mention"],chapters=data.events.filter(event=>event.source===id&&types.includes(event.type)).map(event=>event.chapter);item[field]=earliestChapter(chapters);}
+function loadEventEditor(id){const record=data.events.find(event=>event.id===id);if(!record)return;if(isCreationManagedEvent(record)){resetEventEditor();loadEntityEditor(record.source,{creationEventId:record.id});return;}const form=$("#event-form"),isCanonicalCultivationName=record.type==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===String(record.value||"").trim().toLowerCase());form.elements.editingId.value=record.id;form.elements.type.value=record.type;form.elements.chapter.value=record.chapter;form.elements.source.value=entity(record.source)?.name||record.source;form.elements.location.value=record.location?(entity(record.location)?.name||record.location):"";form.elements.branch.value=record.branch?(entity(record.branch)?.name||record.branch):"";form.elements.target.value=record.target?(entity(record.target)?.name||record.target):"";form.elements.characters.value=(record.characters||[]).filter(id=>id!==record.source).map(id=>entity(id)?.name||id).join(", ");form.elements.ghost.checked=record.ghost===true;form.elements.progress.value=record.progress??"";form.elements.rewards.value=(record.rewards||[]).join("\n");form.elements.persona.value=personaListText(record);form.elements.mentions.value=(record.mentions||[]).map(id=>entity(id)?.name||id).join(", ");form.elements.relation.value=record.relation||"";form.elements.holds.value=record.holds||"";form.elements.performance.value=record.performance||"";if(record.type==="quest_update")form.elements.noteKind.value=record.value||"Update";form.elements.authority.value=record.authority??"";form.elements.grade.value=record.grade||"";form.elements.value.value=isCanonicalCultivationName?"":record.value||"";fillTrackSelect(form.elements.track,trackIdOf(record));fillLevelSelect(form.elements.level,trackIdOf(record),record.level||"");form.elements.description.value=record.description||"";form.elements.sourceUrl.value=record.sourceUrl||"";updateEventHelp();const defaults={organization_location:"open",residency:"begin",location_parent:"add",identity_parent:"add",membership:"reveal",system_host:"add",system_parent:"add",system_location:"open",system_merge:"add",system_end:"add"};form.elements.action.value=record.action||defaults[record.type]||"join";$("#event-edit-mode-note").hidden=false;$("#event-form-title").textContent=`Edit this exact chapter ${record.chapter} event`;$("#save-event").textContent="Replace this event";$("#cancel-event-edit").hidden=false;$("#queue-event").hidden=true;form.scrollIntoView({behavior:"smooth",block:"start"});form.elements.type.focus({preventScroll:true});toast(`Editing only the selected chapter ${record.chapter} event`);}
+function syncPresenceFromEvents(id,type){if(!["mention","appearance","corpse_appearance"].includes(type))return;const item=entity(id);if(!item||item.kind==="quest")return;const field=type==="mention"?"mentioned":"appeared",types=field==="appeared"?["appearance","corpse_appearance"]:["mention"],chapters=data.events.filter(event=>event.source===id&&types.includes(event.type)).map(event=>event.chapter);item[field]=earliestChapter(chapters);}
 
 function listFromText(value,commas=false){return String(value||"").split(commas?/[,\n]/:/\n/).map(item=>item.trim()).filter(Boolean);}
 function labelDivider(line){let depth=0;for(let i=0;i<line.length;i++){if(line[i]==="["&&line[i+1]==="["){depth++;i++;continue;}if(line[i]==="]"&&line[i+1]==="]"){depth=Math.max(0,depth-1);i++;continue;}if(line[i]===":"&&depth===0)return i;}return -1;}
@@ -3091,6 +3298,21 @@ async function fillProfileEditor(){
   const requestedId=item.id,profile=await loadProfileFor(item);if(resolveEntity(form.elements.entity.value)?.id!==requestedId)return;["wikiUrl","subtitle","image","quote","species","history","appearance","personality","purpose"].forEach(name=>form.elements[name].value=profile[name]||"");
   form.elements.roles.value=(profile.roles||[]).join(", ");form.elements.abilities.value=(profile.abilities||[]).join("\n");form.elements.achievements.value=(profile.achievements||[]).map(achievementLine).join("\n");form.elements.traits.value=(profile.traits||[]).join("\n");form.elements.trivia.value=(profile.trivia||[]).join("\n");form.elements.facts.value=(profile.facts||[]).map(item=>`${item.label}: ${item.value}`).join("\n");setProfileEditorMode(item.kind);toast(`${item.name}'s wiki profile loaded`);
 }
+// The branch question only exists once the where is an organization, and the only answers to it
+// are that organization's own places: nothing else can be a branch of it.
+function updateBranchField(){
+  const form=$("#event-form"),field=$("#event-branch-field");if(!form||!field)return;
+  const where=resolveEntity(form.elements.location.value),
+    placeOnly=["movement","residency","location_parent","organization_location","system_location"].includes(form.elements.type.value),
+    isGroup=where?.kind==="organization"&&!placeOnly;
+  field.hidden=!isGroup;
+  if(!isGroup){form.elements.branch.value="";return;}
+  const branches=organizationBranches(where.id,derive(validChapter(form.elements.chapter.value)||currentChapter).organizationLocations);
+  $("#branch-options").innerHTML=branches.map(link=>`<option value="${escapeHtml(entity(link.location)?.name||link.location)}">${escapeHtml(link.role)}</option>`).join("");
+  $("#event-branch-note").textContent=branches.length
+    ?`Only when one branch takes part rather than the whole of ${where.name}. Left empty it is ${entity(branches[0].location)?.name||branches[0].location}, the first place it opened.`
+    :`${where.name} has no place of its own recorded yet, so the organization itself is what the graph lights. Record an organization location action to give it one.`;
+}
 function updateEventHelp(){
   const form=$("#event-form"),type=form.elements.type.value,isOrgLocation=type==="organization_location",isResidence=type==="residency",isHierarchy=type==="location_parent",isIdentityHierarchy=type==="identity_parent",needsTarget=["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge","quest_part","quest_contribution"].includes(type),showsTarget=needsTarget||type==="note"||type==="quest_issue",needsValue=["alias","display_name","status","gender","age","relationship","organization_location","residency","identity_parent"].includes(type),showsSystemValue=["system_host","system_location","system_end"].includes(type),showsValue=needsValue||showsSystemValue||type==="membership"||type==="cultivation"||type==="quest_contribution",usesAction=["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end","quest_issue","quest_end","quest_part","movement"].includes(type),help={mention:"Use this when an identity is referred to without physically appearing. Status remains unknown.",appearance:"A normal physical appearance also proves that the character is alive at this action.",corpse_appearance:"Use when a dead body is the character's first physical appearance. This sets appearance and dead status together.",display_name:"Changes the public label from this exact action onward. Add another display-name event later to end a spy name or restore an earlier name.",identity_parent:"Keeps clones, avatars, incarnations, split souls, and their original identity close together in the graph. A character merged into a system belongs here too — record the merge now and change or remove the link in the chapter they separate.",movement:"Records travel and changes the character's current physical position.",residency:"Records a home, permanent residence, long-term stay, camp, or personal domain.",location_parent:"Places one location directly inside another. The graph only draws the outermost place — a realm at most — until you open it.",alias:"Adds another searchable name without changing the main displayed label.",cultivation:"Choose the canonical tier by name; an equivalent path title remains synchronized.",status:"Use this for later changes or uncertain states such as missing and presumed dead.",gender:"Use this for a later reveal or an actual change — not needed if it was already set when the character was created.",age:"Use this whenever an age is stated or changes in-story — an exact number, a range, or a description.",awareness:"The first character knows the second exists.",meeting:"Records that two characters meet.",conversation:"One action for a whole conversation, however many are in it — a system talking to its host and a place that speaks both belong here. The people in it count as having met.",relationship:"Choose a second character and enter friendly, neutral, or hostile.",membership:"Choose whether the membership begins now, was already true but is only revealed now, or ends here.",organization_location:"Connect an organization to a headquarters, branch, base, territory, or outpost.",system_host:"Bind a system to the character who carries it. A system can have no host, and a host can carry more than one.",system_parent:"Place one system inside another — the taverns and resorts that belong to a larger system.",system_location:"A system operates at this place. A system can operate at many places at once.",system_rank:"A system rises or falls. Fill in whichever of authority or grade changed — the other keeps its current value. Write unknown in a field to take that rank away, for a system that loses its grade or whose number was never known.",system_merge:"One system is swallowed by another. It keeps its own history, shown as a small marker on the system that took it.",system_end:"The system is destroyed. It stays on the graph as a small marker so its history is still reachable.",quest_issue:"A quest is handed out. Name the character who receives it if the story says who — a quest can be issued to nobody in particular. List more than one and it becomes a joint quest, worked in cooperation and rewarded by contribution.",quest_progress:"How far along the quest is, as a percentage. Record one of these each time the story moves it, and the quest tab fills its card to match.",quest_end:"The quest is settled. Most quests only name their reward here, scaled to how the host performed, so fill in the rank and the performance grade on this action. A completed quest leaves the active list; a failed one carries whatever punishment the quest itself names.",quest_update:"A quest's terms grow as the story turns. Record the update, hint, added objective, or the system's own remark here — it belongs to the same quest, not to a second one.",quest_part:"Put this quest inside a larger one. The larger quest shows as a single card that opens to reveal its parts, each with its own reward.",quest_contribution:"For a joint quest, what one character contributed and what they were given for it. Record one of these per character — their shares need not be equal, and their rewards need not match.",note:"A general story event."};
   $("#event-target-field").hidden=!showsTarget;$("#event-characters-field").hidden=!["conversation","quest_issue"].includes(type);$("#event-authority-field").hidden=type!=="system_rank";$("#event-grade-field").hidden=type!=="system_rank";$("#event-progress-field").hidden=type!=="quest_progress";$("#event-note-kind-field").hidden=type!=="quest_update";$("#event-relation-field").hidden=type!=="conversation";$("#event-rewards-field").hidden=!["quest_end","quest_contribution"].includes(type);$("#event-performance-field").hidden=!["quest_end","quest_contribution"].includes(type);$("#event-value-field").hidden=!showsValue;$("#event-level-field").hidden=type!=="cultivation";$("#event-action-field").hidden=!usesAction;
@@ -3099,6 +3321,10 @@ function updateEventHelp(){
   const removing=REMOVAL_ACTIONS.has(form.elements.action.value);
   form.elements.target.required=needsTarget;form.elements.value.required=needsValue&&!removing;form.elements.location.required=["movement","organization_location","residency","location_parent","system_location"].includes(type);
   $("#event-location-label").textContent=type==="movement"?"Destination":isOrgLocation?"Headquarters / branch location":isResidence?"Home / long-term location":isHierarchy?"Direct parent location":"Where this happened (optional)";
+  const placeOnly=["movement","residency","location_parent","organization_location","system_location"].includes(type);
+  form.elements.location.placeholder=placeOnly?"Type a place":"Type a place or an organization";
+  $("#event-location-note").hidden=placeOnly;
+  updateBranchField();
   const charactersLabel=$("#event-characters-label"),charactersNote=$("#event-characters-note");
   if(charactersLabel)charactersLabel.textContent=type==="conversation"?"Everyone taking part":"Who it is issued to";
   if(charactersNote)charactersNote.textContent=type==="conversation"
@@ -3150,8 +3376,12 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   const form=new FormData(formElement),type=String(form.get("type")),source=resolveEntity(String(form.get("source")||"")),target=resolveEntity(String(form.get("target")||"")),location=resolveEntity(String(form.get("location")||"")),rawValue=String(form.get("value")||"").trim(),value=type==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===rawValue.toLowerCase())?"":rawValue,level=Number(form.get("level"))||undefined,action=String(form.get("action")||"join"),chapter=Number(form.get("chapter")),sourceUrl=String(form.get("sourceUrl")||"").trim();
   if(!source){toast("Choose an existing character, organization, or location");return null;}
   if(!Number.isFinite(chapter)||chapter<1){toast("Enter a valid chapter");return null;}
-  if(String(form.get("location")||"").trim()&&!location){toast("Choose an existing location");return null;}
-  if(location&&location.kind!=="location"){toast("The event location must be a location, not a character or organization");return null;}
+  if(String(form.get("location")||"").trim()&&!location){toast("Choose an existing place or organization");return null;}
+  // Plenty of scenes happen inside a group rather than at a place: an office, a sect hall, a
+  // guild. Where it happened takes either. The actions that move somebody, house them, or build
+  // the map still need a real place, and say so below.
+  if(location&&!["location","organization"].includes(location.kind)){toast("Where this happened must be a place or an organization");return null;}
+  if(["movement","residency","location_parent","organization_location","system_location"].includes(type)&&location&&location.kind!=="location"){toast("This one needs a real place, not an organization");return null;}
   if(type==="movement"&&!location){toast("Choose the character's new location");return null;}
   if(type==="movement"&&source.kind!=="character"){toast("Only a character can change location");return null;}
   if(sourceUrl&&!safeExternalUrl(sourceUrl)){toast("The chapter citation must be a complete http:// or https:// URL");return null;}
@@ -3184,6 +3414,13 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   if(type==="relationship"&&!Object.keys(COLORS).includes(value.toLowerCase())){toast("Relationship must be friendly, neutral, or hostile");return null;}
   const previous=data.events.find(event=>event.id===id),enteredDescription=String(form.get("description")||"").trim(),previousGenerated=previous?generatedEventDescription(previous.type,entity(previous.source),entity(previous.target),entity(previous.location),previous.value,previous.level,previous.action,previous.initial===true,trackIdOf(previous),(previous.characters||[]).map(id=>entity(id)?.name).filter(Boolean),previous.authority??"",previous.grade||"",previous.progress??""):"",useGenerated=!enteredDescription||enteredDescription===previousGenerated||isAutomaticCultivationDescription(enteredDescription,previous),description=useGenerated?generatedEventDescription(type,source,target,location,value,level,action,previous?.initial===true,String(form.get("track")||progressionTracks()[0].id),String(form.get("characters")||"").split(",").map(part=>part.trim()).filter(Boolean).map(part=>resolveEntity(part)?.name).filter(Boolean),String(form.get("authority")||"").trim(),String(form.get("grade")||"").trim(),String(form.get("progress")||"").trim()):enteredDescription,order=previous?.chapter===chapter&&previous?.order?previous.order:nextEventOrder(chapter,eventDrafts),record={id,chapter,order,type,source:source.id,description,...(sourceUrl?{sourceUrl:safeExternalUrl(sourceUrl)}:{})};
   if(location)record.location=location.id;
+  // Which branch of it: only meaningful when the where is an organization, and only one of the
+  // places that organization is actually based at. Left empty, the original branch stands in.
+  const branchText=String(form.get("branch")||"").trim(),branch=branchText?resolveEntity(branchText):null;
+  if(branchText&&location?.kind!=="organization"){toast("A branch belongs to an organization. Name the organization as where this happened, or clear the branch.");return null;}
+  if(branchText&&!branch){toast("Choose an existing place as the branch");return null;}
+  if(branch&&!organizationBranches(location.id,derive(chapter).organizationLocations).some(link=>link.location===branch.id)){toast(`${location.name} has no branch at ${branch.name} by chapter ${chapter}. Record that first with an organization location action.`);return null;}
+  if(branch)record.branch=branch.id;
   // Who did it and which face they wore are different questions. The graph keeps them apart:
   // the action belongs to the person, and says which name the world saw doing it.
   const heldFor=String(form.get("holds")||"").trim();
@@ -3294,8 +3531,11 @@ $("#collapse-chapter-events").onclick=collapseChapterEvents;
 $("#previous").onclick=()=>stepTimeline(-1);$("#next").onclick=()=>stepTimeline(1);
 searchInput.addEventListener("input",()=>{searchPage=SEARCH_PAGE;renderSearchResults();});
 searchInput.addEventListener("focus",renderSearchResults);
+$("#search-chips").addEventListener("mousedown",event=>{if(event.target===$("#search-chips")){event.preventDefault();searchInput.focus();}});
 searchInput.addEventListener("keydown",event=>{
-  if(event.key==="Escape"){event.preventDefault();if(searchInput.value){searchInput.value="";searchPage=SEARCH_PAGE;renderSearchResults();}else closeSearch();return;}
+  if(event.key==="Escape"){event.preventDefault();if(searchInput.value)searchInput.value="";else if(searchChips.length)searchChips=[];else{closeSearch();return;}searchPage=SEARCH_PAGE;renderSearchChips();renderSearchResults();return;}
+  // A block behaves the way a block should: backspace on an empty box takes the last one back.
+  if(event.key==="Backspace"&&!searchInput.value&&searchChips.length){event.preventDefault();searchChips.pop();searchPage=SEARCH_PAGE;renderSearchChips();renderSearchResults();return;}
   if(event.key==="ArrowDown"||event.key==="ArrowUp"){event.preventDefault();renderSearchResults();moveSearchCursor(event.key==="ArrowDown"?1:-1);return;}
   if(event.key==="Enter"){event.preventDefault();document.querySelector("#search-results .search-row")?.click();}
 });
@@ -3305,13 +3545,13 @@ $("#close-profile").onclick=()=>{$("#profile-modal").close();openProfileId=null;
 
 $("#entity-form").addEventListener("submit",event=>{
   event.preventDefault();const form=new FormData(event.currentTarget),parsedName=parseIdentityName(form.get("name")),name=parsedName.name,existingName=resolveEntity(name);let editingId=String(form.get("editingId")||"");if(!name){toast("Enter a public name or descriptor");return;}if(existingName&&existingName.id!==editingId){const hasEvents=data.events.some(storyEvent=>eventInvolves(storyEvent,existingName.id));if(!editingId&&!hasEvents){editingId=existingName.id;toast(`${existingName.name} existed without a graph event; repairing it now`);}else{$("#manage-entity").value=existingName.name;loadEntityEditor();toast(`${existingName.name} already exists and has been loaded for editing`);return;}}
-  const kind=String(form.get("kind")),mentioned=validChapter(form.get("mentioned")),appeared=validChapter(form.get("appeared")),initialLevel=Number(form.get("initialLevel"))||0,initialCultivationAlias=String(form.get("initialCultivationAlias")||"").trim(),creationSourceUrl=String(form.get("creationSourceUrl")||"").trim(),editingCreationEventId=String(form.get("editingCreationEventId")||""),creationEventDescription=String(form.get("creationEventDescription")||"").trim();if(kind==="character"&&!mentioned&&!appeared){toast("Enter either a first mention or a first appearance");return;}if(kind!=="character"&&!appeared){toast(`${kind==="location"?"Locations":"Organizations"} need an introduction chapter`);return;}if(initialCultivationAlias&&!initialLevel){toast("Choose the canonical cultivation tier for that equivalent path title");return;}if(initialCultivationAlias&&CULTIVATION_LEVELS.some(tier=>tier.toLowerCase()===initialCultivationAlias.toLowerCase())){toast("An equivalent path title cannot be another canonical tier. Clear it or choose that tier above.");return;}if(creationSourceUrl&&!safeExternalUrl(creationSourceUrl)){toast("The introduction citation must be a complete http:// or https:// URL");return;}
+  const kind=String(form.get("kind")),mentioned=validChapter(form.get("mentioned")),appeared=validChapter(form.get("appeared")),initialLevel=Number(form.get("initialLevel"))||0,initialCultivationAlias=String(form.get("initialCultivationAlias")||"").trim(),creationSourceUrl=String(form.get("creationSourceUrl")||"").trim(),editingCreationEventId=String(form.get("editingCreationEventId")||""),creationEventDescription=String(form.get("creationEventDescription")||"").trim();if(kind==="quest"&&!appeared){toast("A quest needs the chapter it first exists in");return;}if(kind!=="quest"&&!mentioned&&!appeared){toast(kind==="character"?"Enter either a first mention or a first appearance":`Enter the chapter this ${kind} is introduced in, or the chapter it is first spoken of in`);return;}if(initialCultivationAlias&&!initialLevel){toast("Choose the canonical cultivation tier for that equivalent path title");return;}if(initialCultivationAlias&&CULTIVATION_LEVELS.some(tier=>tier.toLowerCase()===initialCultivationAlias.toLowerCase())){toast("An equivalent path title cannot be another canonical tier. Clear it or choose that tier above.");return;}if(creationSourceUrl&&!safeExternalUrl(creationSourceUrl)){toast("The introduction citation must be a complete http:// or https:// URL");return;}
   let id=editingId;if(!id){id=slugify(name);let suffix=2;while(entity(id))id=slugify(name)+"-"+suffix++;}
   if(kind==="system"&&!gradeIsValid(form.get("grade"))){toast("A grade is one to three letters with an optional + or −, one of the named ranks, or left blank");return null;}
   if(kind==="system"&&!authorityIsValid(form.get("authority"))){toast("Authority is a plain number, or left blank");return null;}
   if(kind==="quest"&&String(form.get("issuer")||"").trim()&&!resolveEntity(String(form.get("issuer")))){toast("Choose an existing identity as the issuer, or leave it blank");return null;}
   if(kind==="quest"&&!gradeIsValid(form.get("rating"))){toast("A quest rating is one to three letters with an optional + or −, one of the named ranks, or left blank");return null;}
-  const record=editingId?entity(editingId):{id},managedBefore=data.events.filter(storyEvent=>storyEvent.source===id&&isCreationManagedEvent(storyEvent)),selectedBefore=managedBefore.find(storyEvent=>storyEvent.id===editingCreationEventId),initialCultivationEvent=managedBefore.find(storyEvent=>storyEvent.type==="cultivation"&&storyEvent.initial===true);Object.assign(record,{kind,name,gender:kind==="character"?String(form.get("gender")):undefined,locationType:kind==="location"?String(form.get("locationType")||"Other"):undefined,authority:kind==="system"?(String(form.get("authority")||"").trim()===""||meansUnknown(form.get("authority"))?undefined:Number(form.get("authority"))):undefined,grade:kind==="system"?(meansUnknown(form.get("grade"))?undefined:String(form.get("grade")||"").trim()||undefined):undefined,issuer:kind==="quest"?(resolveEntity(String(form.get("issuer")||""))?.id||undefined):undefined,countsAlone:kind==="quest"&&form.get("countsAlone")?true:undefined,questBadge:kind==="quest"?(String(form.get("questBadge")||"").trim()||undefined):undefined,rating:kind==="quest"?(meansUnknown(form.get("rating"))?undefined:String(form.get("rating")||"").trim()||undefined):undefined,timeLimit:kind==="quest"?(String(form.get("timeLimit")||"").trim()||undefined):undefined,rewards:kind==="quest"?(listFromText(form.get("rewards"),true).length?listFromText(form.get("rewards"),true):undefined):undefined,achievements:kind==="quest"?(listFromText(form.get("achievements"),true).length?listFromText(form.get("achievements"),true):undefined):undefined,failure:kind==="quest"?(String(form.get("failure")||"").trim()||undefined):undefined,mentioned:kind==="character"?mentioned:null,appeared:kind==="character"?appeared:null,intro:kind!=="character"?appeared:(mentioned||appeared),description:String(form.get("description")||"")});if(parsedName.wikiUrl)record.profile={...(record.profile||{}),wikiUrl:parsedName.wikiUrl};if(!editingId)data.entities.push(record);
+  const record=editingId?entity(editingId):{id},managedBefore=data.events.filter(storyEvent=>storyEvent.source===id&&isCreationManagedEvent(storyEvent)),selectedBefore=managedBefore.find(storyEvent=>storyEvent.id===editingCreationEventId),initialCultivationEvent=managedBefore.find(storyEvent=>storyEvent.type==="cultivation"&&storyEvent.initial===true);Object.assign(record,{kind,name,gender:kind==="character"?String(form.get("gender")):undefined,locationType:kind==="location"?String(form.get("locationType")||"Other"):undefined,authority:kind==="system"?(String(form.get("authority")||"").trim()===""||meansUnknown(form.get("authority"))?undefined:Number(form.get("authority"))):undefined,grade:kind==="system"?(meansUnknown(form.get("grade"))?undefined:String(form.get("grade")||"").trim()||undefined):undefined,issuer:kind==="quest"?(resolveEntity(String(form.get("issuer")||""))?.id||undefined):undefined,countsAlone:kind==="quest"&&form.get("countsAlone")?true:undefined,questBadge:kind==="quest"?(String(form.get("questBadge")||"").trim()||undefined):undefined,rating:kind==="quest"?(meansUnknown(form.get("rating"))?undefined:String(form.get("rating")||"").trim()||undefined):undefined,timeLimit:kind==="quest"?(String(form.get("timeLimit")||"").trim()||undefined):undefined,rewards:kind==="quest"?(listFromText(form.get("rewards"),true).length?listFromText(form.get("rewards"),true):undefined):undefined,achievements:kind==="quest"?(listFromText(form.get("achievements"),true).length?listFromText(form.get("achievements"),true):undefined):undefined,failure:kind==="quest"?(String(form.get("failure")||"").trim()||undefined):undefined,mentioned:kind==="quest"?null:mentioned,appeared:kind==="quest"?null:appeared,intro:appeared||mentioned,description:String(form.get("description")||"")});if(parsedName.wikiUrl)record.profile={...(record.profile||{}),wikiUrl:parsedName.wikiUrl};if(!editingId)data.entities.push(record);
   const sourceFields=creationSourceUrl?{sourceUrl:safeExternalUrl(creationSourceUrl)}:{};
   const creationDescription=(previous,generated)=>previous?.id===selectedBefore?.id&&creationEventDescription&&!(creationEventDescription===previous?.description&&isAutomaticCreationDescription(previous))?creationEventDescription:isAutomaticCreationDescription(previous)?generated:(previous?.description||generated);
   if(kind==="character"){
@@ -3320,11 +3560,17 @@ $("#entity-form").addEventListener("submit",event=>{
     if(mentioned){const previous=previousPresence.find(storyEvent=>storyEvent.type==="mention"),sameChapter=previous?.chapter===mentioned,generated=`${name} is mentioned for the first time.`;data.events.push({id:previous?.id||"ev-"+crypto.randomUUID(),chapter:mentioned,order:sameChapter&&previous?.order?previous.order:nextEventOrder(mentioned),type:"mention",source:id,creationManaged:true,description:creationDescription(previous,generated),...sourceFields});}
     if(appeared){const previous=previousPresence.find(storyEvent=>storyEvent.type==="appearance"),sameChapter=previous?.chapter===appeared,generated=`${name} appears for the first time.`;data.events.push({id:previous?.id||"ev-"+crypto.randomUUID(),chapter:appeared,order:sameChapter&&previous?.order?previous.order:nextEventOrder(appeared),type:"appearance",source:id,creationManaged:true,description:creationDescription(previous,generated),...sourceFields});}
     const cultivationChapter=appeared||mentioned;if(initialLevel){const cultivationRecord=initialCultivationEvent||{id:"ev-"+crypto.randomUUID(),type:"cultivation",track:String(form.get("initialTrack")||progressionTracks()[0].id),source:id},presenceEvent=data.events.filter(storyEvent=>storyEvent.source===id&&storyEvent.creationManaged===true&&["mention","appearance"].includes(storyEvent.type)&&storyEvent.chapter===cultivationChapter).sort((a,b)=>(a.order||0)-(b.order||0)).at(-1),sameChapter=cultivationRecord.chapter===cultivationChapter,cultivationOrder=sameChapter&&cultivationRecord.order?cultivationRecord.order:presenceEvent?(Number(presenceEvent.order)||1)+.01:nextEventOrder(cultivationChapter),generated=initialCultivationAlias?`${name}'s cultivation is revealed as ${initialCultivationAlias}, equivalent to ${CULTIVATION_LEVELS[initialLevel-1]}.`:`${name}'s cultivation is revealed as ${CULTIVATION_LEVELS[initialLevel-1]}.`;Object.assign(cultivationRecord,{chapter:cultivationChapter,order:cultivationOrder,creationManaged:true,initial:true,level:initialLevel,value:initialCultivationAlias||CULTIVATION_LEVELS[initialLevel-1],description:creationDescription(initialCultivationEvent,generated),...sourceFields});if(!creationSourceUrl)delete cultivationRecord.sourceUrl;if(!initialCultivationEvent)data.events.push(cultivationRecord);}else if(initialCultivationEvent)data.events=data.events.filter(storyEvent=>storyEvent.id!==initialCultivationEvent.id);
-  }else{data.events=data.events.filter(storyEvent=>!(storyEvent.source===id&&isCreationManagedEvent(storyEvent)&&["mention","appearance"].includes(storyEvent.type)));const introEvent=managedBefore.find(storyEvent=>storyEvent.type==="note"),generated=`${name} is introduced.`;if(introEvent){const sameChapter=introEvent.chapter===appeared;introEvent.chapter=appeared;introEvent.order=sameChapter&&introEvent.order?introEvent.order:nextEventOrder(appeared);introEvent.creationManaged=true;introEvent.identityIntro=true;introEvent.description=creationDescription(introEvent,generated);if(creationSourceUrl)introEvent.sourceUrl=safeExternalUrl(creationSourceUrl);else delete introEvent.sourceUrl;if(kind==="location")introEvent.location=id;else delete introEvent.location;}else data.events.push({id:"ev-"+crypto.randomUUID(),chapter:appeared,order:nextEventOrder(appeared),type:"note",source:id,creationManaged:true,identityIntro:true,...sourceFields,...(kind==="location"?{location:id}:{}),description:generated});}
+  }else{const previousMention=managedBefore.find(storyEvent=>storyEvent.type==="mention");data.events=data.events.filter(storyEvent=>!(storyEvent.source===id&&isCreationManagedEvent(storyEvent)&&["mention","appearance"].includes(storyEvent.type)));
+    // A place or a group can be spoken of long before the story ever shows it, exactly as a person
+    // can. Until it is introduced it stands on the graph as spoken of and nothing more.
+    if(mentioned){const sameMentionChapter=previousMention?.chapter===mentioned,mentionText=`${name} is mentioned for the first time.`;data.events.push({id:previousMention?.id||"ev-"+crypto.randomUUID(),chapter:mentioned,order:sameMentionChapter&&previousMention?.order?previousMention.order:nextEventOrder(mentioned),type:"mention",source:id,creationManaged:true,description:creationDescription(previousMention,mentionText),...sourceFields});}
+    const introEvent=managedBefore.find(storyEvent=>storyEvent.type==="note"),generated=`${name} is introduced.`;if(!appeared){if(introEvent)data.events=data.events.filter(storyEvent=>storyEvent.id!==introEvent.id);}else if(introEvent){const sameChapter=introEvent.chapter===appeared;introEvent.chapter=appeared;introEvent.order=sameChapter&&introEvent.order?introEvent.order:nextEventOrder(appeared);introEvent.creationManaged=true;introEvent.identityIntro=true;introEvent.description=creationDescription(introEvent,generated);if(creationSourceUrl)introEvent.sourceUrl=safeExternalUrl(creationSourceUrl);else delete introEvent.sourceUrl;if(kind==="location")introEvent.location=id;else delete introEvent.location;}else data.events.push({id:"ev-"+crypto.randomUUID(),chapter:appeared,order:nextEventOrder(appeared),type:"note",source:id,creationManaged:true,identityIntro:true,...sourceFields,...(kind==="location"?{location:id}:{}),description:generated});}
   saveData();resetEntityEditor();renderAll();toast(`${name} ${editingId?"updated":"created"}`);
 });
 $("#entity-form").elements.kind.addEventListener("change",updateEntityFormFields);
 $("#load-entity").onclick=()=>loadEntityEditor();
+$("#event-form").elements.location.addEventListener("input",updateBranchField);
+$("#event-form").elements.chapter.addEventListener("input",updateBranchField);
 $("#cancel-entity-edit").onclick=resetEntityEditor;
 $("#delete-entity").onclick=()=>deleteIdentity($("#entity-form").elements.editingId.value);
 
@@ -3378,6 +3624,10 @@ $("#lexicon-form").addEventListener("submit",event=>{
   toast(`${entry.term} ${replaced?"updated":"now links out wherever it is written"}`);
 });
 $("#lexicon-cancel").onclick=()=>{clearLexiconInputs();renderLexiconEditor();};
+const showRoll=()=>{const item=resolveEntity($("#roll-entity").value);if(!item){toast("Choose an existing identity");return;}rollEntityId=item.id;renderRollEditor();};
+$("#roll-load").onclick=showRoll;
+$("#roll-entity").onkeydown=event=>{if(event.key==="Enter"){event.preventDefault();showRoll();}};
+$("#roll-entity").onchange=showRoll;
 $("#lexicon-save-text").onclick=()=>{
   const raw=$("#lexicon-text").value,errorBox=$("#lexicon-error"),bad=badLexiconLine(raw);
   errorBox.textContent="";
