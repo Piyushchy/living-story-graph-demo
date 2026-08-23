@@ -1998,15 +1998,16 @@ function renderGraph() {
   // Having met is what lasts from a talk. It is not painted on the whole graph — in a full cast
   // everybody has met everybody — but when somebody is picked out, who they know is the question
   // being asked, so their acquaintances are drawn.
-  const pairKeys=new Set([...derived.relations.keys(),...derived.awareness.keys(),...(selectedId?[...derived.meetings.keys()]:[])]);
+  const pairKeys=new Set([...derived.relations.keys(),...derived.awareness.keys(),...derived.meetings.keys()]);
   pairKeys.forEach((key,index)=>{const [aId,bId]=key.split("|"),aPos=positions.get(aId),bPos=positions.get(bId);if(!aPos||!bPos)return;const history=derived.relations.get(key)||[],met=derived.meetings.get(key),aware=derived.awareness.get(key),type=history.length?String(history.at(-1).value).toLowerCase():"neutral";let element;
     const newPair=beatEvents.some(event=>["awareness","relationship"].includes(event.type)&&pairKey(event.source,event.target)===key),edgeClass=`edge relation-edge${newPair?" newly-revealed-edge":""}`;
     if(aware&&!met){const ar=radius(derived.states.get(aId))+12,br=radius(derived.states.get(bId))+12,grad=createGradient(defs,`grad-a-${index}`,history,currentChapter),curve=(p1,p2)=>{const dx=p2.x-p1.x,dy=p2.y-p1.y,d=Math.max(1,Math.hypot(dx,dy)),x1=p1.x+dx/d*ar,y1=p1.y+dy/d*ar,x2=p2.x-dx/d*br,y2=p2.y-dy/d*br,cx=(x1+x2)/2-dy/d*16,cy=(y1+y2)/2+dx/d*16;return {x1,y1,x2,y2,cx,cy};},start=curve(aPos,bPos);
       element=svgEl("path",{d:`M ${start.x1} ${start.y1} Q ${start.cx} ${start.cy} ${start.x2} ${start.y2}`,class:edgeClass,stroke:grad.url,"data-a":aId,"data-b":bId});if(aware.aToB)element.setAttribute("marker-end",`url(#arrow-${type in COLORS?type:"neutral"})`);if(aware.bToA)element.setAttribute("marker-start",`url(#arrow-${type in COLORS?type:"neutral"})`);
       edgeUpdaters.push(()=>{const p1=positions.get(aId),p2=positions.get(bId);if(!p1||!p2)return;const c=curve(p1,p2);element.setAttribute("d",`M ${c.x1} ${c.y1} Q ${c.cx} ${c.cy} ${c.x2} ${c.y2}`);if(grad.el){grad.el.setAttribute("x1",c.x1);grad.el.setAttribute("y1",c.y1);grad.el.setAttribute("x2",c.x2);grad.el.setAttribute("y2",c.y2);}});
-    } else if(!history.length&&met&&(selectedId===aId||selectedId===bId)){
-      // Met, and nothing said about how they stand: a quiet line rather than nothing at all.
-      element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:`${edgeClass} met-edge`,"data-a":aId,"data-b":bId});
+    } else if(!history.length&&met){
+      // Met, with nothing said yet about how they stand: neutral, which is a standing fact and
+      // stays drawn, rather than a line that only appears while somebody is picked out.
+      element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:`${edgeClass} met-edge`,stroke:COLORS.neutral,"data-a":aId,"data-b":bId});
       edgeUpdaters.push(()=>{const p1=positions.get(aId),p2=positions.get(bId);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);});
     } else if(history.length){const grad=createGradient(defs,`grad-r-${index}`,history,currentChapter);element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:edgeClass,stroke:grad.url,"data-a":aId,"data-b":bId});
       edgeUpdaters.push(()=>{const p1=positions.get(aId),p2=positions.get(bId);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);if(grad.el){grad.el.setAttribute("x1",p1.x);grad.el.setAttribute("y1",p1.y);grad.el.setAttribute("x2",p2.x);grad.el.setAttribute("y2",p2.y);}});
