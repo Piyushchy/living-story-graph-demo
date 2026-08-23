@@ -563,7 +563,7 @@ function pureSandbox(names) {
 test("names are drawn in their own layer above every shape, so a node can never be painted over another node's label", () => {
   const body = functionBody("renderGraph");
   assert.match(body, /viewportGroup\.append\(edgeLayer,departLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer\);/, "labels sit above everything, including the conversation and system markers");
-  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,tall:Boolean\(rankLabel\|\|questNotice\),halfWidth:/);
+  assert.match(body, /labelLayer\.appendChild\(labelGroup\);labelEls\.set\(item\.id,\{group:labelGroup,text:label,offset:labelY,kind:item\.kind,tall:Boolean\(rankLabel\|\|questNotice\|\|personaNotice\),halfWidth:/);
   assert.match(body, /labelEls\.forEach\(\(entry,id\)=>\{const box=\(entry\.tall\?entry\.group:entry\.text\)\.getBBox\(\);if\(!box\.width\)return;entry\.halfWidth=box\.width\/2;/, "and the boxes the forces use are the measured ones, not a guess from character count");
   assert.doesNotMatch(body, /\(locationShell\|\|group\)\.appendChild\(label\)/, "labels must not go back inside the node group");
   assert.match(styleSource, /\.node-label-layer \{ pointer-events: none; \}/);
@@ -858,7 +858,7 @@ test("combining is done in the running order, writes no event of its own, and ca
 });
 
 test("the demo ships a moment, and a stored copy is brought up to it", () => {
-  assert.match(source, /schemaVersion: 20,/);
+  assert.match(source, /schemaVersion: 21,/);
   assert.match(source, /\{ id: "m-inn-place", message: "The Midnight Inn Lobby stands in the Midnight Inn Estate, in the city of Stonevale, on the world Verdan\.", members: \["hier-1","hier-2","hier-3"\] \}/);
   assert.match(source, /if\(!Array\.isArray\(migrated\.moments\)\)migrated\.moments=\[\];/);
   assert.match(source, /if\(sample\.members\.every\(id=>\(migrated\.events\|\|\[\]\)\.some\(event=>event\.id===id\)\)\)migrated\.moments\.push\(deepClone\(sample\)\)/, "a reader who deleted one of those actions is left alone");
@@ -1136,6 +1136,21 @@ test("a ghost late in a chapter has not happened yet while the reader is earlier
   assert.equal(ghostsAt(0), "", "nothing has happened yet");
   assert.equal(ghostsAt(2), "", "the reader is at Velma taking up residence — the ghost that ends it is twenty actions away");
   assert.equal(ghostsAt(3), "ghost", "and it comes into force when the reader reaches its place in the order");
+});
+
+test("an action can say which face was worn for it — the name the world saw, not the person behind it", () => {
+  assert.match(source, /<input name="persona" list="persona-options"/, "offered on every action, and left empty when they act as themselves");
+  assert.match(functionBody("buildEventRecord"), /if\(persona&&persona\.toLowerCase\(\)!==String\(stateName\(currentDerived\(\),source\.id\)\|\|source\.name\)\.toLowerCase\(\)\)record\.persona=persona;/, "wearing your own name is not wearing a face");
+  const graph = functionBody("renderGraph");
+  assert.match(graph, /beatPersonas=new Map\(beatEvents\.filter\(event=>event\.persona&&event\.source\)\.map\(event=>\[event\.source,String\(event\.persona\)\]\)\)/);
+  assert.match(graph, /if\(beatPersonas\.has\(item\.id\)\)personaNotice=\{y:-r-30,text:`as \$\{beatPersonas\.get\(item\.id\)\}`\}/, "written over whoever wore it, while the action plays");
+  assert.match(functionBody("eventPanelRow"), /as \$\{escapeHtml\(event\.persona\)\}/);
+  assert.match(functionBody("actionSubjectLine"), /name\(event\.source\)\+\(event\.persona\?` as \$\{event\.persona\}`:""\)/, "and the running order says it too");
+  assert.match(source, /as:"persona",face:"persona",wearing:"persona"/, "searchable: as:the innkeeper");
+  assert.match(functionBody("actionMatchesFilter"), /if\(filter\.field==="persona"\)/);
+  assert.match(source, /persona: "the Innkeeper", description: "Lex and Luthor meet — though what Luthor meets is the Innkeeper\."/, "the demo shows one being worn");
+  assert.match(source, /<datalist id="identity-relation-options"><option value="Clone"><\/option><option value="Avatar"><\/option><option value="Persona"><\/option>/, "and a face that becomes an identity of its own can say that is what it is");
+  assert.match(styleSource, /\.persona-notice\{fill:#ffd479/);
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
