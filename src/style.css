@@ -343,6 +343,8 @@ th { color: var(--muted); font-weight: 600; }
 .node.location-opened .location-region-label{fill:#f2c95e;font-size:10px}
 .node.location-opened .location-tier-label{fill:#8a7638}
 .opened-location-edge{opacity:.16!important}
+/* Lines the reader is being pointed at ride above the shapes; everything settled stays beneath. */
+.active-edge-layer{pointer-events:none}
 @keyframes opened-location-spin{to{transform:rotate(360deg)}}
 /* Opening and closing a place. Children scale out of the dot and shrink back into it. */
 .location-shell{transform-origin:0 0}
@@ -366,7 +368,14 @@ th { color: var(--muted); font-weight: 600; }
 .identity-edge{fill:none;stroke:#c084fc;stroke-width:2.75;stroke-dasharray:4 4;opacity:.82}
 .line-key.clone{border-top-color:#c084fc!important;border-top-style:dashed!important}
 .graph-viewport.has-action-focus .node:not(.event-active-node){opacity:1!important;filter:brightness(.34) saturate(.38)}
-.node.event-active-node{opacity:1!important;filter:drop-shadow(0 0 12px rgba(125,211,252,.72)) saturate(1.12)!important}
+@keyframes active-node-breathe{0%,100%{filter:drop-shadow(0 0 9px rgba(125,211,252,.55)) saturate(1.08)}50%{filter:drop-shadow(0 0 19px rgba(125,211,252,.95)) saturate(1.2)}}
+.node.event-active-node{opacity:1!important;animation:active-node-breathe 1.9s ease-in-out infinite}
+/* A ring going out from whoever the action is about — the one thing on the graph still moving. */
+@keyframes action-focus-ping{0%{transform:scale(.86);opacity:.7}75%{transform:scale(1.34);opacity:0}100%{transform:scale(1.34);opacity:0}}
+.action-focus-ring{fill:none;stroke:#7dd3fc;stroke-width:2.2;pointer-events:none;transform-box:fill-box;transform-origin:center;animation:action-focus-ping 1.9s cubic-bezier(.25,.6,.35,1) infinite}
+.action-focus-ring-late{animation-delay:.95s}
+.location.event-active-node .action-focus-ring,.organization.event-active-node .action-focus-ring{stroke:#7ff7eb}
+.system.event-active-node .action-focus-ring{stroke:#c7a6ff}
 .graph-viewport.has-action-focus .node.selected{opacity:1!important;filter:brightness(.9) saturate(.95) drop-shadow(0 0 15px rgba(255,255,255,.82))!important}
 .graph-viewport.has-selection-focus .node.dim{opacity:.07!important;filter:brightness(.2) saturate(.12)!important}
 .graph-viewport.has-selection-focus .node.selected-neighbor{opacity:1!important;filter:brightness(.92) saturate(.92) drop-shadow(0 0 7px rgba(148,205,255,.32))!important}

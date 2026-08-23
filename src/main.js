@@ -1785,12 +1785,13 @@ function createGradient(defs,id,history,chapter){
 // --- Flowy force-directed layout engine (Obsidian-style): positions persist across
 // renders and drift continuously under simple physics, so the graph never "snaps" —
 // it drags, settles, and re-flows smoothly whenever the underlying data changes.
-const SEPARATION_GAP = 22;
+const SEPARATION_GAP = 22, ACTION_ROOM = 24, POD_ROOM = 74;
+let lastSpreadSignature="";
 const POD_TRAVEL_MS = 520;
-const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), podPos: new Map(), hubPos: new Map(), calm: new Map(), edges: [], dragId: null, alpha: 0 };
+const physics = { pos: new Map(), vel: new Map(), bounds: new Map(), radii: new Map(), degree: new Map(), podPos: new Map(), hubPos: new Map(), calm: new Map(), spread: new Map(), edges: [], dragId: null, alpha: 0 };
 const view = { x: 0, y: 0, scale: 1 };
 let lastAutoFitSignature="";
-let viewportGroup = null;
+let viewportGroup = null, activeEdgeLayer = null;
 let dragMoved = false, dragOffset = { x: 0, y: 0 }, dragStartClient = { x: 0, y: 0 };
 let panStart = null;
 let autoFitTimers = [], viewPinnedByUser = false, viewTween = null;
@@ -1838,7 +1839,7 @@ function stepPhysics() {
       fa.x += fx; fa.y += fy; fb.x -= fx; fb.y -= fy;
       // Hard separation: inverse-square repulsion alone still lets two shapes sit on top of
       // each other once springs pull them together.
-      const ra=physics.radii.get(ids[i])||24,rb=physics.radii.get(ids[j])||24,clearance=ra+rb+SEPARATION_GAP;
+      const ra=physics.radii.get(ids[i])||24,rb=physics.radii.get(ids[j])||24,clearance=ra+rb+SEPARATION_GAP+(physics.spread.get(ids[i])||0)+(physics.spread.get(ids[j])||0);
       if(d<clearance){const push=Math.min(6,(clearance-d)*.24);fa.x+=dx/d*push;fa.y+=dy/d*push;fb.x-=dx/d*push;fb.y-=dy/d*push;disturbed.add(ids[i]);disturbed.add(ids[j]);
         // Only shapes genuinely on top of each other keep the run alive. Reheating merely
         // because two nodes are inside the comfort gap kept it awake for ever.
@@ -1849,6 +1850,20 @@ function stepPhysics() {
     }
     fa.x += (cx - a.x) * CENTER; fa.y += (cy - a.y) * CENTER;
   }
+  // A place popped out of its parent hangs off that parent and cannot move itself, so it was
+  // liable to be sat on by whoever happened to be standing there. The shapes give way instead.
+  physics.podPos.forEach(pod => {
+    ids.forEach(id => {
+      const p = physics.pos.get(id), f = force.get(id); if (!p || !f) return;
+      const radius = physics.radii.get(id) || 24, clear = radius + POD_ROOM;
+      let dx = p.x - pod.x, dy = p.y - pod.y, d = Math.hypot(dx, dy);
+      if (d >= clear) return;
+      if (d < 1) { dx = Math.random() - .5; dy = Math.random() - .5; d = Math.hypot(dx, dy) || 1; }
+      const push = Math.min(6, (clear - d) * .22);
+      f.x += dx / d * push; f.y += dy / d * push; disturbed.add(id);
+      if (d < radius + 30) overlapping.add(id);
+    });
+  });
   physics.edges.forEach(edge => {
     const a = physics.pos.get(edge.a), b = physics.pos.get(edge.b); if (!a || !b) return;
     const dx = b.x - a.x, dy = b.y - a.y, d = Math.max(1, Math.hypot(dx, dy));
@@ -2155,7 +2170,8 @@ function renderGraph() {
   physics.degree.clear();physics.edges.forEach(edge=>{physics.degree.set(edge.a,(physics.degree.get(edge.a)||0)+1);physics.degree.set(edge.b,(physics.degree.get(edge.b)||0)+1);});
   graph.replaceChildren(); const defs=svgEl("defs"); Object.entries(COLORS).forEach(([type,color])=>{const marker=svgEl("marker",{id:`arrow-${type}`,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:6,markerHeight:6,orient:"auto-start-reverse"});marker.appendChild(svgEl("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:color}));defs.appendChild(marker);});graph.appendChild(defs);
   viewportGroup=svgEl("g",{class:`graph-viewport${currentEvent?" has-action-focus":""}${selectedId?" has-selection-focus":""}`});
-  const edgeLayer=svgEl("g"),departLayer=svgEl("g",{class:"node-depart-layer"}),satelliteLayer=svgEl("g",{class:"system-satellite-layer"}),conversationLayer=svgEl("g",{class:"conversation-layer"}),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});viewportGroup.append(edgeLayer,departLayer,nodeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
+  const edgeLayer=svgEl("g"),departLayer=svgEl("g",{class:"node-depart-layer"}),satelliteLayer=svgEl("g",{class:"system-satellite-layer"}),conversationLayer=svgEl("g",{class:"conversation-layer"}),nodeLayer=svgEl("g"),labelLayer=svgEl("g",{class:"node-label-layer"}),podLayer=svgEl("g",{class:"location-pod-layer"});activeEdgeLayer=svgEl("g",{class:"active-edge-layer"});viewportGroup.append(edgeLayer,departLayer,nodeLayer,activeEdgeLayer,satelliteLayer,conversationLayer,labelLayer,podLayer);graph.appendChild(viewportGroup);applyViewTransform();
+  const layerFor=className=>/newly-revealed-edge/.test(String(className))?activeEdgeLayer:edgeLayer;
   // While an action pops a hidden place out of its parent, links point at the pod itself, so the
   // line sits on the place the reader is actually being shown and rides back in as it retracts.
   const podIds=syncPodTransitions(locView,beatEvents),podSet=new Set([...podIds,...retiringPodIds]);
@@ -2164,7 +2180,7 @@ function renderGraph() {
   const edgeLocationId=id=>entity(id)?.kind!=="location"?id:(podSet.has(id)?id:(locView.anchorOf.get(id)||id));
   edgeIndex=[];
   const noteEdge=(a,b,chapter,note)=>{if(a&&b&&a!==b&&chapter)edgeIndex.push({a,b,chapter:Number(chapter),note});};
-  const straightEdge=(a,b,className,dataA,dataB)=>{if(!a||!b||a===b)return null;const aPos=pointFor(a),bPos=pointFor(b);if(!aPos||!bPos)return null;const muted=locView.expanded.has(a)||locView.expanded.has(b),element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:`${className}${muted?" opened-location-edge":""}`,"data-a":dataA,"data-b":dataB});edgeLayer.appendChild(element);edgeUpdaters.push(()=>{const p1=pointFor(a),p2=pointFor(b);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);});return element;};
+  const straightEdge=(a,b,className,dataA,dataB)=>{if(!a||!b||a===b)return null;const aPos=pointFor(a),bPos=pointFor(b);if(!aPos||!bPos)return null;const muted=locView.expanded.has(a)||locView.expanded.has(b),element=svgEl("line",{x1:aPos.x,y1:aPos.y,x2:bPos.x,y2:bPos.y,class:`${className}${muted?" opened-location-edge":""}`,"data-a":dataA,"data-b":dataB});layerFor(element.getAttribute("class")).appendChild(element);edgeUpdaters.push(()=>{const p1=pointFor(a),p2=pointFor(b);if(!p1||!p2)return;element.setAttribute("x1",p1.x);element.setAttribute("y1",p1.y);element.setAttribute("x2",p2.x);element.setAttribute("y2",p2.y);});return element;};
   // Having met is what lasts from a talk. It is not painted on the whole graph — in a full cast
   // everybody has met everybody — but when somebody is picked out, who they know is the question
   // being asked, so their acquaintances are drawn.
@@ -2184,7 +2200,7 @@ function renderGraph() {
     }
     const lastRelation=history.at(-1);
     noteEdge(aId,bId,lastRelation?.chapter??met?.chapter??aware?.from,lastRelation?`Relationship became ${String(lastRelation.value).toLowerCase()}`:met?"Met":"Became aware of each other");
-    if(element)edgeLayer.appendChild(element);
+    if(element)layerFor(element.getAttribute("class")).appendChild(element);
   });
   // A connection that has started but not finished is drawn as a line still being made, and says
   // so when it is hovered, rather than pretending the two are already joined.
@@ -2273,6 +2289,13 @@ function renderGraph() {
   const questActive=[...beatEvents,...holdingEvents].filter(event=>String(event.type).startsWith("quest_")).flatMap(event=>
     [entity(event.source)?.issuer,...(derived.quests.find(run=>run.quest===event.source)?.holders||[])]);
   const activeIds=new Set([...beatEvents,...holdingEvents].flatMap(event=>[event.source,event.target,event.location,eventBranchId(event,derived),...(event.characters||[])]).concat(questActive).filter(Boolean).map(edgeLocationId));
+  // Two shapes that sit comfortably apart at rest can still end up close enough that the line
+  // between them is a few pixels of nothing. While an action is about them they ask for more room,
+  // through the same easing as every other movement, so they drift apart rather than jump.
+  const spreadSignature=[...activeIds].sort().join(",");
+  physics.spread.clear();
+  if(activeIds.size>1)activeIds.forEach(id=>physics.spread.set(id,ACTION_ROOM));
+  if(spreadSignature!==lastSpreadSignature){lastSpreadSignature=spreadSignature;if(physics.spread.size)physics.alpha=Math.max(physics.alpha,ALPHA_CONTACT);}
   // Nothing on the graph belongs to this beat: dimming everything would leave the reader looking
   // at a dark graph wondering what happened.
   if(!activeIds.size)viewportGroup.setAttribute("class",String(viewportGroup.getAttribute("class")).replace(" has-action-focus",""));
@@ -2363,6 +2386,10 @@ function renderGraph() {
       target.addEventListener("pointerenter",()=>setHoverNode(item.id));
       target.addEventListener("pointerleave",()=>setHoverNode(null));
     };
+    // A glow can be mistaken for any other bright thing on a busy graph. A ring that keeps going
+    // out cannot: it is the one mark on the graph that is still moving, so whoever the action is
+    // about reads at a glance without counting shades of blue.
+    if(eventActive){const ringR=(physics.radii.get(item.id)||26)+7;group.append(svgEl("circle",{cx:0,cy:0,r:ringR,class:"action-focus-ring"}),svgEl("circle",{cx:0,cy:0,r:ringR,class:"action-focus-ring action-focus-ring-late"}));}
     bindGestures(group);bindGestures(labelGroup);
     nodeLayer.appendChild(group);nodeEls.set(item.id,group);
   });
@@ -2392,7 +2419,7 @@ function renderGraph() {
     noteEdge(satellite.id,satellite.anchor,satellite.from,satellite.mode==="merged"?"Merged into this system":satellite.reason||"Destroyed");
     straightEdge(satellite.id,satellite.anchor,`edge system-satellite-edge`,satellite.id,satellite.anchor);
   });
-  renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius,podOrigins);
+  renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius,podOrigins,activeIds);
   podOrigins=new Map();
   // Draw each departing node where it last stood, then let it travel into whatever took it in.
   departing.forEach(item=>{
@@ -2437,7 +2464,8 @@ function syncPodTransitions(view,beatEvents){
   }
   return podIds;
 }
-function renderLocationPods(view,currentEvent,positions,layer,glyphRadius,origins=new Map()){
+const POD_CLEARANCE=96;
+function renderLocationPods(view,currentEvent,positions,layer,glyphRadius,origins=new Map(),liveIds=new Set()){
   const podIds=activePodIds;
   const placedPods=[];
   const draw=(id,retiring)=>{
@@ -2445,12 +2473,20 @@ function renderLocationPods(view,currentEvent,positions,layer,glyphRadius,origin
     const item=entity(id);if(!item)return;
     // Park the pod in the emptiest direction around its ancestor, leaning upward, so it does
     // not land on top of whichever characters happen to be clustered nearby.
-    const distance=glyphRadius(anchor)+112,angle=(()=>{let best=-Math.PI/2,bestScore=-Infinity;for(let step=0;step<16;step++){const candidate=-Math.PI+step*(Math.PI/8),x=anchorPos.x+Math.cos(candidate)*distance,y=anchorPos.y+Math.sin(candidate)*distance;let score=Math.sin(candidate)<0?90:0;positions.forEach((point,other)=>{if(other===anchor)return;score+=Math.min(170,Math.hypot(point.x-x,point.y-y));});placedPods.forEach(point=>{score+=Math.min(170,Math.hypot(point.x-x,point.y-y))*2.5;});if(score>bestScore){bestScore=score;best=candidate;}}return best;})(),
+    const reach=glyphRadius(anchor)+112,spot=(()=>{let best={angle:-Math.PI/2,at:reach},bestScore=-Infinity;[reach,reach+64].forEach(at=>{for(let step=0;step<16;step++){const candidate=-Math.PI+step*(Math.PI/8),x=anchorPos.x+Math.cos(candidate)*at,y=anchorPos.y+Math.sin(candidate)*at;let score=(Math.sin(candidate)<0?90:0)-(at>reach?44:0),closest=Infinity;positions.forEach((point,other)=>{if(other===anchor)return;const away=Math.hypot(point.x-x,point.y-y);closest=Math.min(closest,away);score+=Math.min(170,away);});placedPods.forEach(point=>{const away=Math.hypot(point.x-x,point.y-y);closest=Math.min(closest,away*.7);score+=Math.min(170,away)*2.5;});
+      // Whatever it would land nearest to decides first. Summing middling distances let a
+      // direction that was roomy on average win over one shape sitting exactly where it goes.
+      score+=Math.min(POD_CLEARANCE,closest)*22;
+      if(score>bestScore){bestScore=score;best={angle:candidate,at};}}});return best;})(),angle=spot.angle,distance=spot.at,
       group=svgEl("g",{class:`location-pod${retiring?" pod-retracting":""}`,"data-id":id,role:"button",tabindex:0,"aria-label":`${item.name}, inside ${entity(anchor)?.name||anchor}`});
     const tether=svgEl("line",{class:"location-pod-tether"}),ring=svgEl("circle",{cx:0,cy:0,r:25,class:"location-pod-ring"}),core=svgEl("circle",{cx:0,cy:0,r:8,class:"location-pod-core"}),
       tier=svgEl("text",{x:0,y:-49,class:"location-pod-tier"}),label=svgEl("text",{x:0,y:-35,class:"location-pod-label"});
     tier.textContent=String(item.locationType||"Place").toUpperCase();label.textContent=item.name;
-    const shell=svgEl("g",{class:"location-pod-shell"});shell.append(ring,core,tier,label);group.append(shell);
+    const shell=svgEl("g",{class:"location-pod-shell"});shell.append(ring,core,tier,label);
+    // A place popped out for an action is as much part of it as anybody standing there, so it
+    // carries the same ring going out.
+    if(liveIds.has(id)&&!retiring)shell.append(svgEl("circle",{cx:0,cy:0,r:32,class:"action-focus-ring"}),svgEl("circle",{cx:0,cy:0,r:32,class:"action-focus-ring action-focus-ring-late"}));
+    group.append(shell);
     layer.append(tether,group);
     const bornAt=performance.now(),place=()=>{
       const base=positions.get(anchor);if(!base)return;
@@ -2615,7 +2651,7 @@ function updateLabelVisibility(){
     if(visible){placed.push(item);if(!item.focused&&!item.linked)spent++;}
   });
 }
-function applyGraphFocus(derived){if(!selectedId)return;const chosen=entity(selectedId),connected=new Set([selectedId]),revealedSystems=lastSystemView?lastSystemView.rendered:new Set();document.querySelectorAll("#graph .edge").forEach(edge=>{const match=edge.dataset.a===selectedId||edge.dataset.b===selectedId||revealedSystems.has(edge.dataset.a)||revealedSystems.has(edge.dataset.b)||String(edge.dataset.a).startsWith("conversation:")||String(edge.dataset.b).startsWith("conversation:");if(match){connected.add(edge.dataset.a);connected.add(edge.dataset.b);edge.classList.add("selected-connection");}else edge.classList.add("dim");});document.querySelectorAll("#graph .node").forEach(node=>{if(node.dataset.id===selectedId)node.classList.add("selected");else if(connected.has(node.dataset.id))node.classList.add("selected-neighbor");else node.classList.add("dim");});if(chosen?.kind==="organization"||chosen?.kind==="location")document.querySelectorAll("#graph .relation-edge").forEach(edge=>edge.classList.add("hidden"));}
+function applyGraphFocus(derived){if(!selectedId)return;const chosen=entity(selectedId),connected=new Set([selectedId]),revealedSystems=lastSystemView?lastSystemView.rendered:new Set();document.querySelectorAll("#graph .edge").forEach(edge=>{const match=edge.dataset.a===selectedId||edge.dataset.b===selectedId||revealedSystems.has(edge.dataset.a)||revealedSystems.has(edge.dataset.b)||String(edge.dataset.a).startsWith("conversation:")||String(edge.dataset.b).startsWith("conversation:");if(match){connected.add(edge.dataset.a);connected.add(edge.dataset.b);edge.classList.add("selected-connection");activeEdgeLayer?.appendChild(edge);}else edge.classList.add("dim");});document.querySelectorAll("#graph .node").forEach(node=>{if(node.dataset.id===selectedId)node.classList.add("selected");else if(connected.has(node.dataset.id))node.classList.add("selected-neighbor");else node.classList.add("dim");});if(chosen?.kind==="organization"||chosen?.kind==="location")document.querySelectorAll("#graph .relation-edge").forEach(edge=>edge.classList.add("hidden"));}
 
 function summaryPills(items,limit=3){if(!items.length)return "";return `<div class="summary-pills">${items.slice(0,limit).map(item=>{const record=typeof item==="string"?{label:item}:item,label=record.label||item,url=record.id?entityWikiUrl(record.id):"";return url?`<a class="${escapeHtml(record.tone||"")}" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}<i aria-hidden="true">↗</i></a>`:`<span class="${escapeHtml(record.tone||"")}">${escapeHtml(label)}</span>`;}).join("")}${items.length>limit?`<span class="more">+${items.length-limit}</span>`:""}</div>`;}
 function summaryGroup(label,items,limit){return items.length?`<div class="summary-group"><span>${escapeHtml(label)}</span>${summaryPills(items,limit)}</div>`:"";}
