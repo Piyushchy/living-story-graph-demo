@@ -637,6 +637,8 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .newly-revealed-edge{animation:edge-reveal .52s ease .2s both}
 .node.mentioned-only{opacity:.72;filter:saturate(.45)}
 .node.mentioned-only .node-label{font-style:italic;fill:#c1cad7}
+/* A place or a group the story has only spoken of yet: drawn as an outline waiting to be filled. */
+.node.mentioned-only .org-shape,.node.mentioned-only .location-glyph,.node.mentioned-only .system-shape{stroke-dasharray:5 5;fill-opacity:.18}
 .node-state-label{fill:#8c99ab;text-anchor:middle;font-size:8px;font-weight:800;letter-spacing:.16em;pointer-events:none;paint-order:stroke;stroke:var(--bg);stroke-width:3px}
 .ring.mentioned{border-color:#8c99ab!important;border-style:dashed!important;background:rgba(127,141,163,.16)!important}
 .ring.unknown{border-color:#7f8da3!important;border-style:dotted!important;background:transparent!important}

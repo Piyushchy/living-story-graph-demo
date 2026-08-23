@@ -670,8 +670,8 @@ test("a place a character is standing in keeps the line while it is popped out, 
 
 test("an action that merely names a place — a meeting, a note — still draws everyone it involves to that place while it is showing", () => {
   const body = functionBody("renderGraph");
-  assert.match(body, /beatEvents\.filter\(event=>event\.location&&entity\(event\.location\)\?\.kind==="location"&&!\["movement","residency","organization_location","location_parent"\]\.includes\(event\.type\)\)/, "the link types that already draw their own line are left alone, and every part of a moment names its own place");
-  assert.match(body, /locationCharacterIds\(event\)\.forEach\(who=>\{noteEdge\(who,place,event\.chapter,"Here for this action"\);straightEdge\(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place\);\}\)/);
+  assert.match(body, /beatEvents\.filter\(event=>event\.location&&\["location","organization"\]\.includes\(entity\(event\.location\)\?\.kind\)&&!\["movement","residency","organization_location","location_parent"\]\.includes\(event\.type\)\)/, "the link types that already draw their own line are left alone, and every part of a moment names its own place");
+  assert.match(body, /locationCharacterIds\(event\)\.forEach\(who=>\{noteEdge\(who,place,event\.chapter,note\);straightEdge\(who,place,"edge location-edge event-place-edge newly-revealed-edge",who,place\);\}\)/);
 });
 
 test("the view eases into a new framing instead of jumping, and a reader's own zoom or pan drops the tween immediately", () => {
@@ -1892,4 +1892,78 @@ test("a half-written search says what it could be, and a finished filter becomes
   assert.match(functionBody("searchQueryText"), /\[\.\.\.searchChips\.map\(chip=>`\$\{chip\.key\}:\$\{chip\.value\}`\),searchInput\.value\]\.join\(" "\)\.trim\(\)/, "the blocks and what is still being typed are one query");
   assert.match(source, /if\(event\.key==="Backspace"&&!searchInput\.value&&searchChips\.length\)\{event\.preventDefault\(\);searchChips\.pop\(\);/, "a block behaves like a block");
   assert.match(styleSource, /\.search-chip\{display:inline-flex/);
+});
+
+function branchSandbox() {
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext([
+    functionBody("organizationBranches"),
+    functionBody("branchOf"),
+  ].join("\n"), ctx);
+  return ctx;
+}
+
+test("a scene inside a group happens at one of its places: the branch it names, or the original", () => {
+  const ctx = branchSandbox();
+  const links = [
+    { organization: "office", location: "chelsea", role: "Branch", from: 9 },
+    { organization: "office", location: "new-york", role: "Building", from: 1 },
+    { organization: "office", location: "unfinished", role: "Branch", from: 12, pending: true },
+    { organization: "guild", location: "hozath", role: "Hall", from: 3 }
+  ];
+  const branch = event => vm.runInContext(`branchOf(${JSON.stringify(event)},${JSON.stringify(links)})`, ctx);
+  assert.equal(branch({ location: "office" }), "new-york", "naming no branch means the original one — the first place it opened, not the first written down");
+  assert.equal(branch({ location: "office", branch: "chelsea" }), "chelsea", "and naming one narrows it to that one");
+  assert.equal(branch({ location: "office", branch: "unfinished" }), "new-york", "a branch still being established is not somewhere anything can happen yet");
+  assert.equal(branch({ location: "guild" }), "hozath", "one place and one place only is that group's original");
+  assert.equal(branch({ location: "nowhere" }), null, "a group with no place of its own resolves to no place at all");
+  assert.equal(branch({}), null);
+});
+
+test("where something happened takes a group as readily as a place, and says which branch of it", () => {
+  const body = functionBody("buildEventRecord");
+  assert.match(body, /if\(location&&!\["location","organization"\]\.includes\(location\.kind\)\)\{toast\("Where this happened must be a place or an organization"\)/);
+  assert.match(body, /if\(\["movement","residency","location_parent","organization_location","system_location"\]\.includes\(type\)&&location&&location\.kind!=="location"\)\{toast\("This one needs a real place, not an organization"\)/, "travel, residence, and the map itself still need somewhere that exists");
+  assert.match(body, /if\(branchText&&location\?\.kind!=="organization"\)\{toast\("A branch belongs to an organization/);
+  assert.match(body, /if\(branch&&!organizationBranches\(location\.id,derive\(chapter\)\.organizationLocations\)\.some\(link=>link\.location===branch\.id\)\)/, "and only somewhere that group is actually based by then");
+  assert.match(body, /if\(branch\)record\.branch=branch\.id;/);
+  assert.match(source, /<label class="field" id="event-branch-field" hidden><span>Which branch of it \(optional\)<\/span>/);
+  assert.match(source, /\$\("#location-options"\)\.innerHTML=data\.entities\.filter\(item=>\["location","organization"\]\.includes\(item\.kind\)\)/, "so a group is offered by name where a place would be");
+  const field = functionBody("updateBranchField");
+  assert.match(field, /isGroup=where\?\.kind==="organization"&&!placeOnly/, "the question only exists once the where is a group");
+  assert.match(field, /if\(!isGroup\)\{form\.elements\.branch\.value="";return;\}/, "and clearing the group clears the answer with it");
+  assert.match(field, /const branches=organizationBranches\(where\.id,derive\(validChapter\(form\.elements\.chapter\.value\)\|\|currentChapter\)\.organizationLocations\)/, "offering only the places that group has by that chapter");
+  assert.match(functionBody("actionEffectProblem"), /if\(event\.branch&&kind\(event\.location\)!=="organization"\)return "a branch needs its organization named as where this happened"/);
+});
+
+test("a group as the where lights the group, and only the branch the action means", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const group=entity\(event\.location\)\?\.kind==="organization"\?entity\(event\.location\):null,branch=eventBranchId\(event,derived\),place=edgeLocationId\(event\.location\)/, "everyone in it is tied to the group itself, which is the where the action names");
+  assert.match(body, /beatEvents\.some\(event=>event\.location===link\.organization&&eventBranchId\(event,derived\)===link\.location\)/, "and the branch it resolves to is the one whose line lights up — the group's other branches stay quiet");
+  assert.match(body, /\[event\.source,event\.target,event\.location,eventBranchId\(event,derived\),\.\.\.\(event\.characters\|\|\[\]\)\]/, "so the branch counts as part of what is happening");
+  const derived = functionBody("derive");
+  assert.match(derived, /if\(states\.get\(event\.location\)\?\.kind==="organization"&&!\['mention','membership','organization_location'\]\.includes\(event\.type\)\)\{/);
+  assert.match(derived, /if\(branch\)locationCharacterIds\(event\)\.forEach\(character=>locationVisits\.push\(\{character,location:branch,/, "and the place itself records who was there, rather than the group holding it in the abstract");
+  assert.match(functionBody("actionSubjectLine"), /event\.location\?`at \$\{name\(event\.location\)\}\$\{event\.branch\?` · \$\{name\(event\.branch\)\}`:""\}`:""/);
+});
+
+test("a place or a group can be spoken of long before the story ever shows it", () => {
+  const fields = functionBody("updateEntityFormFields");
+  assert.match(fields, /\$\("#entity-mentioned-field"\)\.hidden=isQuestKind\(kind\);/, "everything but a quest can be spoken of first");
+  assert.match(fields, /\$\("#entity-mentioned-label"\)\.textContent=isCharacter\?"First mentioned chapter \(optional\)":"First spoken-of chapter \(optional\)"/);
+  assert.match(fields, /form\.elements\.appeared\.required=isQuest;/, "so an introduction chapter is no longer the only way in");
+  assert.match(source, /if\(kind!=="quest"&&!mentioned&&!appeared\)\{toast\(kind==="character"\?"Enter either a first mention or a first appearance":/, "though one of the two is still needed");
+  assert.match(source, /mentioned:kind==="quest"\?null:mentioned,appeared:kind==="quest"\?null:appeared,intro:appeared\|\|mentioned,/);
+  assert.match(source, /if\(mentioned\)\{const sameMentionChapter=previousMention\?\.chapter===mentioned,mentionText=`\$\{name\} is mentioned for the first time\.`/, "and it gets a row of its own, exactly as a person does");
+  assert.match(source, /if\(!appeared\)\{if\(introEvent\)data\.events=data\.events\.filter\(storyEvent=>storyEvent\.id!==introEvent\.id\);\}/, "clearing the introduction chapter takes the introduction back off the graph");
+
+  // The two readings of "has it appeared yet" have to agree, or a place would flicker between
+  // introduced and merely spoken of depending on which path drew it.
+  assert.match(functionBody("firstAppearance"), /\(\["appearance","corpse_appearance"\]\.includes\(event\.type\)\|\|event\.identityIntro===true\)/);
+  assert.match(functionBody("firstAppearance"), /declared=item&&item\.kind!=="character"&&!validChapter\(item\.mentioned\)\?item\.intro:undefined/, "one written down before any row existed for it still counts as introduced");
+  assert.match(functionBody("derive"), /if\(event\.identityIntro===true&&source\)source\.appeared=source\.appeared===null\?event\.chapter:Math\.min\(source\.appeared,event\.chapter\)/);
+  assert.match(functionBody("renderGraph"), /mentionedOnly=item\.kind!=="quest"&&state\.mentioned!==null&&\(state\.appeared===null\|\|state\.appeared>currentChapter\)/);
+  assert.match(functionBody("syncPresenceFromEvents"), /if\(!item\|\|item\.kind==="quest"\)return;/);
+  assert.match(styleSource, /\.node\.mentioned-only \.org-shape,\.node\.mentioned-only \.location-glyph,\.node\.mentioned-only \.system-shape\{stroke-dasharray:5 5/);
 });
