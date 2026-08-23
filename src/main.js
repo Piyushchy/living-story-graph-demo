@@ -2029,24 +2029,35 @@ function renderGraph() {
   });
   // On the beat a quest is handed over, draw the handing over: from whoever issued it to whoever
   // took it. It lasts only for that action, like the quest notice itself.
-  if(questBeat&&questBeat.type==="quest_issue"&&questBeat.action!=="withdraw"){
-    const issuer=entity(questBeat.quest)?.issuer;
+  if(questBeat&&["quest_issue","quest_end"].includes(questBeat.type)&&questBeat.action!=="withdraw"){
+    const issuer=entity(questBeat.quest)?.issuer,
+      // An issue runs from the one who set it to the one who took it; a settling runs back.
+      settling=questBeat.type==="quest_end",
+      tone=settling?(questBeat.action==="fail"?"quest-fail-edge":"quest-done-edge"):"quest-issue-edge";
     if(issuer)questBeat.who.forEach(holder=>{
       if(!positions.get(issuer)||!positions.get(holder))return;
-      straightEdge(issuer,holder,"edge quest-issue-edge newly-revealed-edge",issuer,holder);
+      straightEdge(issuer,holder,`edge ${tone} newly-revealed-edge`,issuer,holder);
       // A mote runs down the line from the system that set the quest to whoever took it, so the
       // issuing is something seen happening rather than a mark left behind.
-      const pulse=svgEl("g",{class:"quest-pulse","aria-hidden":"true"});
+      const pulse=svgEl("g",{class:`quest-pulse${settling?` ${tone}-pulse`:""}`,"aria-hidden":"true"});
       pulse.append(svgEl("circle",{cx:0,cy:0,r:7,class:"quest-pulse-halo"}),svgEl("circle",{cx:0,cy:0,r:3.4,class:"quest-pulse-core"}));
       conversationLayer.appendChild(pulse);
-      questPulses.push({el:pulse,from:issuer,to:holder,start:performance.now(),duration:820});
+      questPulses.push({el:pulse,from:settling?holder:issuer,to:settling?issuer:holder,start:performance.now(),duration:820});
     });
   }
   derived.systemHosts.forEach(link=>{noteEdge(link.system,link.host,link.from,`${link.role} of this system${formingNote(link)}`);straightEdge(link.system,link.host,`edge system-host-edge${forming(link)}${beatDoes("system_host",event=>event.source===link.system&&event.target===link.host)?" newly-revealed-edge":""}`,link.system,link.host);});
   derived.systemLocations.forEach(link=>{if(!focusSystems.has(link.system))return;const place=edgeLocationId(link.location);noteEdge(link.system,place,link.from,`${link.role} here${formingNote(link)}`);straightEdge(link.system,place,`edge${forming(link)} system-location-edge${beatDoes("system_location",event=>event.source===link.system&&event.location===link.location)?" newly-revealed-edge":""}`,link.system,place);});
   derived.systemParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,`Subsystem of${formingNote(link)}`);straightEdge(link.child,link.parent,`edge system-parent-edge${forming(link)}${beatDoes("system_parent",event=>event.source===link.child&&event.target===link.parent)?" newly-revealed-edge":""}`,link.child,link.parent);});
   derived.identityParents.forEach(link=>{noteEdge(link.child,link.parent,link.from,`${link.relation}${formingNote(link)}`);return straightEdge(link.child,link.parent,`edge identity-edge${forming(link)}${beatDoes("identity_parent",event=>event.source===link.child&&event.target===link.parent)?" newly-revealed-edge":""}`,link.child,link.parent);});
-  const activeIds=new Set(beatEvents.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])]).filter(Boolean).map(edgeLocationId));
+  // A quest is a record, not a node, so an action about one names nothing that is on the graph:
+  // without this the whole graph dimmed for it and nothing lit up at all. What is happening is
+  // happening to whoever carries the quest and to whoever set it.
+  const questActive=beatEvents.filter(event=>String(event.type).startsWith("quest_")).flatMap(event=>
+    [entity(event.source)?.issuer,...(derived.quests.find(run=>run.quest===event.source)?.holders||[])]);
+  const activeIds=new Set([...beatEvents.flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])]),...questActive].filter(Boolean).map(edgeLocationId));
+  // Nothing on the graph belongs to this beat: dimming everything would leave the reader looking
+  // at a dark graph wondering what happened.
+  if(!activeIds.size)viewportGroup.setAttribute("class",String(viewportGroup.getAttribute("class")).replace(" has-action-focus",""));
   const retractingIds=collapsingLocationId?new Set([...renderedSubtree(collapsingLocationId,locView)]):new Set();
   visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind==="character"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=beatDoes("cultivation",event=>event.source===item.id),priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null,questNotice=null,personaNotice=null;
     if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));

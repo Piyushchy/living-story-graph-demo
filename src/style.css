@@ -986,3 +986,11 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .edge.mention-edge.newly-revealed-edge{opacity:.9;stroke-width:1.5}
 .line-key.mention{background:repeating-linear-gradient(90deg,#c4a6ff 0 1px,transparent 1px 5px)}
 .event-mentions{padding:2px 7px;border-radius:999px;background:rgba(196,166,255,.14);color:#c4a6ff;font-size:9px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
+
+/* A quest settling: the mote runs back to whoever set it, in the colour of how it ended. */
+.edge.quest-done-edge{stroke:#45c98b;stroke-width:1.6;stroke-dasharray:5 4;opacity:.85}
+.edge.quest-fail-edge{stroke:#ef5d67;stroke-width:1.6;stroke-dasharray:5 4;opacity:.85}
+.quest-pulse.quest-done-edge-pulse .quest-pulse-core{fill:#8ff0c0}
+.quest-pulse.quest-done-edge-pulse .quest-pulse-halo{fill:rgba(69,201,139,.35)}
+.quest-pulse.quest-fail-edge-pulse .quest-pulse-core{fill:#ffb4ba}
+.quest-pulse.quest-fail-edge-pulse .quest-pulse-halo{fill:rgba(239,93,103,.35)}
