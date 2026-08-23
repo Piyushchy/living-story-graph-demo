@@ -275,7 +275,7 @@ app.innerHTML = `
       <section id="graph-view" class="view active">
         <div class="graph-page">
           <div class="controls">
-            <label class="field search-field"><span>Search — a name, or <code>from:lex event:cultivation</code></span><input id="search" placeholder="Try from:, event:, at:, quest:, chapter:" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" aria-autocomplete="list"><datalist id="entity-options" hidden></datalist><div class="search-results" id="search-results" role="listbox" hidden></div></label>
+            <label class="field search-field" for="search"><span>Search — a name, or <code>mentioned:velma</code></span><div class="search-chips" id="search-chips" hidden></div><input id="search" placeholder="Try mentioned:, appears:, from:, event:, at:" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" aria-autocomplete="list"><datalist id="entity-options" hidden></datalist><div class="search-results" id="search-results" role="listbox" hidden></div></label>
             <label class="field"><span>Volume</span><select id="volume"></select></label>
             <div class="field timeline-field"><span class="chapter-label"><span>Chapter <strong id="chapter-value">—</strong></span><span id="event-position"></span><button type="button" id="collapse-chapter-events" class="collapse-chapter-events" hidden>Collapse events ×</button></span><div class="range-row"><button class="step" id="previous" aria-label="Previous stop">−</button><div class="main-range-wrap"><input id="timeline" type="range"><div id="timeline-marks" class="main-timeline-marks"></div></div><button class="step" id="next" aria-label="Next stop">+</button></div></div>
           </div>
@@ -350,6 +350,10 @@ app.innerHTML = `
             </div>
             <p id="quick-add-error" class="volume-error" role="alert"></p>
           </form>
+          <section id="roll-card" class="admin-card">
+            <div class="volume-editor-heading"><div><span class="editor-kicker">Chapter roll</span><h2>Where somebody turns up</h2><p>Read straight out of the actions: the chapters an identity is in, and the ones they are only spoken of in. Correct anything the reading got wrong. A correction is kept as a correction rather than a copy of the list, so later actions still feed in around it.</p></div><div class="manage-row"><input id="roll-entity" list="admin-entity-options" placeholder="Type a name" autocomplete="off"><button class="button ghost" id="roll-load" type="button">Show chapters</button></div></div>
+            <div id="roll-body" class="roll-body"></div>
+          </section>
           <div class="admin-grid">
             <form id="entity-form" class="admin-card"><div class="admin-card-heading"><h2 id="entity-form-title">Create character, organization, or location</h2><div class="manage-row"><input id="manage-entity" list="admin-entity-options" placeholder="Load an existing identity"><button class="button ghost" id="load-entity" type="button">Load</button></div></div><p id="creation-edit-note" class="event-edit-mode-note" hidden><strong>Editing a creation-generated row.</strong> These facts were made by this identity form, so saving here updates the original linked row instead of creating a chapter event.</p><input name="editingId" type="hidden"><input name="editingCreationEventId" type="hidden"><div class="form-grid">
               <label class="field"><span>Type</span><select name="kind"><option value="character">Character</option><option value="organization">Organization</option><option value="location">Location</option><option value="system">System</option><option value="quest">Quest</option></select></label>
@@ -436,6 +440,7 @@ const graph = $("#graph");
 const timeline = $("#timeline");
 const volumeSelect = $("#volume");
 const searchInput = $("#search");
+let searchChips=[];
 let searchPage = 8;
 
 function parseIdentityName(value){const raw=String(value||"").trim(),match=raw.match(/^\[\[([^\]|]+?)\|([^\]]+?)\]\]$/);if(!match)return {name:raw,wikiUrl:""};const wikiUrl=safeExternalUrl(match[2].trim());return wikiUrl?{name:match[1].trim(),wikiUrl}:{name:match[1].trim(),wikiUrl:""};}
@@ -908,6 +913,44 @@ function personasOf(event){
 function personaListText(event){
   return [...personasOf(event)].map(([id,face])=>`${entity(id)?.name||id} as ${face}`).join(", ");
 }
+// Where somebody stands in the story, chapter by chapter: the ones they turn up in and the ones
+// they are only spoken of in. Both are read out of the actions themselves, and both can be
+// corrected by hand — the reading is a good first guess, not the last word.
+function autoChapterRoll(id){
+  const appeared=new Set(),mentioned=new Set();
+  data.events.forEach(event=>{
+    const chapter=validChapter(event.chapter);
+    if(!chapter||!id)return;
+    if((event.mentions||[]).includes(id)||(event.type==="mention"&&event.source===id))mentioned.add(chapter);
+    if(event.type!=="mention"&&(event.source===id||event.target===id||(event.characters||[]).includes(id)))appeared.add(chapter);
+  });
+  return {appeared:[...appeared],mentioned:[...mentioned]};
+}
+function rollFixes(item,kind){const fix=item?.roll?.[kind]||{};return {add:(fix.add||[]).map(validChapter).filter(Boolean),remove:(fix.remove||[]).map(validChapter).filter(Boolean)};}
+function chapterRoll(id){
+  const item=entity(id),auto=autoChapterRoll(id),roll={};
+  ["appeared","mentioned"].forEach(kind=>{
+    const {add,remove}=rollFixes(item,kind),dropped=new Set(remove);
+    roll[kind]=[...new Set([...auto[kind],...add])].filter(chapter=>!dropped.has(chapter)).sort((a,b)=>a-b);
+  });
+  // Being there is more than being spoken of, so a chapter counted as both is counted as being there.
+  roll.mentioned=roll.mentioned.filter(chapter=>!roll.appeared.includes(chapter));
+  return roll;
+}
+// A correction is kept as a correction, not as a copy of the list: later actions still feed in.
+function correctRoll(id,kind,chapter,wanted){
+  const item=entity(id),number=validChapter(chapter);
+  if(!item||!number||!["appeared","mentioned"].includes(kind))return false;
+  const auto=new Set(autoChapterRoll(id)[kind]),{add,remove}=rollFixes(item,kind),
+    nextAdd=new Set(add),nextRemove=new Set(remove);
+  if(wanted){nextRemove.delete(number);if(!auto.has(number))nextAdd.add(number);}
+  else{nextAdd.delete(number);if(auto.has(number))nextRemove.add(number);}
+  const roll={...(item.roll||{})};
+  roll[kind]={...(nextAdd.size?{add:[...nextAdd].sort((a,b)=>a-b)}:{}),...(nextRemove.size?{remove:[...nextRemove].sort((a,b)=>a-b)}:{})};
+  if(!Object.keys(roll[kind]).length)delete roll[kind];
+  if(Object.keys(roll).length)item.roll=roll;else delete item.roll;
+  return true;
+}
 function eventInvolves(event,id) {
   if(event.source === id || event.target === id || event.location === id || (event.characters || []).includes(id) || (event.mentions || []).includes(id)) return true;
   return String(event.type).startsWith("quest_") && entity(event.source)?.issuer === id;
@@ -999,21 +1042,26 @@ function stateName(derived,id){return derived?.states?.get(id)?.displayName||ent
 // "from:Midnight Inn System quest:rewards". A field's value runs until the next field, so a name
 // with spaces in it needs no quoting, and anything the field does not account for is kept as
 // ordinary words to look for.
-const SEARCH_FIELDS={from:"from",by:"from",source:"from",issuer:"from",with:"with",to:"with",target:"with",at:"at",in:"at",place:"at",where:"at",chapter:"chapter",ch:"chapter",chap:"chapter",event:"type",type:"type",action:"type",kind:"type",quest:"quest",text:"text",says:"text",word:"text",as:"persona",face:"persona",wearing:"persona",mentions:"mentions",names:"mentions",speaks:"mentions",is:"is",about:"about",any:"about"};
-const SEARCH_FIELD_HELP=[["from:","who it comes from — a character, or the system that issued the quest"],["as:","the face worn for it — a name the world knows, not the person behind it"],["mentions:","spoken of in it, without being there"],["with:","who else it touches"],["at:","where it happens"],["event:","the kind of change — cultivation, movement, quest…"],["quest:","a quest by name, or one of its terms: rewards, rank, achievements"],["chapter:","one chapter, a range like 12-40, or >60"],["is:","ghost, moment, quest"]];
+const SEARCH_FIELDS={from:"from",by:"from",source:"from",issuer:"from",with:"with",to:"with",target:"with",at:"at",in:"at",place:"at",where:"at",chapter:"chapter",ch:"chapter",chap:"chapter",event:"type",type:"type",action:"type",kind:"type",quest:"quest",text:"text",says:"text",word:"text",as:"persona",face:"persona",wearing:"persona",speaks:"spokenof",spoken:"spokenof",spokenof:"spokenof",names:"spokenof",is:"is",about:"about",any:"about",mention:"roll_mentioned",mentioned:"roll_mentioned",mentions:"roll_mentioned",appears:"roll_appeared",appeared:"roll_appeared",appearing:"roll_appeared",appearance:"roll_appeared",chapters:"roll_both",roll:"roll_both",both:"roll_both"};
+// The roll fields do not narrow the actions at all — they ask a different question, and are
+// answered with a list of chapters rather than a list of things that happened.
+const ROLL_FIELDS={roll_appeared:["appeared"],roll_mentioned:["mentioned"],roll_both:["appeared","mentioned"]};
+const SEARCH_FIELD_HELP=[["mentioned:","every chapter somebody is only spoken of in"],["appears:","every chapter somebody is actually in"],["chapters:","both lists at once"],["from:","who it comes from — a character, or the system that issued the quest"],["as:","the face worn for it — a name the world knows, not the person behind it"],["speaks:","actions that speak of somebody without them being there"],["with:","who else it touches"],["at:","where it happens"],["event:","the kind of change — cultivation, movement, quest…"],["quest:","a quest by name, or one of its terms: rewards, rank, achievements"],["chapter:","one chapter, a range like 12-40, or >60"],["is:","ghost, moment, quest"]];
 function searchWords(text){return String(text||"").toLowerCase().split(/[^\p{L}\p{N}'’-]+/u).filter(word=>word.length>1);}
 function parseSearchQuery(raw){
   const text=String(raw||"").replace(/\s+/g," ").trim();
-  if(!text)return {filters:[],words:[]};
-  const marks=[...text.matchAll(/(?:^|\s)([A-Za-z]{2,8})\s*:\s*/g)].filter(mark=>SEARCH_FIELDS[mark[1].toLowerCase()]);
-  if(!marks.length)return {filters:[],words:searchWords(text)};
-  const filters=[],words=searchWords(text.slice(0,marks[0].index));
+  if(!text)return {filters:[],words:[],rolls:[]};
+  const marks=[...text.matchAll(/(?:^|\s)([A-Za-z]{2,10})\s*:\s*/g)].filter(mark=>SEARCH_FIELDS[mark[1].toLowerCase()]);
+  if(!marks.length)return {filters:[],words:searchWords(text),rolls:[]};
+  const filters=[],rolls=[],words=searchWords(text.slice(0,marks[0].index));
   marks.forEach((mark,index)=>{
     const start=mark.index+mark[0].length,end=index+1<marks.length?marks[index+1].index:text.length,
-      value=text.slice(start,end).trim().replace(/^"|"$/g,"").trim();
-    if(value)filters.push({field:SEARCH_FIELDS[mark[1].toLowerCase()],value});
+      value=text.slice(start,end).trim().replace(/^"|"$/g,"").trim(),field=SEARCH_FIELDS[mark[1].toLowerCase()];
+    if(!value)return;
+    if(ROLL_FIELDS[field])rolls.push({kinds:ROLL_FIELDS[field],value});
+    else filters.push({field,value});
   });
-  return {filters,words};
+  return {filters,words,rolls};
 }
 // One letter out is still the word that was meant: "cultivatoin" finds cultivation.
 function withinOneEdit(a,b){
@@ -1086,7 +1134,7 @@ function actionMatchesFilter(event,filter){
   if(filter.field==="type")return matchesTypeValue(filter.value,event.type);
   if(filter.field==="text")return searchWords(filter.value).every(word=>actionHaystack(event).includes(word));
   if(filter.field==="persona"){const worn=[...personasOf(event).values()].join(" ").toLowerCase();return Boolean(worn)&&searchWords(filter.value).every(word=>worn.includes(word));}
-  if(filter.field==="mentions"){const spoken=readEntityValue(filter.value);return spoken.id?(event.mentions||[]).includes(spoken.id):(event.mentions||[]).map(id=>entity(id)?.name||"").join(" ").toLowerCase().includes(String(filter.value).toLowerCase());}
+  if(filter.field==="spokenof"){const spoken=readEntityValue(filter.value);return spoken.id?(event.mentions||[]).includes(spoken.id):(event.mentions||[]).map(id=>entity(id)?.name||"").join(" ").toLowerCase().includes(String(filter.value).toLowerCase());}
   if(filter.field==="is"){
     return searchWords(filter.value).every(flag=>
       flag==="ghost"?Boolean(event.ghost)
@@ -1109,7 +1157,59 @@ function actionMatchesFilter(event,filter){
   }else if(!searchWords(filter.value).every(word=>haystack.includes(word)))return false;
   return read.words.every(word=>haystack.includes(word));
 }
+// What a half-typed query is reaching for. Two letters of a field name are enough to offer the
+// field, and once a field is written the values it can take are offered by name — so the reader
+// picks somebody out of the story rather than having to spell them.
+const SEARCH_FIELD_NAME={from:"from",with:"with",at:"at",chapter:"chapter",type:"event",quest:"quest",text:"text",persona:"as",spokenof:"speaks",is:"is",about:"about",roll_mentioned:"mentioned",roll_appeared:"appears",roll_both:"chapters"};
+const SEARCH_FIELD_NOTE=Object.fromEntries(SEARCH_FIELD_HELP.map(([label,note])=>[label.replace(":",""),note]));
+function suggestFields(fragment){
+  const canon=new Map();
+  Object.entries(SEARCH_FIELDS).forEach(([alias,field])=>{if(alias.startsWith(fragment)&&!canon.has(field))canon.set(field,SEARCH_FIELD_NAME[field]||alias);});
+  return [...canon.values()].map(alias=>({alias,note:SEARCH_FIELD_NOTE[alias]||""})).slice(0,6);
+}
+function suggestValues(field,fragment){
+  const words=searchWords(fragment);
+  if(field==="chapter"||field==="text"||field==="persona")return [];
+  if(field==="is")return ["ghost","moment","quest"].filter(flag=>!words.length||flag.startsWith(words[0])).map(value=>({value,note:"actions like this"}));
+  if(field==="type")return [...new Set(data.events.map(event=>String(event.type).replaceAll("_"," ")))].sort()
+    .filter(type=>!words.length||words.every(word=>type.includes(word))).slice(0,6).map(value=>({value,note:"kind of change"}));
+  const kinds=field==="quest"?["quest"]:field==="at"?["location","organization"]:null,found=[];
+  searchNameRows().filter(row=>kinds?kinds.includes(row.kind):row.kind!=="quest").forEach(row=>row.names.forEach(name=>{
+    const lower=String(name).toLowerCase();
+    if(words.length&&!words.every(word=>lower.includes(word)))return;
+    if(found.some(item=>item.value===name))return;
+    found.push({value:name,note:row.kind});
+  }));
+  return found.slice(0,6);
+}
+function searchSuggestions(){
+  const text=searchInput.value,rows=[],
+    mark=text.match(/(^|\s)([A-Za-z]{2,10})\s*:\s*([^:]*)$/),
+    word=text.match(/(^|\s)([A-Za-z]{2,})$/);
+  if(mark&&SEARCH_FIELDS[mark[2].toLowerCase()]){
+    const key=mark[2].toLowerCase(),fragment=mark[3].trim(),at=mark.index+mark[1].length;
+    suggestValues(SEARCH_FIELDS[key],fragment).forEach(item=>rows.push({kind:"value",key,value:item.value,note:item.note,at}));
+  }
+  // The last word may be the start of a new field even while a value is being written, so both are
+  // offered: whichever the reader meant is the one that has anything to show.
+  if(word)suggestFields(word[2].toLowerCase()).forEach(item=>rows.push({kind:"field",alias:item.alias,note:item.note,at:word.index+word[1].length}));
+  return rows.slice(0,8);
+}
+// A finished filter is lifted out of the box and kept as a block above it, so what is being asked
+// stays legible however many filters it grows to.
+function searchQueryText(){return [...searchChips.map(chip=>`${chip.key}:${chip.value}`),searchInput.value].join(" ").trim();}
+function renderSearchChips(){
+  const box=$("#search-chips");if(!box)return;
+  box.hidden=!searchChips.length;
+  box.innerHTML=searchChips.map((chip,index)=>`<span class="search-chip"><b>${escapeHtml(chip.key)}:</b>${escapeHtml(chip.value)}<button type="button" class="search-chip-drop" data-chip="${index}" aria-label="Drop ${escapeHtml(chip.key)} ${escapeHtml(chip.value)}">×</button></span>`).join("");
+  box.querySelectorAll("[data-chip]").forEach(button=>button.onclick=()=>{
+    searchChips.splice(Number(button.dataset.chip),1);searchPage=SEARCH_PAGE;renderSearchChips();renderSearchResults();searchInput.focus();
+  });
+}
 function searchActions(query){
+  // A query that only asks for somebody's chapters is not asking for actions at all, so it is
+  // answered with chapters alone rather than with everything that ever happened.
+  if(!query.filters.length&&!query.words.length)return {entries:[],loose:false};
   const beats=volumeBeats(),beatOf=new Map();
   beats.forEach(beat=>beat.events.forEach(event=>beatOf.set(event.id,beat)));
   const found=volumeActions().map((event,index)=>({event,index:index+1}))
@@ -1135,6 +1235,35 @@ function searchTerms(query){
   if(!wanted.length)return [];
   return lexiconTerms().filter(entry=>{const lower=`${entry.term} ${entry.note}`.toLowerCase();return wanted.some(word=>lower.includes(word));}).slice(0,5);
 }
+// "mentioned:velma" is a different question from "what happened": it asks for the chapters
+// themselves, so it is answered with a list of chapters rather than a list of actions.
+function searchChapters(query){
+  const wanted=new Map(),order=[];
+  (query.rolls||[]).forEach(roll=>{
+    const read=readEntityValue(roll.value),key=read.id||`?${roll.value.toLowerCase()}`;
+    if(!wanted.has(key)){wanted.set(key,{id:read.id,name:read.id?entity(read.id)?.name||read.id:roll.value,kinds:new Set()});order.push(key);}
+    roll.kinds.forEach(kind=>wanted.get(key).kinds.add(kind));
+  });
+  return order.map(key=>{
+    const found=wanted.get(key);
+    if(!found.id)return {...found,kinds:[...found.kinds],rows:[]};
+    const roll=chapterRoll(found.id),rows=[];
+    ["appeared","mentioned"].forEach(kind=>{if(found.kinds.has(kind))roll[kind].forEach(chapter=>rows.push({chapter,kind}));});
+    return {...found,kinds:[...found.kinds],rows:rows.sort((a,b)=>a.chapter-b.chapter)};
+  });
+}
+function volumeOfChapter(chapter){return data.volumes.find(volume=>chapter>=Number(volume.from)&&chapter<=Number(volume.to))||null;}
+// Going to a chapter plays the volume up to the end of it, so the whole chapter is on the graph
+// rather than its first line only. A chapter in another volume takes the reader there first.
+function jumpToChapter(chapter){
+  const number=validChapter(chapter);if(!number)return;
+  const volume=volumeOfChapter(number);
+  cancelChapterSequence();expandedChapter=null;
+  if(volume&&volume.id!==activeVolume){activeVolume=volume.id;if(volumeSelect)volumeSelect.value=volume.id;selectedId=null;locationPovId=null;}
+  const reached=volumeActions().reduce((found,event,index)=>event.chapter<=number?index:found,-1);
+  currentActionIndex=reached>=0?snapToBeat(reached+1):0;
+  currentChapter=number;cacheActiveVolume();setMobilePanel("events");renderAll();
+}
 function jumpToAction(index){
   cancelChapterSequence();expandedChapter=null;
   currentActionIndex=snapToBeat(index);
@@ -1144,12 +1273,21 @@ function jumpToAction(index){
 const SEARCH_PAGE=8;
 function renderSearchResults(){
   const panel=$("#search-results");if(!panel)return;
-  const raw=searchInput.value,query=parseSearchQuery(raw);
+  const raw=searchQueryText(),query=parseSearchQuery(raw);
   if(!raw.trim()){
     panel.innerHTML=`<p class="search-help-title">Search this volume</p><ul class="search-help">${SEARCH_FIELD_HELP.map(([field,note])=>`<li><code>${field}</code><span>${escapeHtml(note)}</span></li>`).join("")}</ul>`;
     panel.hidden=document.activeElement!==searchInput;searchInput.setAttribute("aria-expanded",String(!panel.hidden));return;
   }
-  const {entries,loose}=searchActions(query),identities=searchIdentities(query),terms=searchTerms(query),rows=[];
+  const {entries,loose}=searchActions(query),identities=searchIdentities(query),terms=searchTerms(query),chapterRolls=searchChapters(query),suggestions=searchSuggestions(),rows=[];
+  if(suggestions.length)rows.push('<li class="search-group">Finish the line</li>',...suggestions.map((item,index)=>`<li><button type="button" class="search-row search-suggest" data-suggest="${index}"><span class="search-meta">${item.kind==="field"?"filter":`${escapeHtml(item.key)}:`}${item.note?` · ${escapeHtml(item.note)}`:""}</span><strong>${item.kind==="field"?`${escapeHtml(item.alias)}:`:escapeHtml(item.value)}</strong></button></li>`));
+  chapterRolls.forEach(roll=>{
+    const both=roll.kinds.length>1,
+      label=both?"appears in or is spoken of in":roll.kinds[0]==="appeared"?"appears in":"is only spoken of in";
+    if(!roll.id){if(!suggestions.some(item=>item.kind==="value"))rows.push('<li class="search-group">Chapters</li>',`<li><span class="search-row search-miss">Nothing in this story is named “${escapeHtml(roll.name)}”.</span></li>`);return;}
+    rows.push(`<li class="search-group">Chapters · ${escapeHtml(roll.name)} ${label}${roll.rows.length?` · ${roll.rows.length}`:""}${both?' <span class="search-legend"><b class="roll-key appeared"></b>in it <b class="roll-key mentioned"></b>spoken of</span>':""}</li>`);
+    if(!roll.rows.length){rows.push('<li><span class="search-row search-miss">No chapter yet. The editor\u2019s chapter roll can add one by hand.</span></li>');return;}
+    rows.push(`<li class="search-chapter-set">${roll.rows.map(row=>{const away=volumeOfChapter(row.chapter),outside=away&&away.id!==activeVolume;return `<button type="button" class="search-chapter roll-${row.kind}${outside?" search-chapter-away":""}" data-search-chapter="${row.chapter}" title="${row.kind==="appeared"?"In chapter":"Spoken of in chapter"} ${row.chapter}${outside?` · ${escapeHtml(away.name)}`:""}">${row.chapter}</button>`;}).join("")}</li>`);
+  });
   if(terms.length)rows.push(`<li class="search-group">Linked words</li>`,...terms.map(entry=>`<li><a class="search-row search-term" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer"><span class="search-meta">opens the wiki${entry.chapter?` · first mentioned in chapter ${entry.chapter}`:""}</span><strong>${escapeHtml(entry.term)}</strong>${entry.note?`<span class="search-note">${escapeHtml(entry.note)}</span>`:""}</a></li>`));
   if(identities.length)rows.push(`<li class="search-group">On the graph</li>`,...identities.map(row=>{const shown=revealedVolumeActions().some(event=>eventInvolves(event,row.id));return `<li><button type="button" class="search-row${shown?"":" search-ahead"}" data-search-entity="${escapeHtml(row.id)}"><span class="search-meta">${escapeHtml(row.kind)}${shown?"":" · not reached yet"}</span><strong>${escapeHtml(stateName(currentDerived(),row.id)||row.names[0])}</strong></button></li>`;}));
   if(entries.length){
@@ -1163,6 +1301,14 @@ function renderSearchResults(){
   panel.innerHTML=rows.length?`<ul class="search-list">${rows.join("")}</ul>`:`<p class="search-empty">Nothing in ${escapeHtml(activeVol().name)} matches that.</p>`;
   panel.hidden=false;searchInput.setAttribute("aria-expanded","true");
   panel.querySelectorAll("[data-search-action]").forEach(button=>button.onclick=()=>{closeSearch();jumpToAction(Number(button.dataset.searchAction));});
+  panel.querySelectorAll("[data-suggest]").forEach(button=>button.onclick=()=>{
+    const item=suggestions[Number(button.dataset.suggest)];if(!item)return;
+    const text=searchInput.value;
+    if(item.kind==="field")searchInput.value=`${text.slice(0,item.at)}${item.alias}:`;
+    else{searchChips.push({key:item.key,value:item.value});searchInput.value=text.slice(0,item.at).replace(/\s+$/,"");}
+    searchPage=SEARCH_PAGE;renderSearchChips();renderSearchResults();searchInput.focus();
+  });
+  panel.querySelectorAll("[data-search-chapter]").forEach(button=>button.onclick=()=>{closeSearch();jumpToChapter(button.dataset.searchChapter);});
   panel.querySelectorAll("[data-search-entity]").forEach(button=>button.onclick=()=>{
     closeSearch();cancelChapterSequence();expandedChapter=null;selectedId=button.dataset.searchEntity;locationPovId=null;setMobilePanel("info");
     // Someone already on the graph is simply picked out; someone the reader has not reached yet
@@ -3031,7 +3177,7 @@ function renderOrderEditor(){
     });
   });
 }
-let renderedLexicon=null,editingLexiconTerm="";
+let renderedLexicon=null,editingLexiconTerm="",rollEntityId="";
 function renderLexiconEditor(){
   const list=$("#lexicon-list");if(!list)return;
   const field=$("#lexicon-text");
@@ -3055,11 +3201,42 @@ function renderLexiconEditor(){
   });
 }
 function clearLexiconInputs(){editingLexiconTerm="";["#lexicon-term","#lexicon-url","#lexicon-note","#lexicon-chapter"].forEach(id=>{const field=$(id);if(field)field.value="";});$("#lexicon-error").textContent="";}
+// The two lists a reader actually asks for — every chapter somebody is in, and every chapter they
+// are only talked about in — with the reading laid open so a wrong call can be taken back by hand.
+const rollKinds=[["appeared","Appears in","Chapters this identity is actually in."],["mentioned","Mentioned in","Chapters that only speak of them. A chapter counted as both is counted as being there."]];
+function rollGroupHtml(id,kind,title,note){
+  const chapters=chapterRoll(id)[kind],{add,remove}=rollFixes(entity(id),kind),added=new Set(add),
+    setAside=remove.filter(chapter=>autoChapterRoll(id)[kind].includes(chapter)).sort((a,b)=>a-b),
+    name=entity(id)?.name||id;
+  return `<div class="roll-group" data-kind="${kind}"><div class="roll-group-head"><h3>${title}</h3><span class="chip">${chapters.length} chapter${chapters.length===1?"":"s"}</span></div><p class="roll-note">${note}</p>`
+    +(chapters.length
+      ?`<ul class="roll-chips">${chapters.map(chapter=>`<li class="roll-chip${added.has(chapter)?" roll-chip-added":""}"><span>Chapter ${chapter}</span><button type="button" class="roll-drop" data-kind="${kind}" data-chapter="${chapter}" title="Take chapter ${chapter} off this list" aria-label="Take chapter ${chapter} off ${escapeHtml(name)}'s ${title.toLowerCase()} list">×</button></li>`).join("")}</ul>`
+      :'<p class="roll-empty">Nothing here yet.</p>')
+    +(setAside.length?`<p class="roll-set-aside">Set aside by hand: ${setAside.map(chapter=>`<button type="button" class="roll-restore" data-kind="${kind}" data-chapter="${chapter}">Chapter ${chapter} ↩</button>`).join(" ")}</p>`:"")
+    +`<div class="roll-add"><input class="roll-chapter" data-kind="${kind}" type="text" inputmode="numeric" maxlength="6" placeholder="Chapter number" autocomplete="off" aria-label="Chapter to add to ${escapeHtml(name)}'s ${title.toLowerCase()} list"><button type="button" class="button ghost roll-add-button" data-kind="${kind}">Add chapter</button></div></div>`;
+}
+function renderRollEditor(){
+  const body=$("#roll-body");if(!body)return;
+  const field=$("#roll-entity"),item=rollEntityId?entity(rollEntityId):null;
+  if(!item){rollEntityId="";body.innerHTML='<p class="roll-hint">Pick an identity above to see the chapters it turns up in.</p>';return;}
+  if(field&&document.activeElement!==field)field.value=item.name;
+  body.innerHTML=`<div class="roll-groups">${rollKinds.map(([kind,title,note])=>rollGroupHtml(item.id,kind,title,note)).join("")}</div>`;
+  const change=(kind,chapter,wanted)=>{
+    if(!correctRoll(item.id,kind,chapter,wanted)){toast("That is not a chapter number");return;}
+    saveData();renderAll();
+    toast(`Chapter ${validChapter(chapter)} ${wanted?"added to":"taken off"} ${item.name}'s ${kind==="appeared"?"appearances":"mentions"}`);
+  };
+  body.querySelectorAll(".roll-drop").forEach(button=>button.onclick=()=>change(button.dataset.kind,button.dataset.chapter,false));
+  body.querySelectorAll(".roll-restore").forEach(button=>button.onclick=()=>change(button.dataset.kind,button.dataset.chapter,true));
+  const addFrom=kind=>{const input=body.querySelector(`.roll-chapter[data-kind="${kind}"]`);if(!input)return;const chapter=validChapter(input.value);if(!chapter){toast("Write a chapter number first");input.focus();return;}input.value="";change(kind,chapter,true);};
+  body.querySelectorAll(".roll-add-button").forEach(button=>button.onclick=()=>addFrom(button.dataset.kind));
+  body.querySelectorAll(".roll-chapter").forEach(input=>input.onkeydown=event=>{if(event.key==="Enter"){event.preventDefault();addFrom(input.dataset.kind);}});
+}
 function renderAdmin(){
   renderVolumeEditor();
   const templateField=$("#chapter-url-template");if(templateField&&document.activeElement!==templateField)templateField.value=data.chapterUrlTemplate||"";
   const sourcesField=$("#chapter-sources-text");if(sourcesField&&document.activeElement!==sourcesField&&renderedChapterSources!==data.chapterSources){sourcesField.value=chapterSourcesToText(data.chapterSources);renderedChapterSources=data.chapterSources;}
-  renderLexiconEditor();
+  renderLexiconEditor();renderRollEditor();
   const missingBox=$("#missing-chapter-links");if(missingBox){const missing=referencedChaptersWithoutLinks();missingBox.hidden=!missing.length;if(missing.length)missingBox.querySelector("span").textContent=`Chapter${missing.length===1?"":"s"} ${missing.join(", ")} ${missing.length===1?"is":"are"} referenced somewhere but ${missing.length===1?"has":"have"} no saved link yet.`;}
   const sorted=[...data.events].sort((a,b)=>a.chapter-b.chapter||(a.order||0)-(b.order||0)||String(a.type).localeCompare(String(b.type)));$("#data-count").textContent=`${data.events.length} events`;$("#entity-count").textContent=`${data.entities.length} identities`;$("#entity-table").innerHTML=[...data.entities].sort((a,b)=>a.name.localeCompare(b.name)).map(item=>{const connected=data.events.filter(event=>eventInvolves(event,item.id)).length,intro=item.kind==="character"?(firstMention(item)||firstAppearance(item)||item.intro):item.intro;return `<tr class="${connected?"":"orphan-identity"}"><td><strong>${escapeHtml(item.name)}</strong>${connected?"":'<small class="orphan-warning">Not yet visible on graph</small>'}</td><td><span class="chip">${escapeHtml(item.kind)}</span></td><td>${intro?`Chapter ${intro}`:"—"}</td><td>${connected||'<span class="orphan-warning">0 — repair needed</span>'}</td><td><div class="table-actions"><button class="button ghost edit-identity" data-id="${escapeHtml(item.id)}">Edit identity</button><button class="button ghost delete-identity-row" data-id="${escapeHtml(item.id)}">Delete</button></div></td></tr>`;}).join("");$("#event-table").innerHTML=sorted.map(e=>{const creationManaged=isCreationManagedEvent(e);return `<tr data-event-id="${escapeHtml(e.id)}" data-event-owner="${creationManaged?"identity":"chapter"}"><td>${e.chapter}</td><td><span class="chip">${escapeHtml(e.type)}</span>${creationManaged?'<small class="table-location">creation record</small>':""}</td><td>${escapeHtml([entity(e.source)?.name,e.target?entity(e.target)?.name:null].filter(Boolean).join(" → "))}${e.location?`<small class="table-location">at ${escapeHtml(entity(e.location)?.name||e.location)}</small>`:""}</td><td>${escapeHtml(e.description||"")}</td><td><div class="table-actions"><button class="button ghost edit-event" data-id="${escapeHtml(e.id)}">${creationManaged?"Edit creation":"Edit event"}</button><button class="button ghost delete-event" data-id="${escapeHtml(e.id)}">Delete</button></div></td></tr>`;}).join("");
   renderOrderEditor();renderTrackEditor();
@@ -3294,8 +3471,11 @@ $("#collapse-chapter-events").onclick=collapseChapterEvents;
 $("#previous").onclick=()=>stepTimeline(-1);$("#next").onclick=()=>stepTimeline(1);
 searchInput.addEventListener("input",()=>{searchPage=SEARCH_PAGE;renderSearchResults();});
 searchInput.addEventListener("focus",renderSearchResults);
+$("#search-chips").addEventListener("mousedown",event=>{if(event.target===$("#search-chips")){event.preventDefault();searchInput.focus();}});
 searchInput.addEventListener("keydown",event=>{
-  if(event.key==="Escape"){event.preventDefault();if(searchInput.value){searchInput.value="";searchPage=SEARCH_PAGE;renderSearchResults();}else closeSearch();return;}
+  if(event.key==="Escape"){event.preventDefault();if(searchInput.value)searchInput.value="";else if(searchChips.length)searchChips=[];else{closeSearch();return;}searchPage=SEARCH_PAGE;renderSearchChips();renderSearchResults();return;}
+  // A block behaves the way a block should: backspace on an empty box takes the last one back.
+  if(event.key==="Backspace"&&!searchInput.value&&searchChips.length){event.preventDefault();searchChips.pop();searchPage=SEARCH_PAGE;renderSearchChips();renderSearchResults();return;}
   if(event.key==="ArrowDown"||event.key==="ArrowUp"){event.preventDefault();renderSearchResults();moveSearchCursor(event.key==="ArrowDown"?1:-1);return;}
   if(event.key==="Enter"){event.preventDefault();document.querySelector("#search-results .search-row")?.click();}
 });
@@ -3378,6 +3558,10 @@ $("#lexicon-form").addEventListener("submit",event=>{
   toast(`${entry.term} ${replaced?"updated":"now links out wherever it is written"}`);
 });
 $("#lexicon-cancel").onclick=()=>{clearLexiconInputs();renderLexiconEditor();};
+const showRoll=()=>{const item=resolveEntity($("#roll-entity").value);if(!item){toast("Choose an existing identity");return;}rollEntityId=item.id;renderRollEditor();};
+$("#roll-load").onclick=showRoll;
+$("#roll-entity").onkeydown=event=>{if(event.key==="Enter"){event.preventDefault();showRoll();}};
+$("#roll-entity").onchange=showRoll;
 $("#lexicon-save-text").onclick=()=>{
   const raw=$("#lexicon-text").value,errorBox=$("#lexicon-error"),bad=badLexiconLine(raw);
   errorBox.textContent="";
