@@ -1265,6 +1265,13 @@ test("a moment moves through the running order as one thing, and its parts canno
   assert.match(functionBody("momentHeadHtml"), /class="order-moment-up"/);
 });
 
+test("a connection already made is left alone while an action plays; only a new one is drawn in", () => {
+  assert.doesNotMatch(styleSource, /has-action-focus \.edge:not\(\.newly-revealed-edge\)\{opacity/, "fading every settled line away and bringing it back made the whole graph blink on every step");
+  assert.match(styleSource, /@keyframes edge-reveal\{0%\{opacity:0\}45%\{opacity:1;filter:drop-shadow/, "what is new draws itself in and flares as it lands, which is what marks it out now");
+  assert.match(styleSource, /\.newly-revealed-edge\{animation:edge-reveal \.52s ease \.2s both\}/);
+  assert.match(styleSource, /\.graph-viewport\.has-action-focus \.node:not\(\.event-active-node\)\{/, "the nodes still step back for whatever is happening");
+});
+
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
   assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });

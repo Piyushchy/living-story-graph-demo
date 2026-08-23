@@ -366,7 +366,6 @@ th { color: var(--muted); font-weight: 600; }
 .identity-edge{fill:none;stroke:#c084fc;stroke-width:2.75;stroke-dasharray:4 4;opacity:.82}
 .line-key.clone{border-top-color:#c084fc!important;border-top-style:dashed!important}
 .graph-viewport.has-action-focus .node:not(.event-active-node){opacity:1!important;filter:brightness(.34) saturate(.38)}
-.graph-viewport.has-action-focus .edge:not(.newly-revealed-edge){opacity:.09}
 .node.event-active-node{opacity:1!important;filter:drop-shadow(0 0 12px rgba(125,211,252,.72)) saturate(1.12)!important}
 .graph-viewport.has-action-focus .node.selected{opacity:1!important;filter:brightness(.9) saturate(.95) drop-shadow(0 0 15px rgba(255,255,255,.82))!important}
 .graph-viewport.has-selection-focus .node.dim{opacity:.07!important;filter:brightness(.2) saturate(.12)!important}
@@ -633,9 +632,9 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .slider-pointer{position:absolute;left:var(--slider-x,50%);top:22px;transform:translateX(-50%);color:#7dd3fc;font-size:clamp(46px,10vw,78px);font-weight:300;line-height:.8;filter:drop-shadow(0 0 12px rgba(125,211,252,.38));animation:point-to-slider 1.25s ease-in-out infinite}
 @keyframes point-to-slider{0%,100%{transform:translate(-50%,9px)}50%{transform:translate(-50%,-4px)}}
 @keyframes node-reveal{0%{opacity:0;transform:scale(.35)}70%{opacity:1;transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}
-@keyframes edge-reveal{from{opacity:0}}
+@keyframes edge-reveal{0%{opacity:0}45%{opacity:1;filter:drop-shadow(0 0 6px rgba(255,255,255,.55))}100%{filter:none}}
 .newly-revealed-node>*{transform-box:fill-box;transform-origin:center;animation:node-reveal .34s cubic-bezier(.2,.85,.25,1) both}
-.newly-revealed-edge{animation:edge-reveal .34s ease .28s both}
+.newly-revealed-edge{animation:edge-reveal .52s ease .2s both}
 .node.mentioned-only{opacity:.72;filter:saturate(.45)}
 .node.mentioned-only .node-label{font-style:italic;fill:#c1cad7}
 .node-state-label{fill:#8c99ab;text-anchor:middle;font-size:8px;font-weight:800;letter-spacing:.16em;pointer-events:none;paint-order:stroke;stroke:var(--bg);stroke-width:3px}
