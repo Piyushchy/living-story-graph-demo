@@ -1065,6 +1065,12 @@ test("a reward is a thing the story hands over, and a quest can pay several — 
   assert.match(source, /<textarea name="rewards" rows="2"/, "several rewards, one per line — and prose enough to carry a wiki link");
   assert.match(functionBody("questCardHtml"), /\$\{!open&&\(rewardList\.length\|\|run\.performance\)\?/, "what it paid is read without opening the card");
   assert.match(functionBody("questCardHtml"), /<b class="quest-reward">\$\{richInline\(reward\)\}<\/b>/, "and a reward that carries a link keeps it");
+  const paid = functionBody("actionPaidHtml");
+  assert.match(paid, /const rewards=event\.rewards\|\|\[\],performance=event\.performance\|\|""/);
+  assert.match(paid, /event\.type==="quest_contribution"\?"Their share":"Rewards"/);
+  assert.match(paid, /<b class="quest-reward">\$\{richInline\(reward\)\}<\/b>/, "a link written into a reward stays a link on the action itself");
+  assert.match(functionBody("eventPanelRow"), /\$\{actionPaidHtml\(event\)\}/, "what an action paid is read where the action is, not only in the quest tab");
+  assert.match(functionBody("momentPanelRow"), /\$\{actionPaidHtml\(part\)\}/, "including inside a combined moment");
   assert.match(functionBody("buildEventRecord"), /const rewards=listFromText\(form\.get\("rewards"\),true\),performance=String\(form\.get\("performance"\)\|\|""\)\.trim\(\)/);
   assert.doesNotMatch(source, /name="rewardRank"/, "a reward has no rank of its own");
   assert.match(source, /<span>Quest rating \(optional\)<\/span><input name="rating"/, "the mission is what carries a rating");
