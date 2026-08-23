@@ -979,3 +979,9 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .persona-notice{fill:#ffd479;font-size:11px;font-weight:750;letter-spacing:.02em;text-anchor:middle;pointer-events:none;paint-order:stroke;stroke:#080d16;stroke-width:3.5px;stroke-linejoin:round}
 .event-persona{padding:2px 7px;border-radius:999px;background:rgba(255,212,121,.14);color:#ffd479;font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:none;white-space:nowrap}
 .moment-parts .event-persona{justify-self:start}
+
+/* Spoken of, not present: a reference the story made, not a connection it built. */
+.edge.mention-edge{stroke:#c4a6ff;stroke-width:1.1;stroke-dasharray:1 5;stroke-linecap:round;opacity:.5}
+.edge.mention-edge.newly-revealed-edge{opacity:.9;stroke-width:1.5}
+.line-key.mention{background:repeating-linear-gradient(90deg,#c4a6ff 0 1px,transparent 1px 5px)}
+.event-mentions{padding:2px 7px;border-radius:999px;background:rgba(196,166,255,.14);color:#c4a6ff;font-size:9px;font-weight:700;letter-spacing:.04em;white-space:nowrap}

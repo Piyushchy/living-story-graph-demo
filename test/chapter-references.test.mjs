@@ -858,7 +858,7 @@ test("combining is done in the running order, writes no event of its own, and ca
 });
 
 test("the demo ships a moment, and a stored copy is brought up to it", () => {
-  assert.match(source, /schemaVersion: 21,/);
+  assert.match(source, /schemaVersion: 22,/);
   assert.match(source, /\{ id: "m-inn-place", message: "The Midnight Inn Lobby stands in the Midnight Inn Estate, in the city of Stonevale, on the world Verdan\.", members: \["hier-1","hier-2","hier-3"\] \}/);
   assert.match(source, /if\(!Array\.isArray\(migrated\.moments\)\)migrated\.moments=\[\];/);
   assert.match(source, /if\(sample\.members\.every\(id=>\(migrated\.events\|\|\[\]\)\.some\(event=>event\.id===id\)\)\)migrated\.moments\.push\(deepClone\(sample\)\)/, "a reader who deleted one of those actions is left alone");
@@ -1151,6 +1151,22 @@ test("an action can say which face was worn for it — the name the world saw, n
   assert.match(source, /persona: "the Innkeeper", description: "Lex and Luthor meet — though what Luthor meets is the Innkeeper\."/, "the demo shows one being worn");
   assert.match(source, /<datalist id="identity-relation-options"><option value="Clone"><\/option><option value="Avatar"><\/option><option value="Persona"><\/option>/, "and a face that becomes an identity of its own can say that is what it is");
   assert.match(styleSource, /\.persona-notice\{fill:#ffd479/);
+});
+
+test("what an action only speaks of is drawn as a reference, never as a presence", () => {
+  assert.match(source, /<input name="mentions" list="admin-entity-options"/);
+  const record = functionBody("buildEventRecord");
+  assert.match(record, /const here=new Set\(\[source\.id,target\?\.id,location\?\.id,\.\.\.\(record\.characters\|\|\[\]\)\]\.filter\(Boolean\)\),\s*mentions=\[\.\.\.new Set\(spokenOf\.map\(item=>item\.id\)\)\]\.filter\(id=>!here\.has\(id\)\)/, "somebody who is actually in it is not merely spoken of");
+  assert.match(record, /toast\("One of the names spoken of does not match an identity"\)/, "a name that matches nothing is refused rather than silently dropped");
+  assert.match(functionBody("eventInvolves"), /\(event\.mentions \|\| \[\]\)\.includes\(id\)/, "so it belongs to the history of whatever was spoken of");
+  const graph = functionBody("renderGraph");
+  assert.match(graph, /\.\.\.\(event\.mentions\|\|\[\]\)\]\.filter\(Boolean\)\)\)/, "a name spoken of still comes onto the graph");
+  assert.match(graph, /noteEdge\(speaker,spoken,event\.chapter,`Spoken of, not present\$\{event\.persona\?` — by \$\{event\.persona\}`:""\}`\)/);
+  assert.match(graph, /straightEdge\(speaker,spoken,`edge mention-edge\$\{live\?" newly-revealed-edge":""\}`/, "while the action plays, and whenever either end is picked out");
+  assert.match(styleSource, /\.edge\.mention-edge\{stroke:#c4a6ff/);
+  assert.match(source, /<i class="line-key mention"><\/i>Spoken of<\/span>/, "and the key says what the line means");
+  assert.match(source, /mentions: \["stonevale","jotun"\]/, "the demo speaks of a city and an empire nobody is anywhere near");
+  assert.match(functionBody("actionMatchesFilter"), /if\(filter\.field==="mentions"\)/, "searchable: mentions:jotun");
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
