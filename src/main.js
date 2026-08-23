@@ -1570,6 +1570,9 @@ function derive(chapter,eventSubset=null) {
     if(states.get(event.location)?.kind==="organization"&&!['mention','membership','organization_location'].includes(event.type)){
       const branch=branchOf(event,[...organizationLocations.values()]);
       if(branch)locationCharacterIds(event).forEach(character=>locationVisits.push({character,location:branch,chapter:event.chapter,order:event.order||0,eventId:event.id,type:event.type,organization:event.location}));
+      // Travelling to a group is travelling to one of its places. Where the character now stands
+      // is that branch, and the group they went to is kept alongside it so the graph can say both.
+      if(event.type==="movement"&&source?.kind==="character")locations.set(event.source,{character:event.source,location:branch||event.location,organization:event.location,chapter:event.chapter,order:event.order||0,eventId:event.id,type:event.type,...(event.action==="forming"?{pending:true,since:event.chapter}:{})});
     }
     if(event.location&&states.get(event.location)?.kind==="location"&&!['mention','residency','location_parent','organization_location'].includes(event.type)){
       locationCharacterIds(event).forEach(character=>{const visit={character,location:event.location,chapter:event.chapter,order:event.order||0,eventId:event.id,type:event.type};locationVisits.push(visit);});
@@ -2174,7 +2177,7 @@ function renderGraph() {
   const layerFor=className=>/newly-revealed-edge/.test(String(className))?activeEdgeLayer:edgeLayer;
   // While an action pops a hidden place out of its parent, links point at the pod itself, so the
   // line sits on the place the reader is actually being shown and rides back in as it retracts.
-  const podIds=syncPodTransitions(locView,beatEvents),podSet=new Set([...podIds,...retiringPodIds]);
+  const podIds=syncPodTransitions(locView,beatEvents,derived),podSet=new Set([...podIds,...retiringPodIds]);
   physics.podPos.clear();
   podSet.forEach(id=>{const base=positions.get(locView.anchorOf.get(id));if(base)physics.podPos.set(id,{x:base.x,y:base.y});});
   const edgeLocationId=id=>entity(id)?.kind!=="location"?id:(podSet.has(id)?id:(locView.anchorOf.get(id)||id));
@@ -2212,7 +2215,7 @@ function renderGraph() {
   const locationEdgeSeen=new Set(),locationEdge=(from,to,baseClass,active,chapter,note)=>{const target=edgeLocationId(to);if(!target||from===target)return;noteEdge(from,target,chapter,note);const key=`${baseClass}|${from}|${target}`;if(locationEdgeSeen.has(key)&&!active)return;locationEdgeSeen.add(key);straightEdge(from,target,`edge ${baseClass}${active?" newly-revealed-edge":""}`,from,target);};
   derived.organizationLocations.forEach(link=>locationEdge(link.organization,link.location,`organization-location-edge${forming(link)}`,beatDoes("organization_location",event=>event.source===link.organization&&event.location===link.location)||beatEvents.some(event=>event.location===link.organization&&eventBranchId(event,derived)===link.location),link.from,`${link.role} based here${formingNote(link)}`));
   derived.residences.forEach(link=>locationEdge(link.character,link.location,`residence-edge${forming(link)}`,beatDoes("residency",event=>event.source===link.character&&event.location===link.location),link.from,`${link.role} here${formingNote(link)}`));
-  derived.locations.forEach((visit,character)=>locationEdge(character,visit.location,`location-edge${forming(visit)}`,beatDoes("movement",event=>event.source===character&&event.location===visit.location),visit.chapter,visit.pending?`On the way here since chapter ${visit.since||visit.chapter}`:"Travelled here"));
+  derived.locations.forEach((visit,character)=>locationEdge(character,visit.location,`location-edge${forming(visit)}`,beatDoes("movement",event=>event.source===character&&(event.location===visit.location||event.location===visit.organization)),visit.chapter,visit.pending?`On the way here since chapter ${visit.since||visit.chapter}`:"Travelled here"));
   derived.locationParents.forEach(link=>{const child=edgeLocationId(link.child),parent=edgeLocationId(link.parent);if(!child||!parent||child===parent)return;noteEdge(child,parent,link.from,`Sits inside${formingNote(link)}`);straightEdge(child,parent,`edge hierarchy-edge${forming(link)}${beatDoes("location_parent",event=>event.source===link.child&&event.location===link.parent)?" newly-revealed-edge":""}`,child,parent);});
   // A conversation is one thing that happened between several people, so three or more of them
   // meet at a marker joined to each — six lines between four people says nothing about them
@@ -2253,7 +2256,12 @@ function renderGraph() {
       straightEdge(speaker,spoken,`edge mention-edge${live?" newly-revealed-edge":""}`,speaker,spoken);
     });
   });
-  beatEvents.filter(event=>event.location&&["location","organization"].includes(entity(event.location)?.kind)&&!["movement","residency","organization_location","location_parent"].includes(event.type)).forEach(event=>{
+  beatEvents.filter(event=>{
+    const where=entity(event.location)?.kind;
+    if(!event.location||!["location","organization"].includes(where))return false;
+    if(["residency","organization_location","location_parent"].includes(event.type))return false;
+    return where==="organization"||event.type!=="movement";
+  }).forEach(event=>{
     // Inside an organization, everyone in it is tied to the organization itself, because that is
     // the where the action names. Which of its branches is meant is said by that branch's own line
     // lighting up rather than by putting everybody on the place.
@@ -2448,15 +2456,17 @@ function renderGraph() {
 // A location that is folded away inside a collapsed parent still deserves a moment on
 // screen when an action names it: it swells out of its visible ancestor as a round pod,
 // then sinks back into that ancestor once the action moves on.
-function eventPodIds(view,beatEvents){
+function eventPodIds(view,beatEvents,derived){
   // Everything in one moment comes out together, so the pods are gathered from all of its parts.
-  const named=[].concat(beatEvents||[]).filter(Boolean).flatMap(event=>[event.location,event.type==="location_parent"?event.source:null]).filter(Boolean).filter(id=>entity(id)?.kind==="location");
+  // A group named as the where brings its branch out with it: "at Lex's Office" is no use if the
+  // place it stands in is folded away inside Earth, so the branch itself comes out and is named.
+  const named=[].concat(beatEvents||[]).filter(Boolean).flatMap(event=>[event.location,eventBranchId(event,derived),event.type==="location_parent"?event.source:null]).filter(Boolean).filter(id=>entity(id)?.kind==="location");
   return [...new Set(named)].filter(id=>view.present.has(id)&&!view.rendered.has(id)&&view.anchorOf.get(id));
 }
 // Decide which pods are coming out and which are sinking back BEFORE the links are drawn, so a
 // link to a retracting pod stays attached and rides it home instead of snapping to the parent.
-function syncPodTransitions(view,beatEvents){
-  const podIds=eventPodIds(view,beatEvents),podKey=podIds.join("|");
+function syncPodTransitions(view,beatEvents,derived){
+  const podIds=eventPodIds(view,beatEvents,derived),podKey=podIds.join("|");
   if(podKey!==activePodKey){
     const gone=activePodIds.filter(id=>!podIds.includes(id));
     activePodIds=podIds;activePodKey=podKey;
@@ -2674,7 +2684,7 @@ function renderSummary(){
     const chapterEvents=eventsAtLocation(chosen.id),visitors=[...new Set(chapterEvents.flatMap(locationCharacterIds))].map(id=>({id,label:entity(id)?.name||id})),occupants=[...d.locations.values()].filter(visit=>visit.location===chosen.id).map(visit=>({id:visit.character,label:entity(visit.character)?.name||visit.character})),residents=d.residences.filter(link=>link.location===chosen.id).map(link=>({id:link.character,label:`${entity(link.character)?.name} · ${link.role}`})),organizations=d.organizationLocations.filter(link=>link.location===chosen.id).map(link=>({id:link.organization,label:`${entity(link.organization)?.name} · ${link.role}`})),parentId=locationParentOf(chosen.id,d),children=d.locationParents.filter(link=>link.parent===chosen.id&&!isLocationRoot(link.child,d)).map(link=>({id:link.child,label:entity(link.child)?.name||link.child})),hierarchy=parentId?[{id:parentId,label:`Inside ${entity(parentId)?.name||parentId}`}]:[{label:String(chosen.locationType||"")===LOCATION_ROOT_TYPE?"Top-level realm":"Top level"}],pov=locationPovId?[{id:locationPovId,label:`${entity(locationPovId)?.name||locationPovId} event POV`}]:[];box.className=`side-card summary${panelActive?" mobile-active":""}`;box.innerHTML=`${header}<div class="summary-stats"><article><span>Place type</span><strong>${escapeHtml(chosen.locationType||"Other")}</strong></article><article><span>Residents</span><strong>${residents.length}</strong></article><article><span>Here now</span><strong>${occupants.length}</strong></article></div><div class="summary-groups">${summaryGroup("Viewing",pov,1)}${summaryGroup("Hierarchy",hierarchy,1)}${summaryGroup("Contains",children,5)}${summaryGroup("Residents",residents,5)}${summaryGroup("Based here",organizations,5)}${summaryGroup("Here now",occupants,5)}${summaryGroup("Active chapter",visitors,5)}</div>${children.length?`<p class="location-drill-hint">${lastLocationView?.expanded.has(chosen.id)?"Opened — click the dot to fold these places back in.":`Click again on the graph to open ${children.length} place${children.length===1?"":"s"} inside.`}</p>`:""}`;$("#full-details").onclick=()=>openProfile(chosen.id);return;
   }
   const applied=appliedEvents(),unrevealed=state.appeared===null||state.appeared>currentChapter,relationItems=[...new Set(applied.filter(e=>e.type==="relationship"&&(e.source===chosen.id||e.target===chosen.id)).map(e=>pairKey(e.source,e.target)))].map(key=>{const [a,b]=key.split("|"),other=a===chosen.id?b:a,history=applied.filter(e=>e.type==="relationship"&&pairKey(e.source,e.target)===key),type=String(history.at(-1)?.value||"neutral").toLowerCase();return {id:other,label:stateName(d,other),tone:`tone-${type}`};}),meetingIds=[...new Set(applied.filter(e=>e.type==="meeting"&&(e.source===chosen.id||e.target===chosen.id)).map(e=>e.source===chosen.id?e.target:e.source))],meetings=meetingIds.map(id=>({id,label:stateName(d,id)})),awareOutIds=[...new Set(applied.filter(e=>e.type==="awareness"&&e.source===chosen.id).map(e=>e.target))],awareOut=awareOutIds.map(id=>({id,label:stateName(d,id)})),awareInIds=[...new Set(applied.filter(e=>e.type==="awareness"&&e.target===chosen.id).map(e=>e.source))],awareIn=awareInIds.map(id=>({id,label:stateName(d,id)})),aliases=state.aliases.map(alias=>({label:alias.value})),organizations=state.memberships.map(m=>({id:m.organization,label:`${stateName(d,m.organization)} · ${m.role}`})),identityParent=d.identityParents.find(link=>link.child===chosen.id),identityChildren=d.identityParents.filter(link=>link.parent===chosen.id).map(link=>({id:link.child,label:`${stateName(d,link.child)} · ${link.relation}`})),identityFamily=[...(identityParent?[{id:identityParent.parent,label:`${stateName(d,identityParent.parent)} · ${identityParent.relation} parent`}]:[]),...identityChildren];
-  const currentPlace=d.locations.get(chosen.id),currentPlaces=currentPlace?[{id:currentPlace.location,label:entity(currentPlace.location)?.name||currentPlace.location}]:[],chapterPlaces=[...new Set(d.locationVisits.filter(visit=>visit.character===chosen.id&&visit.chapter===currentChapter).map(visit=>visit.location))].map(id=>({id,label:entity(id)?.name||id})),residences=d.residences.filter(link=>link.character===chosen.id).map(link=>({id:link.location,label:`${entity(link.location)?.name} · ${link.role}`}));
+  const currentPlace=d.locations.get(chosen.id),currentPlaces=currentPlace?[{id:currentPlace.location,label:`${entity(currentPlace.location)?.name||currentPlace.location}${currentPlace.organization&&currentPlace.organization!==currentPlace.location?` · ${entity(currentPlace.organization)?.name||currentPlace.organization}`:""}`}]:[],chapterPlaces=[...new Set(d.locationVisits.filter(visit=>visit.character===chosen.id&&visit.chapter===currentChapter).map(visit=>visit.location))].map(id=>({id,label:entity(id)?.name||id})),residences=d.residences.filter(link=>link.character===chosen.id).map(link=>({id:link.location,label:`${entity(link.location)?.name} · ${link.role}`}));
   const stats=[{label:"State",value:unrevealed?"Mentioned":"Appeared"},!unrevealed&&state.realm!=="Unrevealed"?{label:trackName(state.track),value:state.realm.toLowerCase()===state.canonicalRealm.toLowerCase()?state.realm:`${state.realm} · ${state.canonicalRealm}`} : null,!unrevealed&&state.status!=="unknown"?{label:"Status",value:state.status}:null].filter(Boolean);
   box.className=`side-card summary${panelActive?" mobile-active":""}${unrevealed?" muted":""}`;box.innerHTML=`${header}<div class="summary-stats">${stats.map(stat=>`<article><span>${escapeHtml(stat.label)}</span><strong>${escapeHtml(stat.value)}</strong></article>`).join("")}</div><div class="summary-groups">${summaryGroup("Identity family",identityFamily,4)}${summaryGroup("Current place",currentPlaces,1)}${summaryGroup("Homes / bases",residences,3)}${summaryGroup("Places this chapter",chapterPlaces,4)}${summaryGroup("Aliases",aliases,3)}${summaryGroup("Organizations",organizations,2)}${summaryGroup("Relations",relationItems,4)}${summaryGroup("Met",meetings,4)}${summaryGroup("Aware of",awareOut,4)}${summaryGroup("Known by",awareIn,4)}</div>`;$("#full-details").onclick=()=>openProfile(chosen.id);
 }
@@ -2697,7 +2707,14 @@ function actionPaidHtml(event){
   if(!rewards.length&&!performance)return "";
   return `<div class="quest-paid action-paid">${rewards.length?`<span class="quest-paid-label">${event.type==="quest_contribution"?"Their share":"Rewards"}</span>${rewards.map(reward=>`<b class="quest-reward">${richInline(reward)}</b>`).join("")}`:""}${performance?`<span class="quest-performance">performance ${escapeHtml(performance)}</span>`:""}</div>`;
 }
-function eventPanelRow(event,index,{current=false,related=false,upcoming=false}={}){return `<li class="event-summary-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}"${index?` data-focus-action="${index}" title="Show this action on the graph"`:""}><div><div class="event-panel-meta"><span>Chapter ${event.chapter}</span><b class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type.replaceAll("_"," "))}</b>${personasOf(event).size?`<b class="event-persona" title="Seen under this name, not their own">${escapeHtml(personaListText(event))}</b>`:""}${(event.mentions||[]).length?`<b class="event-mentions" title="Spoken of here, not present">speaks of ${escapeHtml(event.mentions.map(id=>entity(id)?.name||id).join(", "))}</b>`:""}${stillHolding(event)?`<b class="event-holding" title="This is still going on while other things happen">still going${holdsLeft(event)>0?` · ${holdsLeft(event)} more`:""}</b>`:Number(event.holds)>0?`<b class="event-holding quiet">lasts ${Number(event.holds)} more</b>`:""}</div>${canEditEvents()?messageBoxHtml("event-message-edit",event):`<p>${richText(event.description||event.type)}</p>`}${actionPaidHtml(event)}${event.location?`<p class="event-panel-place"><small>· ${escapeHtml(entity(event.location)?.name||event.location)}</small></p>`:""}</div>${eventOriginControl(event)}</li>`;}
+// "At Lex's Office" leaves out the half the reader wants: which of its places. A group says both.
+function eventPlaceLine(event){
+  const where=entity(event.location);if(!where)return String(event.location||"");
+  if(where.kind!=="organization")return where.name;
+  const branch=eventBranchId(event,currentDerived());
+  return branch?`${where.name} · ${entity(branch)?.name||branch}`:where.name;
+}
+function eventPanelRow(event,index,{current=false,related=false,upcoming=false}={}){return `<li class="event-summary-row${current?" current-action":""}${related?" selection-related-event":""}${upcoming?" upcoming-action":""}"${index?` data-focus-action="${index}" title="Show this action on the graph"`:""}><div><div class="event-panel-meta"><span>Chapter ${event.chapter}</span><b class="event-type event-${escapeHtml(event.type)}">${escapeHtml(event.type.replaceAll("_"," "))}</b>${personasOf(event).size?`<b class="event-persona" title="Seen under this name, not their own">${escapeHtml(personaListText(event))}</b>`:""}${(event.mentions||[]).length?`<b class="event-mentions" title="Spoken of here, not present">speaks of ${escapeHtml(event.mentions.map(id=>entity(id)?.name||id).join(", "))}</b>`:""}${stillHolding(event)?`<b class="event-holding" title="This is still going on while other things happen">still going${holdsLeft(event)>0?` · ${holdsLeft(event)} more`:""}</b>`:Number(event.holds)>0?`<b class="event-holding quiet">lasts ${Number(event.holds)} more</b>`:""}</div>${canEditEvents()?messageBoxHtml("event-message-edit",event):`<p>${richText(event.description||event.type)}</p>`}${actionPaidHtml(event)}${event.location?`<p class="event-panel-place"><small>· ${escapeHtml(eventPlaceLine(event))}</small></p>`:""}</div>${eventOriginControl(event)}</li>`;}
 // Whether a moment arrives open is the writer's decision, made where the moment is made. Opening
 // one by hand used to last until the next render, which on a slider that moves is no time at all,
 // so a moment the reader turns the other way stays that way.
@@ -2923,7 +2940,7 @@ async function openProfile(id,focusChapter=null){
   const genders=events.filter(e=>e.type==="gender"&&e.source===id),ages=events.filter(e=>e.type==="age"&&e.source===id),latestGenderEvent=genders.at(-1),latestAgeEvent=ages.at(-1);
   const citedFact=(value,event)=>event?`${value} | ${event.chapter}${event.sourceUrl?` | ${event.sourceUrl}`:""}`:value;
   const coreInfoboxFacts=item.kind==="character"?[
-    fact("Species",profile.species||"Unknown"),fact("Gender",citedFact(state.gender,latestGenderEvent)),fact("Age",citedFact(state.age,latestAgeEvent)),fact("Presence",state.appeared===null||state.appeared>profileChapter?"Mentioned, not appeared":"Appeared"),fact("Status",state.status),fact("Cultivation",state.appeared===null||state.appeared>profileChapter?"Unrevealed":state.realm.toLowerCase()===state.canonicalRealm.toLowerCase()?state.realm:`${state.realm} (equivalent to ${state.canonicalRealm})`),fact("Current location",currentLocation?(entity(currentLocation.location)?.name||currentLocation.location):"Unknown"),fact("First mentioned",state.mentioned!==null?`Chapter ${state.mentioned}`:""),fact("First appearance",state.appeared!==null&&state.appeared<=profileChapter?`Chapter ${state.appeared}`:""),fact("Affiliations",organizationNames.join(", ")||"None")
+    fact("Species",profile.species||"Unknown"),fact("Gender",citedFact(state.gender,latestGenderEvent)),fact("Age",citedFact(state.age,latestAgeEvent)),fact("Presence",state.appeared===null||state.appeared>profileChapter?"Mentioned, not appeared":"Appeared"),fact("Status",state.status),fact("Cultivation",state.appeared===null||state.appeared>profileChapter?"Unrevealed":state.realm.toLowerCase()===state.canonicalRealm.toLowerCase()?state.realm:`${state.realm} (equivalent to ${state.canonicalRealm})`),fact("Current location",currentLocation?`${entity(currentLocation.location)?.name||currentLocation.location}${currentLocation.organization&&currentLocation.organization!==currentLocation.location?` · ${entity(currentLocation.organization)?.name||currentLocation.organization}`:""}`:"Unknown"),fact("First mentioned",state.mentioned!==null?`Chapter ${state.mentioned}`:""),fact("First appearance",state.appeared!==null&&state.appeared<=profileChapter?`Chapter ${state.appeared}`:""),fact("Affiliations",organizationNames.join(", ")||"None")
   ].join(""):item.kind==="organization"?[fact("Type","Organization"),fact("Introduced",`Chapter ${item.intro}`),fact("Active members",String(activeMemberships.length)),fact("Active locations",String(activeOrganizationLocations.length)),fact("Purpose",profile.purpose||"Unknown")].join(""):[fact("Type",item.locationType||"Location"),fact("Inside",parentLink?entity(parentLink.parent)?.name:""),fact("Contains",String(childLinks.length)),fact("Residents",String(activeResidences.length)),fact("Introduced",`Chapter ${item.intro}`),fact("Recorded visitors",String(locationVisitors.length)),fact("Organizations",String(activeOrganizationLocations.length)),fact("Description",profile.purpose||item.description||"Unknown")].join("");
   const infoboxFacts=coreInfoboxFacts+(profile.facts||[]).map(item=>fact(item.label,item.value)).join("");
   const overview=profileSection("profile-overview","Overview",`${item.description?`<p class="lead-copy">${richText(item.description)}</p>`:""}<div class="volume-snapshot-banner"><span>End-of-volume snapshot</span><strong>${escapeHtml(volumeSnapshot.name)} · Chapter ${profileChapter}</strong></div><div class="overview-stat-grid"><article><span>${item.kind==="character"?"Presence by volume end":"Known by volume end"}</span><strong>${escapeHtml(item.kind==="character"?(state.appeared===null||state.appeared>profileChapter?"Mentioned":"Appeared"):item.kind==="organization"?"Known organization":"Known location")}</strong></article><article><span>Events through volume end</span><strong>${events.length}</strong></article><article><span>${item.kind==="character"?"Known aliases":item.kind==="organization"?"Active members":"Recorded visitors"}</span><strong>${item.kind==="character"?aliases.length:item.kind==="organization"?activeMemberships.length:locationVisitors.length}</strong></article></div>`,"Volume-end knowledge");
@@ -3079,7 +3096,7 @@ function actionEffectProblem(event){
   const needs=(ok,message)=>ok?"":message;
   if(event.branch&&kind(event.location)!=="organization")return "a branch needs its organization named as where this happened";
   if(type==="residency")return needs(kind(event.source)==="character"&&kind(event.location)==="location","a residence needs a character and a place");
-  if(type==="movement")return needs(kind(event.source)==="character"&&kind(event.location)==="location","travel needs a character and a place");
+  if(type==="movement")return needs(kind(event.source)==="character"&&["location","organization"].includes(kind(event.location)),"travel needs a character and somewhere to go");
   if(type==="organization_location")return needs(kind(event.source)==="organization"&&kind(event.location)==="location","an organization place needs an organization and a place");
   if(type==="location_parent")return needs(kind(event.source)==="location"&&kind(event.location)==="location","nesting needs two places");
   if(type==="system_host")return needs(kind(event.source)==="system"&&kind(event.target)==="character","a bond needs a system and a character");
@@ -3339,7 +3356,7 @@ async function fillProfileEditor(){
 function updateBranchField(){
   const form=$("#event-form"),field=$("#event-branch-field");if(!form||!field)return;
   const where=resolveEntity(form.elements.location.value),
-    placeOnly=["movement","residency","location_parent","organization_location","system_location"].includes(form.elements.type.value),
+    placeOnly=["residency","location_parent","organization_location","system_location"].includes(form.elements.type.value),
     isGroup=where?.kind==="organization"&&!placeOnly;
   field.hidden=!isGroup;
   if(!isGroup){form.elements.branch.value="";return;}
@@ -3357,7 +3374,7 @@ function updateEventHelp(){
   const removing=REMOVAL_ACTIONS.has(form.elements.action.value);
   form.elements.target.required=needsTarget;form.elements.value.required=needsValue&&!removing;form.elements.location.required=["movement","organization_location","residency","location_parent","system_location"].includes(type);
   $("#event-location-label").textContent=type==="movement"?"Destination":isOrgLocation?"Headquarters / branch location":isResidence?"Home / long-term location":isHierarchy?"Direct parent location":"Where this happened (optional)";
-  const placeOnly=["movement","residency","location_parent","organization_location","system_location"].includes(type);
+  const placeOnly=["residency","location_parent","organization_location","system_location"].includes(type);
   form.elements.location.placeholder=placeOnly?"Type a place":"Type a place or an organization";
   $("#event-location-note").hidden=placeOnly;
   updateBranchField();
@@ -3417,7 +3434,7 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   // guild. Where it happened takes either. The actions that move somebody, house them, or build
   // the map still need a real place, and say so below.
   if(location&&!["location","organization"].includes(location.kind)){toast("Where this happened must be a place or an organization");return null;}
-  if(["movement","residency","location_parent","organization_location","system_location"].includes(type)&&location&&location.kind!=="location"){toast("This one needs a real place, not an organization");return null;}
+  if(["residency","location_parent","organization_location","system_location"].includes(type)&&location&&location.kind!=="location"){toast("This one needs a real place, not an organization");return null;}
   if(type==="movement"&&!location){toast("Choose the character's new location");return null;}
   if(type==="movement"&&source.kind!=="character"){toast("Only a character can change location");return null;}
   if(sourceUrl&&!safeExternalUrl(sourceUrl)){toast("The chapter citation must be a complete http:// or https:// URL");return null;}
