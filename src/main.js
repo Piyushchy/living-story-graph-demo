@@ -2013,15 +2013,27 @@ function renderGraph() {
   // Plenty of actions name a place without being a movement — a meeting, a fight, a note. While
   // such an action is showing, tie everyone it involves to the place it names.
   // Being spoken of is drawn as a reference, not a presence: a thin line from whoever spoke to
-  // whatever they spoke of, while the action plays and whenever either end is picked out.
-  volumeApplied.filter(event=>(event.mentions||[]).length&&(beatEvents.some(item=>item.id===event.id)||(selectedId&&(event.source===selectedId||event.mentions.includes(selectedId))))).forEach(event=>{
-    const speaker=edgeLocationId(event.source),live=beatEvents.some(item=>item.id===event.id);
+  // whatever they spoke of. Once an action has spoken of somebody the line stays, faint, for the
+  // rest of the reading — a name the story has raised does not stop having been raised — and it
+  // comes up to full strength while the action plays or while either end is picked out.
+  // Several actions naming the same pair share one line, so a name spoken of every other chapter
+  // is drawn once rather than stacked, while each of those chapters still leaves its own note.
+  const mentionLines=new Map();
+  volumeApplied.filter(event=>(event.mentions||[]).length).forEach(event=>{
+    const speaker=edgeLocationId(event.source),
+      live=beatEvents.some(item=>item.id===event.id),
+      picked=Boolean(selectedId)&&(event.source===selectedId||event.mentions.includes(selectedId));
     event.mentions.forEach(id=>{
       const spoken=edgeLocationId(id);
       if(!speaker||!spoken||speaker===spoken)return;
       noteEdge(speaker,spoken,event.chapter,`Spoken of, not present${personasOf(event).get(event.source)?` — by ${personasOf(event).get(event.source)}`:""}`);
-      straightEdge(speaker,spoken,`edge mention-edge${live?" newly-revealed-edge":""}`,speaker,spoken);
+      const key=`${speaker}|${spoken}`,held=mentionLines.get(key);
+      if(held){held.live=held.live||live;held.picked=held.picked||picked;}
+      else mentionLines.set(key,{speaker,spoken,live,picked});
     });
+  });
+  mentionLines.forEach(({speaker,spoken,live,picked})=>{
+    straightEdge(speaker,spoken,`edge mention-edge${live||picked?"":" settled-mention-edge"}${live?" newly-revealed-edge":""}`,speaker,spoken);
   });
   beatEvents.filter(event=>event.location&&entity(event.location)?.kind==="location"&&!["movement","residency","organization_location","location_parent"].includes(event.type)).forEach(event=>{
     const place=edgeLocationId(event.location);

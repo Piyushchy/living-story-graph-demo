@@ -1173,8 +1173,10 @@ test("what an action only speaks of is drawn as a reference, never as a presence
   const graph = functionBody("renderGraph");
   assert.match(graph, /\.\.\.\(event\.mentions\|\|\[\]\)\]\.filter\(Boolean\)\)\)/, "a name spoken of still comes onto the graph");
   assert.match(graph, /noteEdge\(speaker,spoken,event\.chapter,`Spoken of, not present\$\{personasOf\(event\)\.get\(event\.source\)\?/);
-  assert.match(graph, /straightEdge\(speaker,spoken,`edge mention-edge\$\{live\?" newly-revealed-edge":""\}`/, "while the action plays, and whenever either end is picked out");
+  assert.match(graph, /const key=`\$\{speaker\}\|\$\{spoken\}`,held=mentionLines\.get\(key\)/, "several actions naming the same pair share one line rather than stacking");
+  assert.match(graph, /straightEdge\(speaker,spoken,`edge mention-edge\$\{live\|\|picked\?"":" settled-mention-edge"\}\$\{live\?" newly-revealed-edge":""\}`/, "kept once read, and brought up to strength while the action plays or either end is picked out");
   assert.match(styleSource, /\.edge\.mention-edge\{stroke:#c4a6ff/);
+  assert.match(styleSource, /\.edge\.mention-edge\.settled-mention-edge\{opacity:\.22/, "a name once spoken of does not stop having been spoken of");
   assert.match(source, /<i class="line-key mention"><\/i>Spoken of<\/span>/, "and the key says what the line means");
   assert.match(source, /mentions: \["stonevale","jotun"\]/, "the demo speaks of a city and an empire nobody is anywhere near");
   assert.match(functionBody("actionMatchesFilter"), /if\(filter\.field==="mentions"\)/, "searchable: mentions:jotun");
