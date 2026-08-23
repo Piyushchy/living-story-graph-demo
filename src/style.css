@@ -976,7 +976,8 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .order-mismatch{padding:2px 7px;border-radius:999px;background:rgba(242,201,94,.14);color:#f2c95e;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:help}
 
 /* The face worn for a beat: the name the world saw, written over the person wearing it. */
-.persona-notice{fill:#ffd479;font-size:11px;font-weight:750;letter-spacing:.02em;text-anchor:middle;pointer-events:none;paint-order:stroke;stroke:#080d16;stroke-width:3.5px;stroke-linejoin:round}
+.node-label.worn-name{fill:#ffd479}
+.persona-notice{fill:#a8b6c8;font-style:italic;font-size:11px;font-weight:750;letter-spacing:.02em;text-anchor:middle;pointer-events:none;paint-order:stroke;stroke:#080d16;stroke-width:3.5px;stroke-linejoin:round}
 .event-persona{padding:2px 7px;border-radius:999px;background:rgba(255,212,121,.14);color:#ffd479;font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:none;white-space:nowrap}
 .moment-parts .event-persona{justify-self:start}
 
