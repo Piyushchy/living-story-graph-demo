@@ -1238,11 +1238,13 @@ test("a conversation can settle where the people in it stand, and says nothing a
   assert.match(source, /relation: "friendly", holds: 3/, "the demo shows both");
 });
 
-test("having met is what lasts from a talk, and it is drawn for whoever is being looked at", () => {
+test("having met is a standing fact: by the time two people have talked they stand somewhere with each other", () => {
   const graph = functionBody("renderGraph");
-  assert.match(graph, /const pairKeys=new Set\(\[\.\.\.derived\.relations\.keys\(\),\.\.\.derived\.awareness\.keys\(\),\.\.\.\(selectedId\?\[\.\.\.derived\.meetings\.keys\(\)\]:\[\]\)\]\)/, "not painted on the whole graph — in a full cast everybody has met everybody");
-  assert.match(graph, /\} else if\(!history\.length&&met&&\(selectedId===aId\|\|selectedId===bId\)\)\{/, "met, with nothing said about how they stand: a quiet line rather than nothing at all");
-  assert.match(styleSource, /\.edge\.met-edge\{/);
+  assert.match(graph, /const pairKeys=new Set\(\[\.\.\.derived\.relations\.keys\(\),\.\.\.derived\.awareness\.keys\(\),\.\.\.derived\.meetings\.keys\(\)\]\)/, "a pair the story has brought together is a pair the graph knows about");
+  assert.match(graph, /\} else if\(!history\.length&&met\)\{/, "met, with nothing said yet about how they stand: neutral");
+  assert.match(graph, /class:`\$\{edgeClass\} met-edge`,stroke:COLORS\.neutral/, "drawn as the neutral it is, not as a line that waits to be asked for");
+  assert.match(styleSource, /\.edge\.met-edge\{stroke-width:3\.4/);
+  assert.match(styleSource, /\.relation-edge\[marker-end\],\.relation-edge\[marker-start\]\{stroke-width:3/, "and having merely heard of somebody is a lighter line than standing with them");
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {

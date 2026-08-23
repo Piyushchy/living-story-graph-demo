@@ -1017,4 +1017,6 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .event-holding{padding:2px 7px;border-radius:999px;background:rgba(255,212,121,.16);color:#ffd479;font-size:9px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
 .event-holding.quiet{background:rgba(127,147,168,.14);color:#8ba7b8}
 .event-chapter-heading.still-going span{color:#ffd479}
-.edge.met-edge{stroke:#5b6c82;stroke-width:1.2;stroke-dasharray:1 5;opacity:.4}
+.edge.met-edge{stroke-width:3.4;opacity:.62}
+/* Having heard of somebody is not the same weight of tie as standing with them. */
+.relation-edge[marker-end],.relation-edge[marker-start]{stroke-width:3;opacity:.6}
