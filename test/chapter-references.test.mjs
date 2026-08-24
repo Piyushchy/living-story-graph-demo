@@ -837,7 +837,7 @@ test("everything in one moment lands together on the graph", () => {
   assert.match(graph, /priorCultivationDerived=beatCultivations\.length\?derive\(currentChapter,appliedNow\.filter\(event=>!beatCultivations\.some\(item=>item\.id===event\.id\)\)\)/, "measured against what it was before the whole moment");
   assert.match(graph, /const activeIds=new Set\(\[\.\.\.beatEvents,\.\.\.holdingEvents\]\.flatMap\(/, "every part of it is lit, not only the last — and anything still going on stays lit with it");
   assert.match(graph, /\[entity\(event\.source\)\?\.issuer,\.\.\.\(derived\.quests\.find\(run=>run\.quest===event\.source\)\?\.holders\|\|\[\]\)\]/, "a quest is not a node, so what lights up is who carries it and who set it");
-  assert.match(graph, /if\(!activeIds\.size\)viewportGroup\.setAttribute\("class"/, "and nothing at all is never a reason to dim the whole graph");
+  assert.match(graph, /if\(!activeIds\.size&&!spokenIds\.size\)viewportGroup\.setAttribute\("class"/, "and nothing at all is never a reason to dim the whole graph");
   assert.match(functionBody("eventPodIds"), /\[\]\.concat\(beatEvents\|\|\[\]\)/, "and every place it puts on the graph comes out at once");
 });
 
@@ -1288,7 +1288,7 @@ test("a connection already made is left alone while an action plays; only a new 
   assert.match(styleSource, /@keyframes edge-reveal\{0%\{opacity:0;filter:drop-shadow\(0 0 0 rgba\(255,255,255,0\)\)\}45%\{opacity:1;filter:drop-shadow\(0 0 9px/, "what is new draws itself in and flares as it lands, which is what marks it out now");
   assert.match(styleSource, /100%\{opacity:1;filter:drop-shadow\(0 0 4px rgba\(255,255,255,\.42\)\)\}\}/, "and keeps its weight after landing, instead of settling back into looking like every other line");
   assert.match(styleSource, /\.newly-revealed-edge\{animation:edge-reveal \.52s ease \.2s both\}/);
-  assert.match(styleSource, /\.graph-viewport\.has-action-focus \.node:not\(\.event-active-node\)\{/, "the nodes still step back for whatever is happening");
+  assert.match(styleSource, /\.graph-viewport\.has-action-focus \.node:not\(\.event-active-node\):not\(\.event-spoken-node\)\{/, "the nodes still step back for whatever is happening, bar whoever it is about and whoever it speaks of");
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
@@ -1994,4 +1994,20 @@ test("a group's branch comes out of hiding, so the reader is told New York rathe
   assert.match(line, /if\(where\.kind!=="organization"\)return where\.name;/);
   assert.match(line, /return branch\?`\$\{where\.name\} · \$\{entity\(branch\)\?\.name\|\|branch\}`:where\.name;/, "and it is said in words too, not only drawn");
   assert.match(source, /<small>· \$\{escapeHtml\(eventPlaceLine\(event\)\)\}<\/small>/);
+});
+
+test("somebody spoken of in an action is part of it, marked as told about rather than as present", () => {
+  const body = functionBody("renderGraph");
+  assert.match(body, /const spokenIds=new Set\(\[\.\.\.beatEvents,\.\.\.holdingEvents\]\.flatMap\(event=>event\.mentions\|\|\[\]\)\.filter\(Boolean\)\.map\(edgeLocationId\)\.filter\(id=>!activeIds\.has\(id\)\)\)/, "somebody both in it and spoken of in it is simply in it");
+  assert.match(body, /eventSpoken=spokenIds\.has\(item\.id\),/);
+  assert.match(body, /\$\{eventSpoken\?" event-spoken-node":""\}/);
+  assert.match(body, /"aria-label":eventSpoken\?`\$\{shownName\}, spoken of here`:/, "and a reader who cannot see the ring is told the same thing");
+  assert.match(body, /if\(eventActive\|\|eventSpoken\)\{const ringR=\(physics\.radii\.get\(item\.id\)\|\|26\)\+7,ringClass=`action-focus-ring\$\{eventSpoken\?" spoken-focus-ring":""\}`/);
+  assert.match(body, /const inPlay=new Set\(\[\.\.\.activeIds,\.\.\.spokenIds\]\)/, "the reference line gets the same room to be seen by as any other");
+
+  // Being talked about is not being there, so it is never dressed up as a presence.
+  assert.match(styleSource, /\.graph-viewport\.has-action-focus \.node:not\(\.event-active-node\):not\(\.event-spoken-node\)\{/, "it stops being dimmed away");
+  assert.match(styleSource, /\.spoken-focus-ring\{stroke:#c4a6ff!important;stroke-width:1\.9;stroke-dasharray:3 5\}/, "and its ring is the colour of the spoken-of line, and broken");
+  assert.match(styleSource, /\.node\.event-spoken-node\{opacity:1!important;animation:spoken-node-breathe/);
+  assert.match(styleSource, /\.edge\.mention-edge\{stroke:#c4a6ff/, "the same colour the line has always been");
 });
