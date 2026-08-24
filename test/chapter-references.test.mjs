@@ -666,7 +666,7 @@ test("a place a character is standing in keeps the line while it is popped out, 
   const body = functionBody("renderGraph");
   assert.match(body, /const podIds=syncPodTransitions\(locView,beatEvents,derived\),podSet=new Set\(\[\.\.\.podIds,\.\.\.retiringPodIds\]\)/, "retracting pods stay valid endpoints so the line can follow them home");
   assert.ok(body.indexOf("syncPodTransitions(locView") < body.indexOf("const straightEdge="), "and the transition is decided before any link is drawn, or the line snaps home a render early");
-  assert.match(body, /const edgeLocationId=id=>entity\(id\)\?\.kind!=="location"\?id:\(podSet\.has\(id\)\?id:\(locView\.anchorOf\.get\(id\)\|\|id\)\)/);
+  assert.match(body, /const edgeLocationId=id=>entity\(id\)\?\.kind==="character"\?\(crowdView\.anchorOf\.get\(id\)\|\|id\):entity\(id\)\?\.kind!=="location"\?id:\(podSet\.has\(id\)\?id:\(locView\.anchorOf\.get\(id\)\|\|id\)\)/);
   assert.match(body, /const aPos=pointFor\(a\),bPos=pointFor\(b\)/, "edges resolve pod positions as well as physics positions");
   assert.match(functionBody("renderLocationPods"), /eased=retiring\?1-progress\*\*3:1-\(1-progress\)\*\*3/, "the travel is driven in JS so an attached line moves with it");
   assert.match(functionBody("renderLocationPods"), /origin=origins\.get\(id\)\|\|base,\s*x=origin\.x\+\(target\.x-origin\.x\)\*eased/, "and a pod standing in for a node just folded away sets off from where that node stood");
@@ -1205,7 +1205,7 @@ test("what an action only speaks of is drawn as a reference, never as a presence
   assert.match(record, /toast\("One of the names spoken of does not match an identity"\)/, "a name that matches nothing is refused rather than silently dropped");
   assert.match(functionBody("eventInvolves"), /\(event\.mentions \|\| \[\]\)\.includes\(id\)/, "so it belongs to the history of whatever was spoken of");
   const graph = functionBody("renderGraph");
-  assert.match(graph, /\.\.\.\(event\.mentions\|\|\[\]\)\]\.filter\(Boolean\)\)\.filter\(id=>!derived\.departures\.has\(id\)\)\)/, "a name spoken of still comes onto the graph — unless the story has taken it off");
+  assert.match(graph, /\.\.\.\(event\.mentions\|\|\[\]\)\]\.filter\(Boolean\)\)\.filter\(id=>!departed\.has\(id\)\)\)/, "a name spoken of still comes onto the graph — unless the story has taken it off");
   assert.match(graph, /noteEdge\(speaker,spoken,event\.chapter,`Spoken of, not present\$\{personasOf\(event\)\.get\(event\.source\)\?/);
   assert.match(graph, /const key=`\$\{speaker\}\|\$\{spoken\}`,held=mentionLines\.get\(key\)/, "several actions naming the same pair share one line rather than stacking");
   assert.match(graph, /straightEdge\(speaker,spoken,`edge mention-edge\$\{live\|\|picked\?"":" settled-mention-edge"\}\$\{live\?" newly-revealed-edge":""\}`/, "kept once read, and brought up to strength while the action plays or either end is picked out");
@@ -2120,8 +2120,9 @@ test("the story can take somebody off the graph, and it is an action like every 
   assert.doesNotMatch(source, /passingLinger|fadesUnit|\.fades\b/, "no span, no unit, nothing to work out");
   assert.match(source, /<option value="departure">Gone — taken off the graph<\/option>/);
   assert.match(functionBody("derive"), /if\(event\.type==="departure"&&source\)\{if\(event\.action==="remove"\)departures\.delete\(event\.source\);else departures\.set\(event\.source,event\);\}/, "and it can be undone, for somebody who comes back");
-  assert.match(functionBody("derive"), /return \{ states, departures, quests:/);
-  assert.match(functionBody("renderGraph"), /\.filter\(id=>!derived\.departures\.has\(id\)\)/, "gone means not drawn from that action onward");
+  assert.match(functionBody("derive"), /return \{ states, departures, crowds:\[\.\.\.crowds\.values\(\)\], quests:/);
+  assert.match(functionBody("renderGraph"), /departed=goneIds\(derived\),visibleIds=new Set\(/, "gone means not drawn from that action onward");
+  assert.match(functionBody("goneIds"), /if\(event\?\.withInside===false\)return;/, "and whoever stands inside goes too, unless the action says to leave them");
   assert.match(functionBody("buildEventRecord"), /if\(type==="departure"&&!\["character","organization","location","system"\]\.includes\(source\.kind\)\)/, "anything that stands on the graph can be taken off it");
   assert.match(source, /else if\(type==="departure"\)\{action\.innerHTML='<option value="add">Gone from here on<\/option><option value="remove">Back on the graph<\/option>'/);
   assert.match(source, /departure:action==="remove"\?`\$\{source\.name\} is back on the graph\.`:`\$\{source\.name\} is gone from here on\$\{value\?`: \$\{value\}`:""\}\.`/);
@@ -2155,4 +2156,64 @@ test("a chapter mark can be kept lit, unlike a cite that waits for the reader to
   assert.match(render("as of [[12]] it stood"), /<cite>12<\/cite>/, "and a bare chapter marker");
   assert.match(render("[[cite:4]]quiet[[/cite]]"), /class="prose-chapter-ref sentence-cite" data-chapter="4">quiet<cite>4<\/cite><\/span>/);
   assert.match(render("[[mark:4]]lit[[/mark]]"), /class="prose-chapter-ref sentence-cite perma-mark" data-chapter="4">lit<cite>4<\/cite><\/span>/);
+});
+
+test("somebody the story has taken off the graph is not offered as a place to jump to on it", () => {
+  assert.match(functionBody("searchIdentities"), /gone=currentDerived\(\)\.departures;/);
+  assert.match(functionBody("searchIdentities"), /inVolume\.has\(row\.id\)&&!gone\.has\(row\.id\)/, "picking them would land on nothing");
+  // Their history is untouched: the chapter roll still answers where they were.
+  assert.doesNotMatch(functionBody("autoChapterRoll"), /departures/);
+});
+
+test("a cultivation reading can be a floor, for a rank the story never states outright", () => {
+  assert.match(functionBody("derive"), /source\.realm=cultivationDisplay\(event\);source\.atLeast=event\.atLeast===true;/, "the latest reading decides, floor or not");
+  assert.match(functionBody("realmText"), /return state\?\.atLeast\?`\$\{realm\} or above`:realm;/, "one place words it, so the panel, the profile and the beat label all agree");
+  const graph = functionBody("renderGraph");
+  assert.match(graph, /\$\{isOn\?"corona-on":state\.atLeast\?"corona-unknown":"corona-off"\}/, "past a floor nothing is known: neither attained nor not, so neither lit nor blank");
+  assert.match(graph, /`Cultivation revealed: \$\{realmText\(state,after\)\}`:before===after\?realmText\(state,after\):`\$\{before\} → \$\{realmText\(state,after\)\}`/);
+  assert.match(styleSource, /\.corona-unknown\{fill:none;stroke:var\(--amber\);stroke-width:3;stroke-dasharray:1 4/);
+
+  assert.match(source, /<input type="checkbox" name="atLeast" \/><span>Only a floor — at least this, possibly higher<\/span>/);
+  assert.match(source, /\$\("#event-at-least-field"\)\.hidden=type!=="cultivation";/, "it is a question only a cultivation reading asks");
+  assert.match(functionBody("buildEventRecord"), /if\(type==="cultivation"&&form\.get\("atLeast"\)\)record\.atLeast=true;/);
+  assert.match(source, /form\.elements\.atLeast\.checked=record\.atLeast===true;/, "and it reads back when the row is opened again");
+  // The same choice belongs where a rank is given at creation: "too high to read" is usually
+  // the first thing said about somebody, not something recorded later.
+  assert.match(source, /<input type="checkbox" name="initialAtLeast" \/>/);
+  assert.match(source, /atLeast:form\.get\("initialAtLeast"\)\?true:undefined,/);
+  assert.match(source, /generated=form\.get\("initialAtLeast"\)\?`\$\{name\} is at least \$\{shownTier\}\.`/);
+  assert.match(functionBody("generatedEventDescription"), /cultivation:atLeast\?`\$\{source\.name\} is at least \$\{cultivationText\}\.`/);
+  assert.match(source, /type: "cultivation", source: "eclipse", level: 7, atLeast: true/, "and the sample shows one, on somebody nobody can read");
+});
+
+test("people nest the way places do: a figure that stands for several, and whoever is picked out of it", () => {
+  assert.match(source, /<option value="part_of">One of — picked out of a larger figure<\/option>/);
+  assert.match(functionBody("derive"), /if\(event\.type==="part_of"&&source\?\.kind==="character"&&states\.get\(event\.target\)\?\.kind==="character"\)\{/);
+  assert.match(functionBody("derive"), /else crowds\.set\(event\.source,forming\(crowds\.get\(event\.source\),\{child:event\.source,parent:event\.target\}\)\)/, "and it can be still forming, like every other connection");
+  assert.match(functionBody("buildCrowdView"), /return buildDrillView\(people,id=>crowdParentOf\(id,derived\),expanded\)/, "the same tree builder places and systems already share");
+  const graph = functionBody("renderGraph");
+  assert.match(graph, /if\(kind==="character"\)return crowdView\.rendered\.has\(id\);/, "somebody folded inside a figure is not drawn separately");
+  assert.match(graph, /entity\(id\)\?\.kind==="character"\?\(crowdView\.anchorOf\.get\(id\)\|\|id\)/, "so their links report through the figure they stand in");
+  assert.match(graph, /beatPeople\.forEach\(id=>\{let cursor=crowdParentOf\(id,derived\);while\(cursor&&!openCrowds\.has\(cursor\)\)/, "and a figure opens itself for a beat about somebody inside it");
+
+  // Every one of them is an identity in their own right, so each keeps its own settings.
+  const record = functionBody("buildEventRecord");
+  assert.match(record, /if\(type==="part_of"&&source\.id===target\.id\)\{toast\("Nobody is one of themselves"\)/);
+  assert.match(record, /if\(cursor===source\.id\)\{toast\("That would put each of them inside the other"\)/, "and no loops");
+  assert.match(functionBody("actionEffectProblem"), /if\(type==="part_of"\)return needs\(kind\(event\.source\)==="character"&&kind\(event\.target\)==="character"/);
+  assert.match(source, /type: "part_of", source: "mira", target: "caravan-hands"/, "and the sample shows one");
+});
+
+test("taking a figure off the graph asks about everyone inside it, and the action carries the answer", () => {
+  const gone = functionBody("goneIds");
+  assert.match(gone, /if\(event\?\.withInside===false\)return;/, "leaving them behind is the choice, not the default");
+  assert.match(gone, /while\(queue\.length\)\{[\s\S]*?\(derived\.crowds\|\|\[\]\)\.forEach\(link=>\{if\(link\.parent!==parent\|\|seen\.has\(link\.child\)\)return;/, "and it reaches all the way down, not one level");
+  assert.match(source, /<input type="checkbox" name="withInside" checked \/><span>Take everyone standing inside it too<\/span>/);
+  assert.match(source, /\$\("#event-with-inside-field"\)\.hidden=type!=="departure";/);
+  assert.match(functionBody("buildEventRecord"), /if\(type==="departure"&&!form\.get\("withInside"\)\)record\.withInside=false;/);
+  assert.match(source, /form\.elements\.withInside\.checked=record\.withInside!==false;/, "an older row with no answer still means take them");
+  assert.match(source, /type: "departure", source: "caravan-hands", action: "add", withInside: false/, "and the sample shows the harder half: the figure goes, the one who matters stays");
+
+  // Nothing is deleted, so stepping back before the removal puts the whole figure back.
+  assert.doesNotMatch(gone, /data\.entities|splice/);
 });
