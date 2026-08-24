@@ -1205,7 +1205,7 @@ test("what an action only speaks of is drawn as a reference, never as a presence
   assert.match(record, /toast\("One of the names spoken of does not match an identity"\)/, "a name that matches nothing is refused rather than silently dropped");
   assert.match(functionBody("eventInvolves"), /\(event\.mentions \|\| \[\]\)\.includes\(id\)/, "so it belongs to the history of whatever was spoken of");
   const graph = functionBody("renderGraph");
-  assert.match(graph, /\.\.\.\(event\.mentions\|\|\[\]\)\]\.filter\(Boolean\)\)\.filter\(id=>!passingGone\(id,passingSeen\)\)\)/, "a name spoken of still comes onto the graph — unless it is one that has already walked off it");
+  assert.match(graph, /\.\.\.\(event\.mentions\|\|\[\]\)\]\.filter\(Boolean\)\)\.filter\(id=>!derived\.departures\.has\(id\)\)\)/, "a name spoken of still comes onto the graph — unless the story has taken it off");
   assert.match(graph, /noteEdge\(speaker,spoken,event\.chapter,`Spoken of, not present\$\{personasOf\(event\)\.get\(event\.source\)\?/);
   assert.match(graph, /const key=`\$\{speaker\}\|\$\{spoken\}`,held=mentionLines\.get\(key\)/, "several actions naming the same pair share one line rather than stacking");
   assert.match(graph, /straightEdge\(speaker,spoken,`edge mention-edge\$\{live\|\|picked\?"":" settled-mention-edge"\}\$\{live\?" newly-revealed-edge":""\}`/, "kept once read, and brought up to strength while the action plays or either end is picked out");
@@ -1669,7 +1669,7 @@ test("a quest carries the terms the story states — and any of them may be miss
 test("every action that offers a second identity or a free-text value actually keeps it — the system and quest actions were reading both and dropping them", () => {
   assert.match(source, /if\(\["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge","quest_part","quest_contribution","quest_issue"\]\.includes\(type\)\|\|\(type==="note"&&target\)\)record\.target=target\?\.id;/);
   assert.match(source, /"residency","system_host","system_location","system_end","quest_end","quest_contribution"\]\.includes\(type\)&&value\)record\.value=/);
-  assert.match(source, /showsSystemValue=\["system_host","system_location","system_end"\]\.includes\(type\)/, "and a destroyed system can be given its reason, which the sample always had but the form never offered");
+  assert.match(source, /showsSystemValue=\["system_host","system_location","system_end","departure"\]\.includes\(type\)/, "and a destroyed system, or anybody taken off the graph, can be given its reason");
 });
 
 test("a story that settles hundreds of quests does not build hundreds of cards", () => {
@@ -2114,21 +2114,21 @@ test("a story event, and travel, carry everyone in them rather than one name and
   assert.equal(list(["Lex", "Lex", "Hamid"]), "Lex and Hamid", "the subject is not named twice for being in their own action");
 });
 
-test("an identity can walk off the graph again, after however many actions the writer gives it", () => {
-  assert.match(functionBody("passingLinger"), /const linger=Number\(entity\(id\)\?\.fades\);return Number\.isFinite\(linger\)&&linger>=0\?linger:null;/, "no count means it stays for good, as everything did before");
-  assert.match(functionBody("passingWatch"), /volumeActions\(\)\.forEach\(\(event,index\)=>watched\.forEach\(id=>\{if\(eventInvolves\(event,id\)\)lastSeen\.set\(id,index\+1\);\}\)\)/, "one pass for the last action each of them is in, however it is in it");
-  assert.match(functionBody("passingGone"), /currentActionIndex>at\+linger/);
-  assert.match(functionBody("passingLeaving"), /currentActionIndex>at&&currentActionIndex<=at\+linger/, "and between the two it is still here, visibly not staying");
-  const graph = functionBody("renderGraph");
-  assert.match(graph, /passingSeen=passingWatch\(\),visibleIds=new Set\(/, "read once per draw, not once per identity");
-  assert.match(graph, /leaving=passingLeaving\(item\.id,passingSeen\),/);
-  assert.match(graph, /\$\{leaving\?" passing-node":""\}/);
-  assert.match(styleSource, /\.node\.passing-node\{opacity:\.6\}/);
-  assert.match(source, /<label class="field" id="entity-fades-field"><span>Stays on the graph for \(optional\)<\/span>/);
-  assert.match(source, /if\(fadesText&&!\/\^\\d\{1,3\}\$\/\.test\(fadesText\)\)\{toast\("How long it stays is a whole number of actions, or empty"\)/);
-  assert.match(source, /fades:kind!=="quest"&&fadesAfter!==null\?fadesAfter:undefined,/);
-  // Stepping back into its scene brings it back: nothing is deleted, it is simply not drawn yet.
-  assert.doesNotMatch(functionBody("passingGone"), /data\.entities=|splice/);
+test("the story can take somebody off the graph, and it is an action like every other", () => {
+  // A counter on the identity asked the writer to think in spans and units. An action does not:
+  // it happens where it happens, it can be ghosted like any other, and sliding back undoes it.
+  assert.doesNotMatch(source, /passingLinger|fadesUnit|\.fades\b/, "no span, no unit, nothing to work out");
+  assert.match(source, /<option value="departure">Gone — taken off the graph<\/option>/);
+  assert.match(functionBody("derive"), /if\(event\.type==="departure"&&source\)\{if\(event\.action==="remove"\)departures\.delete\(event\.source\);else departures\.set\(event\.source,event\);\}/, "and it can be undone, for somebody who comes back");
+  assert.match(functionBody("derive"), /return \{ states, departures, quests:/);
+  assert.match(functionBody("renderGraph"), /\.filter\(id=>!derived\.departures\.has\(id\)\)/, "gone means not drawn from that action onward");
+  assert.match(functionBody("buildEventRecord"), /if\(type==="departure"&&!\["character","organization","location","system"\]\.includes\(source\.kind\)\)/, "anything that stands on the graph can be taken off it");
+  assert.match(source, /else if\(type==="departure"\)\{action\.innerHTML='<option value="add">Gone from here on<\/option><option value="remove">Back on the graph<\/option>'/);
+  assert.match(source, /departure:action==="remove"\?`\$\{source\.name\} is back on the graph\.`:`\$\{source\.name\} is gone from here on\$\{value\?`: \$\{value\}`:""\}\.`/);
+  assert.match(functionBody("actionEffectProblem"), /if\(type==="departure"\)return needs\(\["character","organization","location","system"\]\.includes\(kind\(event\.source\)\)/);
+  // Nothing is deleted: the rows are all still there, so stepping back before it puts them back.
+  assert.doesNotMatch(functionBody("derive"), /departures[\s\S]{0,40}splice|data\.entities=/);
+  assert.match(source, /type: "departure", source: "halden", action: "add"[^}]*ghost: true/, "and the sample shows one, ghosted, because a burial nobody watches is not a beat");
 });
 
 test("a chapter mark can be kept lit, unlike a cite that waits for the reader to ask for it", () => {
