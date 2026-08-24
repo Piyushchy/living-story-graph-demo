@@ -701,7 +701,7 @@ test("hovering a link answers which chapter that connection last changed in, hit
   assert.match(source, /if\(physics\.dragId\|\|panStart\|\|event\.target\.closest\("\.node,\.location-pod"\)\)\{hideEdgeTip\(\);return;\}/, "dragging, panning and hovering a node all suppress it");
   const body = functionBody("renderGraph");
   assert.match(body, /const noteEdge=\(a,b,chapter,note\)=>\{if\(a&&b&&a!==b&&chapter\)edgeIndex\.push\(\{a,b,chapter:Number\(chapter\),note\}\);\}/);
-  assert.match(body, /locationEdge\(character,visit\.location,`location-edge\$\{forming\(visit\)\}`,beatDoes\("movement",event=>event\.source===character&&\(event\.location===visit\.location\|\|event\.location===visit\.organization\)\),visit\.chapter,visit\.pending\?/, "travel, and travel still under way — including a move written as going to the group rather than to the place");
+  assert.match(body, /locationEdge\(character,visit\.location,`location-edge\$\{forming\(visit\)\}`,beatDoes\("movement",event=>locationCharacterIds\(event\)\.includes\(character\)&&\(event\.location===visit\.location\|\|event\.location===visit\.organization\)\),visit\.chapter,visit\.pending\?/, "travel, and travel still under way — including a move written as going to the group rather than to the place");
   assert.match(body, /noteEdge\(m\.character,m\.organization,m\.from/, "membership");
   assert.match(body, /noteEdge\(child,parent,link\.from,`Sits inside\$\{formingNote\(link\)\}`\)/, "location nesting, and whether it is still being made");
   assert.match(source, /pair\.from = event\.chapter;/, "awareness had no chapter of its own to report until now");
@@ -1028,7 +1028,7 @@ test("a conversation is not only people talking — a system speaks to its host,
   assert.match(functionBody("renderGraph"), /const seen=new Set\(\),talkers=convo\.talkers\.map\(edgeLocationId\)/, "a place folded into its parent speaks through it rather than dropping out");
   assert.match(source, /sampleData\.events\.filter\(event=>\["talk-3","talk-4"\]\.includes\(event\.id\)&&!eventIds\.has\(event\.id\)\)/, "a stored copy of the demo picks them up");
   assert.match(source, /type==="conversation"\?"Who speaks first"/, "and the editor stops asking only for a character");
-  assert.match(source, /charactersLabel\.textContent=type==="conversation"\?"Everyone taking part":"Who it is issued to"/);
+  assert.match(source, /charactersLabel\.textContent=type==="conversation"\?"Everyone taking part":type==="note"\?"Everyone else in it \(optional\)"/);
 });
 
 test("a linked word is written however it comes to hand, and the mark-up helpers keep out of fields that are not prose", () => {
@@ -1296,7 +1296,7 @@ test("a connection already made is left alone while an action plays; only a new 
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
-  assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
+  assert.match(source, /if\(event\.type==="movement"\)locationCharacterIds\(event\)\.forEach\(character=>locations\.set\(character,\{character,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });
 
 test("a system stands on the graph as soon as the story touches it, but the places it runs at wait until it or its host is picked out", () => {
@@ -1992,7 +1992,7 @@ test("somebody can travel to a group, and the graph works out which of its place
   assert.match(record, /if\(type==="organization_location"&&location&&location\.kind!=="location"\)/, "though a branch still stands at a place");
   assert.match(functionBody("actionEffectProblem"), /if\(type==="movement"\)return needs\(kind\(event\.source\)==="character"&&\["location","organization"\]\.includes\(kind\(event\.location\)\),"travel needs a character and somewhere to go"\)/);
   const derived = functionBody("derive");
-  assert.match(derived, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:branch\|\|event\.location,organization:event\.location,/, "where they now stand is the branch; the group they went to is kept beside it so both can be said");
+  assert.match(derived, /if\(event\.type==="movement"\)locationCharacterIds\(event\)\.forEach\(character=>locations\.set\(character,\{character,location:branch\|\|event\.location,organization:event\.location,/, "where they now stand is the branch; the group they went to is kept beside it so both can be said");
   assert.match(functionBody("renderGraph"), /return where==="organization"\|\|event\.type!=="movement";/, "and a move into a group is joined to the group as well as to the place");
 });
 
@@ -2084,4 +2084,28 @@ test("a place a group keeps is drawn as one, wearing the group's own shape aroun
   // A branch is a different fact and keeps looking like one: the group stands at that place, and
   // the place itself is nobody's room.
   assert.match(body, /derived\.organizationLocations\.forEach\(link=>locationEdge\(link\.organization,link\.location,`organization-location-edge/);
+});
+
+test("a story event, and travel, carry everyone in them rather than one name and a copy of the line for each of the rest", () => {
+  assert.match(functionBody("updateEventHelp"), /\$\("#event-characters-field"\)\.hidden=!\["conversation","quest_issue","note","movement"\]\.includes\(type\)/);
+  const record = functionBody("buildEventRecord");
+  assert.match(record, /if\(\["note","movement"\]\.includes\(type\)\)\{/);
+  assert.match(record, /if\(type==="movement"\)\{const stuck=named\.find\(item=>item\.kind!=="character"\);/, "only a character can travel, whoever else is written in");
+  assert.match(record, /const everyone=\[\.\.\.new Set\(\[source\.id,\.\.\.named\.map\(item=>item\.id\)\]\)\];\s*if\(everyone\.length>1\)record\.characters=everyone;/, "the subject is one of them, and a cast of one is no cast at all");
+
+  // Everyone who travelled together ends up where they went, not only whoever was written first.
+  assert.match(functionBody("derive"), /if\(event\.type==="movement"\)locationCharacterIds\(event\)\.forEach\(character=>locations\.set\(character,\{character,location:event\.location/);
+  assert.match(functionBody("renderGraph"), /beatDoes\("movement",event=>locationCharacterIds\(event\)\.includes\(character\)&&/, "and every one of their lines lands on the beat");
+  // Already true, and this is what makes the rest work: the cast is drawn to the place and lights up.
+  assert.match(functionBody("locationCharacterIds"), /\[event\.source,event\.target,\.\.\.\(event\.characters\|\|\[\]\)\]/);
+  assert.match(functionBody("eventInvolves"), /\(event\.characters \|\| \[\]\)\.includes\(id\)/, "so the action belongs to each of their histories");
+
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext(functionBody("nameList"), ctx);
+  const list = names => vm.runInContext(`nameList(${JSON.stringify(names)})`, ctx);
+  assert.equal(list(["Lex"]), "Lex");
+  assert.equal(list(["Lex", "Hamid"]), "Lex and Hamid");
+  assert.equal(list(["Lex", "Hamid", "Jessica"]), "Lex, Hamid and Jessica", "which is how a cast list is actually written");
+  assert.equal(list(["Lex", "Lex", "Hamid"]), "Lex and Hamid", "the subject is not named twice for being in their own action");
 });
