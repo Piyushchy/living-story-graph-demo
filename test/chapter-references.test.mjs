@@ -2204,6 +2204,16 @@ test("people nest the way places do: a figure that stands for several, and whoev
   assert.match(source, /type: "part_of", source: "mira", target: "caravan-hands"/, "and the sample shows one");
 });
 
+test("an opened figure is joined to the people picked out of it, so they do not read as strangers standing near each other", () => {
+  const graph = functionBody("renderGraph");
+  assert.match(graph, /derived\.crowds\.forEach\(link=>\{const child=edgeLocationId\(link\.child\),parent=edgeLocationId\(link\.parent\);if\(!child\|\|!parent\|\|child===parent\)return;/, "and closed, both ends fold to the figure, so nothing is drawn — there is one thing there to look at");
+  assert.match(graph, /straightEdge\(child,parent,`edge crowd-edge\$\{forming\(link\)\}\$\{beatDoes\("part_of",event=>event\.source===link\.child&&event\.target===link\.parent\)\?" newly-revealed-edge":""\}`/, "and the action that picks somebody out lights its own line");
+  assert.match(graph, /noteEdge\(child,parent,link\.from,`One of them\$\{formingNote\(link\)\}`\)/, "hovering it says what it is");
+  assert.match(graph, /crowdView\.rendered\.forEach\(id=>\{if\(!crowdView\.expanded\.has\(id\)\)return;\(crowdView\.children\.get\(id\)\|\|\[\]\)\.forEach\(kid=>addSpring\(kid,id,96,\.12\)\);\}\);/, "and a spring keeps them together once opened, the way a system holds its subsystems");
+  assert.match(styleSource, /\.edge\.crowd-edge\{[^}]*stroke-dasharray:6 4/, "drawn broken, because standing among several is not the same as knowing one of them");
+  assert.equal((source.match(/<span><i class="line-key crowd"><\/i>One of them<\/span>/g) || []).length, 2, "and both legends name it");
+});
+
 test("taking a figure off the graph asks about everyone inside it, and the action carries the answer", () => {
   const gone = functionBody("goneIds");
   assert.match(gone, /if\(event\?\.withInside===false\)return;/, "leaving them behind is the choice, not the default");
