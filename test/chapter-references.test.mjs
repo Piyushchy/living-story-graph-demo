@@ -2067,3 +2067,21 @@ test("a drill tree does not care what kind of thing it is drilling, so a group h
   const plain = locationView({ entities: [{ id: "office", kind: "organization", name: "Lex's Office" }, { id: "earth", kind: "location", locationType: "Realm", name: "Earth" }], parents: [], visible: ["office", "earth"] });
   assert.deepEqual(plain.rendered, ["earth"]);
 });
+
+test("a place a group keeps is drawn as one, wearing the group's own shape around it", () => {
+  assert.match(functionBody("heldByGroup"), /const link=\(derived\?\.locationParents\|\|\[\]\)\.find\(item=>item\.child===id&&!item\.pending\);return entity\(link\?\.parent\)\?\.kind==="organization"\?link\.parent:null;/, "read from the nesting itself, not from whichever ancestor happens to be on screen");
+  const body = functionBody("renderGraph");
+  assert.match(body, /inGroup=heldByGroup\(item\.id,derived\)/);
+  assert.match(body, /locationShell=svgEl\("g",\{class:`location-shell\$\{inGroup\?" location-shell-held":""\}`\}\)/);
+  assert.match(body, /if\(inGroup\)locationShell\.appendChild\(svgEl\("polygon",\{points:hexPoints\(r\+9\),class:"location-in-group"\}\)\)/, "closed, the group's hexagon frames the place's own square");
+  assert.match(body, /if\(inGroup\)locationShell\.appendChild\(svgEl\("polygon",\{points:hexPoints\(26\),class:"location-in-group"\}\)\)/, "and opened, so it does not stop belonging to the group the moment it is opened");
+  assert.match(body, /`\$\{shownName\}\$\{inGroup\?`, inside \$\{entity\(inGroup\)\?\.name\|\|inGroup\}`:""\}, contains/, "a reader who cannot see the frame is told the same thing");
+  // Popped out for an action it is the same place, so it keeps the same mark.
+  assert.match(functionBody("renderLocationPods"), /if\(heldIds\.has\(id\)\)shell\.appendChild\(svgEl\("polygon",\{points:hexPoints\(31\),class:"location-in-group"\}\)\)/);
+  assert.match(body, /new Set\(derived\.locationParents\.filter\(link=>!link\.pending&&entity\(link\.parent\)\?\.kind==="organization"\)\.map\(link=>link\.child\)\)/);
+  assert.match(styleSource, /\.location-in-group\{fill:rgba\(143,166,196,\.1\);stroke:#8fa6c4/);
+  assert.match(source, /<span><i class="pin held"><\/i>Place inside an organization<\/span>/, "and the key says what the new shape means");
+  // A branch is a different fact and keeps looking like one: the group stands at that place, and
+  // the place itself is nobody's room.
+  assert.match(body, /derived\.organizationLocations\.forEach\(link=>locationEdge\(link\.organization,link\.location,`organization-location-edge/);
+});

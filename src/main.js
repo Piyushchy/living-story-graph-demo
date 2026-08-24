@@ -292,14 +292,14 @@ app.innerHTML = `
               <section class="side-card events-card" data-panel-content="events"><div class="events-head"><strong id="events-title">Chapter events</strong><span id="events-count"></span><span id="events-hold" class="events-hold" hidden>Paused</span></div><ul id="events-list" class="events-list"></ul></section>
               <section class="side-card quests-card" data-panel-content="quests" aria-label="Quests"><div class="events-head"><strong>Quests</strong><span id="quests-count"></span></div><div id="quests-list" class="quests-list"></div></section>
               <section class="side-card mobile-legend" data-panel-content="legend" aria-label="Mobile graph legend">
-                <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization — opens too, if it holds places</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span><span><i class="line-key mention"></i>Spoken of</span>
+                <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization — opens too, if it holds places</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="pin held"></i>Place inside an organization</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span><span><i class="line-key mention"></i>Spoken of</span>
                 <span><i class="line-key friendly"></i>Friendly</span><span><i class="line-key hostile"></i>Hostile</span><span><i class="line-key neutral"></i>Neutral / awareness</span><span><i class="line-key clone"></i>Clone / avatar</span><span><i class="line-key member"></i>Membership</span><span><i class="line-key location"></i>Travel / activity</span><span><i class="line-key residence"></i>Residence</span><span><i class="line-key hierarchy"></i>Inside location</span><span><i class="line-key organization-location"></i>Organization place</span>
                 <span><i class="ring mentioned"></i>Mentioned only</span><span><i class="ring unknown"></i>Unknown status</span><span><i class="ring"></i>Alive</span><span><i class="ring dead"></i>Dead</span><span><i class="diamond"></i>Alias count</span><span><i class="corona-key"></i>Cultivation level</span>
               </section>
             </aside>
           </div>
           <div class="legend desktop-legend" aria-label="Graph legend">
-            <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization — opens too, if it holds places</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span><span><i class="line-key mention"></i>Spoken of</span>
+            <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization — opens too, if it holds places</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="pin held"></i>Place inside an organization</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span><span><i class="line-key mention"></i>Spoken of</span>
             <span><i class="line-key friendly"></i>Friendly</span><span><i class="line-key hostile"></i>Hostile</span><span><i class="line-key neutral"></i>Neutral / awareness arrow</span><span><i class="line-key clone"></i>Clone / avatar</span><span><i class="line-key member"></i>Membership</span><span><i class="line-key location"></i>Travel / activity</span><span><i class="line-key residence"></i>Residence</span><span><i class="line-key hierarchy"></i>Inside location</span><span><i class="line-key organization-location"></i>Organization place</span>
             <span><i class="ring mentioned"></i>Mentioned only</span><span><i class="ring unknown"></i>Unknown status</span><span><i class="ring"></i>Alive</span><span><i class="ring dead"></i>Dead</span><span><i class="diamond"></i>Alias count</span><span><i class="corona-key"></i>Cultivation level</span>
           </div>
@@ -1362,6 +1362,7 @@ function isLocationRoot(id,derived){const item=entity(id);if(!item)return true;i
 // A place still connecting to its parent is not inside it yet, so it keeps its own place on the
 // graph — joined by a line that is visibly still being made — until the connection settles.
 function locationParentOf(id,derived){if(isLocationRoot(id,derived))return null;const link=derived.locationParents.find(item=>item.child===id);return link&&!link.pending?link.parent:null;}
+function hexPoints(r){return Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${r*Math.cos(angle)},${r*Math.sin(angle)}`;}).join(" ");}
 function roundedSquarePath(r,corner){const c=Math.min(corner,r);return `M ${-r+c} ${-r} H ${r-c} Q ${r} ${-r} ${r} ${-r+c} V ${r-c} Q ${r} ${r} ${r-c} ${r} H ${-r+c} Q ${-r} ${r} ${-r} ${r-c} V ${-r+c} Q ${-r} ${-r} ${-r+c} ${-r} Z`;}
 // Builds the drawable location tree for the ids the current action has revealed.
 // `parentOf` skips ancestors that are not revealed yet, so a deep location still
@@ -1369,6 +1370,10 @@ function roundedSquarePath(r,corner){const c=Math.min(corner,r);return `M ${-r+c
 // A group that has places inside it is a place in its own right — the Inn is its own grounds —
 // so it joins the place map as a container and opens exactly as any other place does. It is never
 // inside anything itself: where it stands in the world is said by its branches, not by nesting.
+// The other side of the same fact: a place whose parent is a group. It is a place like any other
+// — it nests, it opens, it can be travelled to — but it belongs to the group rather than sitting
+// on the map, and the graph says so rather than leaving the reader to work it out from the line.
+function heldByGroup(id,derived){const link=(derived?.locationParents||[]).find(item=>item.child===id&&!item.pending);return entity(link?.parent)?.kind==="organization"?link.parent:null;}
 function holdsPlaces(id,derived){return entity(id)?.kind==="organization"&&(derived?.locationParents||[]).some(link=>link.parent===id&&!link.pending);}
 function buildLocationView(derived,visibleIds){
   return buildDrillView([...visibleIds].filter(id=>entity(id)?.kind==="location"||holdsPlaces(id,derived)),id=>locationParentOf(id,derived),expandedLocations);
@@ -2373,11 +2378,16 @@ function renderGraph() {
         if(childCount){locationShell.append(svgEl("circle",{cx:r-6,cy:-r+6,r:9.5,class:"system-child-badge"}));const badge=svgEl("text",{x:r-6,y:-r+9.4,class:"location-child-badge-text system-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);}
       }
       group.appendChild(locationShell);
-    }else if(item.kind==="location"){const r=locationGlyphRadius(item.id,locView),childCount=(locView.children.get(item.id)||[]).length;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(38,r+16),class:"node-hit-target"}));
-      locationShell=svgEl("g",{class:"location-shell"});
-      if(openedLocation){labelY=-26;locationShell.append(svgEl("circle",{cx:0,cy:0,r:17,class:"location-open-halo"}),svgEl("circle",{cx:0,cy:0,r:6.5,class:"location-open-dot"}));group.setAttribute("aria-label",`${shownName}, opened — ${childCount} place${childCount===1?"":"s"} shown, activate to close`);
-      }else{labelY=-r-13;locationShell.append(svgEl("path",{d:roundedSquarePath(r,r*.42),class:"location-glyph"}),svgEl("path",{d:roundedSquarePath(r*.44,r*.22),class:"location-glyph-core"}));
-        if(childCount){locationShell.append(svgEl("circle",{cx:r-1,cy:-r+1,r:9.5,class:"location-child-badge"}));const badge=svgEl("text",{x:r-1,y:-r+4.4,class:"location-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);group.setAttribute("aria-label",`${shownName}, contains ${childCount} place${childCount===1?"":"s"}`);}
+    }else if(item.kind==="location"){const r=locationGlyphRadius(item.id,locView),childCount=(locView.children.get(item.id)||[]).length,inGroup=heldByGroup(item.id,derived);
+      group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(38,r+16),class:"node-hit-target"}));
+      locationShell=svgEl("g",{class:`location-shell${inGroup?" location-shell-held":""}`});
+      if(openedLocation){labelY=-26;
+        if(inGroup)locationShell.appendChild(svgEl("polygon",{points:hexPoints(26),class:"location-in-group"}));
+        locationShell.append(svgEl("circle",{cx:0,cy:0,r:17,class:"location-open-halo"}),svgEl("circle",{cx:0,cy:0,r:6.5,class:"location-open-dot"}));group.setAttribute("aria-label",`${shownName}, opened — ${childCount} place${childCount===1?"":"s"} shown, activate to close`);
+      }else{labelY=-r-13;
+        if(inGroup)locationShell.appendChild(svgEl("polygon",{points:hexPoints(r+9),class:"location-in-group"}));
+        locationShell.append(svgEl("path",{d:roundedSquarePath(r,r*.42),class:"location-glyph"}),svgEl("path",{d:roundedSquarePath(r*.44,r*.22),class:"location-glyph-core"}));
+        if(childCount){locationShell.append(svgEl("circle",{cx:r-1,cy:-r+1,r:9.5,class:"location-child-badge"}));const badge=svgEl("text",{x:r-1,y:-r+4.4,class:"location-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);group.setAttribute("aria-label",`${shownName}${inGroup?`, inside ${entity(inGroup)?.name||inGroup}`:""}, contains ${childCount} place${childCount===1?"":"s"}`);}
       }
       group.appendChild(locationShell);
     }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));
@@ -2461,7 +2471,7 @@ function renderGraph() {
     noteEdge(satellite.id,satellite.anchor,satellite.from,satellite.mode==="merged"?"Merged into this system":satellite.reason||"Destroyed");
     straightEdge(satellite.id,satellite.anchor,`edge system-satellite-edge`,satellite.id,satellite.anchor);
   });
-  renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius,podOrigins,activeIds);
+  renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius,podOrigins,activeIds,new Set(derived.locationParents.filter(link=>!link.pending&&entity(link.parent)?.kind==="organization").map(link=>link.child)));
   podOrigins=new Map();
   // Draw each departing node where it last stood, then let it travel into whatever took it in.
   departing.forEach(item=>{
@@ -2509,7 +2519,7 @@ function syncPodTransitions(view,beatEvents,derived){
   return podIds;
 }
 const POD_CLEARANCE=96;
-function renderLocationPods(view,currentEvent,positions,layer,glyphRadius,origins=new Map(),liveIds=new Set()){
+function renderLocationPods(view,currentEvent,positions,layer,glyphRadius,origins=new Map(),liveIds=new Set(),heldIds=new Set()){
   const podIds=activePodIds;
   const placedPods=[];
   const draw=(id,retiring)=>{
@@ -2526,7 +2536,9 @@ function renderLocationPods(view,currentEvent,positions,layer,glyphRadius,origin
     const tether=svgEl("line",{class:"location-pod-tether"}),ring=svgEl("circle",{cx:0,cy:0,r:25,class:"location-pod-ring"}),core=svgEl("circle",{cx:0,cy:0,r:8,class:"location-pod-core"}),
       tier=svgEl("text",{x:0,y:-49,class:"location-pod-tier"}),label=svgEl("text",{x:0,y:-35,class:"location-pod-label"});
     tier.textContent=String(item.locationType||"Place").toUpperCase();label.textContent=item.name;
-    const shell=svgEl("g",{class:"location-pod-shell"});shell.append(ring,core,tier,label);
+    const shell=svgEl("g",{class:"location-pod-shell"});
+    if(heldIds.has(id))shell.appendChild(svgEl("polygon",{points:hexPoints(31),class:"location-in-group"}));
+    shell.append(ring,core,tier,label);
     // A place popped out for an action is as much part of it as anybody standing there, so it
     // carries the same ring going out.
     if(liveIds.has(id)&&!retiring)shell.append(svgEl("circle",{cx:0,cy:0,r:32,class:"action-focus-ring"}),svgEl("circle",{cx:0,cy:0,r:32,class:"action-focus-ring action-focus-ring-late"}));
