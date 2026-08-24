@@ -2310,18 +2310,22 @@ function renderGraph() {
   const questActive=[...beatEvents,...holdingEvents].filter(event=>String(event.type).startsWith("quest_")).flatMap(event=>
     [entity(event.source)?.issuer,...(derived.quests.find(run=>run.quest===event.source)?.holders||[])]);
   const activeIds=new Set([...beatEvents,...holdingEvents].flatMap(event=>[event.source,event.target,event.location,eventBranchId(event,derived),...(event.characters||[])]).concat(questActive).filter(Boolean).map(edgeLocationId));
+  // Being spoken of is part of what is happening — the reader is being told about somebody — but
+  // it is not being there, so it is marked its own way rather than made to look like a presence.
+  // Somebody both in it and spoken of in it is simply in it.
+  const spokenIds=new Set([...beatEvents,...holdingEvents].flatMap(event=>event.mentions||[]).filter(Boolean).map(edgeLocationId).filter(id=>!activeIds.has(id)));
   // Two shapes that sit comfortably apart at rest can still end up close enough that the line
   // between them is a few pixels of nothing. While an action is about them they ask for more room,
   // through the same easing as every other movement, so they drift apart rather than jump.
-  const spreadSignature=[...activeIds].sort().join(",");
+  const inPlay=new Set([...activeIds,...spokenIds]),spreadSignature=[...inPlay].sort().join(",");
   physics.spread.clear();
-  if(activeIds.size>1)activeIds.forEach(id=>physics.spread.set(id,ACTION_ROOM));
+  if(inPlay.size>1)inPlay.forEach(id=>physics.spread.set(id,ACTION_ROOM));
   if(spreadSignature!==lastSpreadSignature){lastSpreadSignature=spreadSignature;if(physics.spread.size)physics.alpha=Math.max(physics.alpha,ALPHA_CONTACT);}
   // Nothing on the graph belongs to this beat: dimming everything would leave the reader looking
   // at a dark graph wondering what happened.
-  if(!activeIds.size)viewportGroup.setAttribute("class",String(viewportGroup.getAttribute("class")).replace(" has-action-focus",""));
+  if(!activeIds.size&&!spokenIds.size)viewportGroup.setAttribute("class",String(viewportGroup.getAttribute("class")).replace(" has-action-focus",""));
   const retractingIds=collapsingLocationId?new Set([...renderedSubtree(collapsingLocationId,locView)]):new Set();
-  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind!=="quest"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=beatDoes("cultivation",event=>event.source===item.id),priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null,questNotice=null,personaNotice=null;
+  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind!=="quest"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),eventSpoken=spokenIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=beatDoes("cultivation",event=>event.source===item.id),priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${eventSpoken?" event-spoken-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":eventSpoken?`${shownName}, spoken of here`:mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null,questNotice=null,personaNotice=null;
     if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));
     }else if(item.kind==="system"){const opened=sysView.expanded.has(item.id),childCount=(sysView.children.get(item.id)||[]).length,r=systemGlyphRadius(state),
         rankMoved=beatDoes("system_rank",event=>event.source===item.id);
@@ -2410,7 +2414,7 @@ function renderGraph() {
     // A glow can be mistaken for any other bright thing on a busy graph. A ring that keeps going
     // out cannot: it is the one mark on the graph that is still moving, so whoever the action is
     // about reads at a glance without counting shades of blue.
-    if(eventActive){const ringR=(physics.radii.get(item.id)||26)+7;group.append(svgEl("circle",{cx:0,cy:0,r:ringR,class:"action-focus-ring"}),svgEl("circle",{cx:0,cy:0,r:ringR,class:"action-focus-ring action-focus-ring-late"}));}
+    if(eventActive||eventSpoken){const ringR=(physics.radii.get(item.id)||26)+7,ringClass=`action-focus-ring${eventSpoken?" spoken-focus-ring":""}`;group.append(svgEl("circle",{cx:0,cy:0,r:ringR,class:ringClass}),svgEl("circle",{cx:0,cy:0,r:ringR,class:`${ringClass} action-focus-ring-late`}));}
     bindGestures(group);bindGestures(labelGroup);
     nodeLayer.appendChild(group);nodeEls.set(item.id,group);
   });

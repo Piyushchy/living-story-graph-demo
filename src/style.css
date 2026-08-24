@@ -367,13 +367,18 @@ th { color: var(--muted); font-weight: 600; }
 #graph .graph-viewport.has-hover-focus:not(.has-selection-focus) .node.hover-focus{opacity:1!important;filter:drop-shadow(0 0 13px rgba(255,255,255,.62))!important}
 .identity-edge{fill:none;stroke:#c084fc;stroke-width:2.75;stroke-dasharray:4 4;opacity:.82}
 .line-key.clone{border-top-color:#c084fc!important;border-top-style:dashed!important}
-.graph-viewport.has-action-focus .node:not(.event-active-node){opacity:1!important;filter:brightness(.34) saturate(.38)}
+.graph-viewport.has-action-focus .node:not(.event-active-node):not(.event-spoken-node){opacity:1!important;filter:brightness(.34) saturate(.38)}
 @keyframes active-node-breathe{0%,100%{filter:drop-shadow(0 0 9px rgba(125,211,252,.55)) saturate(1.08)}50%{filter:drop-shadow(0 0 19px rgba(125,211,252,.95)) saturate(1.2)}}
 .node.event-active-node{opacity:1!important;animation:active-node-breathe 1.9s ease-in-out infinite}
 /* A ring going out from whoever the action is about — the one thing on the graph still moving. */
 @keyframes action-focus-ping{0%{transform:scale(.86);opacity:.7}75%{transform:scale(1.34);opacity:0}100%{transform:scale(1.34);opacity:0}}
 .action-focus-ring{fill:none;stroke:#7dd3fc;stroke-width:2.2;pointer-events:none;transform-box:fill-box;transform-origin:center;animation:action-focus-ping 1.9s cubic-bezier(.25,.6,.35,1) infinite}
 .action-focus-ring-late{animation-delay:.95s}
+/* Spoken of in this action: in the telling, not in the room. Its own colour, and a broken ring,
+   so it is never mistaken for somebody standing there. */
+@keyframes spoken-node-breathe{0%,100%{filter:drop-shadow(0 0 7px rgba(196,166,255,.42)) saturate(1.02)}50%{filter:drop-shadow(0 0 14px rgba(196,166,255,.78)) saturate(1.1)}}
+.node.event-spoken-node{opacity:1!important;animation:spoken-node-breathe 1.9s ease-in-out infinite}
+.spoken-focus-ring{stroke:#c4a6ff!important;stroke-width:1.9;stroke-dasharray:3 5}
 .location.event-active-node .action-focus-ring,.organization.event-active-node .action-focus-ring{stroke:#7ff7eb}
 .system.event-active-node .action-focus-ring{stroke:#c7a6ff}
 .graph-viewport.has-action-focus .node.selected{opacity:1!important;filter:brightness(.9) saturate(.95) drop-shadow(0 0 15px rgba(255,255,255,.82))!important}
@@ -670,7 +675,7 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .selection-related-event{border-left:2px solid rgba(167,139,250,.42);border-radius:7px;background:rgba(76,29,149,.055)}.selection-related-event:hover{background:rgba(76,29,149,.16)}
 .selection-event-empty{padding:10px;color:#7e8da3;font-size:11px;list-style:none}
 .event-edit-mode-note{margin:12px 0 16px;padding:11px 13px;border:1px solid rgba(125,211,252,.42);border-left:4px solid #7dd3fc;border-radius:9px;background:rgba(14,116,144,.14);color:#9eacc0;font-size:11px;line-height:1.5}.event-edit-mode-note[hidden]{display:none}.event-edit-mode-note strong{color:#d8f5ff}
-.graph-viewport.has-action-focus .node.chapter-changed-node:not(.event-active-node){opacity:1!important;filter:brightness(.62) saturate(.6)!important}
+.graph-viewport.has-action-focus .node.chapter-changed-node:not(.event-active-node):not(.event-spoken-node){opacity:1!important;filter:brightness(.62) saturate(.6)!important}
 .cultivation-change-segment{stroke-width:7!important;opacity:1!important;filter:drop-shadow(0 0 7px currentColor);animation:cultivation-change-beat .9s ease-in-out var(--cultivation-delay,0ms) both;transform-box:fill-box;transform-origin:center}
 .cultivation-gain{stroke:#ffd166!important}.cultivation-loss{stroke:#fb7185!important;stroke-dasharray:3 2}
 .cultivation-change-label{fill:#fff1b8;text-anchor:middle;font-size:9px;font-weight:850;letter-spacing:.02em;pointer-events:none;paint-order:stroke;stroke:#081018;stroke-width:5px;stroke-linejoin:round;filter:drop-shadow(0 0 5px rgba(232,173,60,.5))}
