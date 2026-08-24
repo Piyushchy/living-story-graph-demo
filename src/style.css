@@ -328,6 +328,11 @@ th { color: var(--muted); font-weight: 600; }
 #graph .node-label-layer .node-labels.label-culled { opacity: 0 !important; }
 .node-labels.label-culled > * { pointer-events: none; }
 .org-shape { fill: var(--panel-2); stroke: var(--muted); stroke-width: 2; }
+/* A figure that stands for several people: opened, the same reading an opened place gives. */
+.crowd-open-halo{fill:none;stroke:#f0a3c8;stroke-width:2;stroke-dasharray:3 5;opacity:.8}
+.crowd-open-dot{fill:#f0a3c8}
+.crowd-child-badge{fill:#0d1725;stroke:#f0a3c8;stroke-width:1.6}
+.node.character .location-child-badge-text{fill:#ffd9ec}
 /* A group that holds places of its own: opened, it reads the same as any opened place. */
 .org-open-halo{fill:none;stroke:#8fa6c4;stroke-width:2;stroke-dasharray:3 5;opacity:.75}
 .org-open-dot{fill:#8fa6c4}
