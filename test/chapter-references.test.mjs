@@ -1667,7 +1667,7 @@ test("a quest carries the terms the story states — and any of them may be miss
 });
 
 test("every action that offers a second identity or a free-text value actually keeps it — the system and quest actions were reading both and dropping them", () => {
-  assert.match(source, /if\(\["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge","quest_part","quest_contribution","quest_issue"\]\.includes\(type\)\|\|\(type==="note"&&target\)\)record\.target=target\?\.id;/);
+  assert.match(source, /if\(\["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge","part_of","quest_part","quest_contribution","quest_issue"\]\.includes\(type\)\|\|\(type==="note"&&target\)\)record\.target=target\?\.id;/);
   assert.match(source, /"residency","system_host","system_location","system_end","quest_end","quest_contribution"\]\.includes\(type\)&&value\)record\.value=/);
   assert.match(source, /showsSystemValue=\["system_host","system_location","system_end","departure"\]\.includes\(type\)/, "and a destroyed system, or anybody taken off the graph, can be given its reason");
 });
@@ -2216,4 +2216,26 @@ test("taking a figure off the graph asks about everyone inside it, and the actio
 
   // Nothing is deleted, so stepping back before the removal puts the whole figure back.
   assert.doesNotMatch(gone, /data\.entities|splice/);
+});
+
+test("an action keeps the parts that are the whole point of it — the figure, and which way it runs", () => {
+  // "Larry is one of the seven" saved as "Larry: part_of." with no figure and no direction at all:
+  // the toast said the graph was updated while the substance of the row went in the bin.
+  const record = functionBody("buildEventRecord");
+  assert.match(record, /"system_merge","part_of","quest_part"[\s\S]{0,120}record\.target=target\?\.id;/, "the figure somebody is one of is kept");
+  assert.match(record, /"system_end","departure","part_of","quest_issue"[\s\S]{0,80}record\.action=action;/, "and so is whether they are joining it, still joining, or out of it");
+  assert.match(functionBody("loadEventEditor"), /system_end:"add",departure:"add",part_of:"add",movement:"add"\}/, "so reopening the row does not land on a choice its own list has never heard of");
+  assert.match(functionBody("generatedEventDescription"), /part_of:action==="remove"\?`\$\{source\.name\} is no longer one of \$\{other\}\.`/, "and the row says what it is, rather than falling through to a bare type name");
+});
+
+test("a field the form asks to hide is hidden, checkbox or not", () => {
+  // [hidden] and .checkbox-field were both !important and equally specific, so the one written
+  // later won: every checkbox field showed on every kind of action and every kind of identity.
+  assert.match(styleSource, /\.checkbox-field:not\(\[hidden\]\) \{ display: flex !important/, "hiding wins wherever it is asked for");
+  assert.match(styleSource, /\[hidden\] \{ display: none!important; \}/);
+  // The ones that were leaking, each asked to hide somewhere:
+  assert.match(source, /\$\("#event-with-inside-field"\)\.hidden=type!=="departure";/);
+  assert.match(source, /\$\("#event-at-least-field"\)\.hidden=type!=="cultivation";/);
+  assert.match(source, /\$\("#entity-initial-at-least-field"\)\.hidden=!isCharacter;/);
+  assert.match(source, /\["issuer","alone","badge"/, "and the quest-only checkbox, which had been showing on every identity");
 });
