@@ -327,6 +327,10 @@ th { color: var(--muted); font-weight: 600; }
 #graph .node-label-layer .node-labels.label-culled { opacity: 0 !important; }
 .node-labels.label-culled > * { pointer-events: none; }
 .org-shape { fill: var(--panel-2); stroke: var(--muted); stroke-width: 2; }
+/* A group that holds places of its own: opened, it reads the same as any opened place. */
+.org-open-halo{fill:none;stroke:#8fa6c4;stroke-width:2;stroke-dasharray:3 5;opacity:.75}
+.org-open-dot{fill:#8fa6c4}
+.org-child-badge{fill:#0d1725;stroke:#8fa6c4;stroke-width:1.6}
 .location-edge{fill:none;stroke:#22c7b8;stroke-width:3;opacity:.68}.location-edge.visited{stroke-dasharray:4 5}.residence-edge{fill:none;stroke:#55d6a7;stroke-width:2.5;stroke-dasharray:2 6;opacity:.8}.hierarchy-edge{fill:none;stroke:#f2c95e;stroke-width:2.5;stroke-dasharray:9 5;opacity:.75}.organization-location-edge{fill:none;stroke:#c084fc;stroke-width:3;stroke-dasharray:10 4 2 4;opacity:.7}
 /* Places are drawn as compact rounded tiles — clearly not a character circle, but the same
    visual weight, so a realm never swallows the graph the way the old ellipses did. */

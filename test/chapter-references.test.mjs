@@ -433,6 +433,7 @@ function locationView({ entities, parents, expanded = [], visible }) {
     "var derived={locationParents:__parents};",
     functionBody("isLocationRoot"),
     functionBody("locationParentOf"),
+    functionBody("holdsPlaces"),
     functionBody("buildLocationView"),
     functionBody("buildDrillView"),
     functionBody("renderedSubtree"),
@@ -534,7 +535,7 @@ test("clicking a place cycles select -> open into a dot -> close, and the dot it
   const closeBody = functionBody("closeLocation");
   assert.match(closeBody, /collapsingLocationId=id;renderAll\(\);/, "the retract animation runs before the children are actually removed");
   assert.match(closeBody, /subtree\.forEach\(child=>\{expandedLocations\.delete\(child\);/, "closing a parent also closes everything opened inside it");
-  assert.match(functionBody("renderGraph"), /if\(item\.kind==="location"\)\{activateLocation\(item\.id\);return;\}/);
+  assert.match(functionBody("renderGraph"), /if\(item\.kind==="location"\|\|\(locView\.children\.get\(item\.id\)\|\|\[\]\)\.length\)\{activateLocation\(item\.id\);return;\}/);
 });
 
 test("children scale out of the dot when a place opens and shrink back into it when it closes", () => {
@@ -1129,7 +1130,8 @@ test("the running order says what each action really does, not only what its mes
   assert.equal(vm.runInContext(`actionSubjectLine({type:"residency",source:"velma",location:"inn-estate"})`, ctx), "Velma · at Midnight Inn Estate", "the subject is read from the record, so a message left saying somebody else stands out");
   assert.equal(vm.runInContext(`actionSubjectLine({type:"meeting",source:"velma",target:"gerald",personas:{velma:"the Innkeeper"}})`, ctx), "Velma as the Innkeeper → gerald", "and the face each side is seen under");
   assert.equal(vm.runInContext(`actionEffectProblem({type:"residency",source:"velma",location:"inn-estate"})`, ctx), "");
-  assert.match(vm.runInContext(`actionEffectProblem({type:"residency",source:"velma",location:"inn"})`, ctx), /a residence needs a character and a place/, "a residence at an organization is quietly ignored by the graph, and now says so");
+  assert.equal(vm.runInContext(`actionEffectProblem({type:"residency",source:"velma",location:"inn"})`, ctx), "", "being based at a group is a real thing — the Inn is where they work");
+  assert.match(vm.runInContext(`actionEffectProblem({type:"residency",source:"velma",location:"velma"})`, ctx), /a residence needs a character and somewhere to be based/, "though a person is still not somewhere to live");
   assert.match(vm.runInContext(`actionEffectProblem({type:"system_host",source:"velma",target:"inn"})`, ctx), /a bond needs a system and a character/);
   assert.match(functionBody("orderRowHtml"), /<b class="order-inert"[^>]*>changes nothing<\/b>/);
   assert.match(functionBody("orderRowHtml"), /<b class="order-subject">\$\{escapeHtml\(actionSubjectLine\(event\)\)\}<\/b>/);
@@ -1308,7 +1310,7 @@ test("a system stands on the graph as soon as the story touches it, but the plac
 });
 
 test("a system drills down exactly like a place, sharing one tree builder, and opening one never disturbs the selection that revealed it", () => {
-  assert.match(functionBody("buildLocationView"), /return buildDrillView\(\[\.\.\.visibleIds\]\.filter\(id=>entity\(id\)\?\.kind==="location"\),id=>locationParentOf\(id,derived\),expandedLocations\)/);
+  assert.match(functionBody("buildLocationView"), /return buildDrillView\(\[\.\.\.visibleIds\]\.filter\(id=>entity\(id\)\?\.kind==="location"\|\|holdsPlaces\(id,derived\)\),id=>locationParentOf\(id,derived\),expandedLocations\)/, "and a group that holds places joins the same tree");
   assert.match(functionBody("buildSystemView"), /return buildDrillView\(\[\.\.\.systemIds\],id=>parentOf\.get\(id\)\|\|null,expanded\)/);
   assert.match(functionBody("buildSystemView"), /expanded=alsoExpanded&&alsoExpanded\.size\?new Set\(\[\.\.\.expandedSystems,\.\.\.alsoExpanded\]\):expandedSystems/, "a subsystem acting this beat is shown for it, then folds back on its own");
   assert.match(functionBody("renderGraph"), /const sysView=buildSystemView\(derived,revealedSystems,autoOpenSystems\)/);
@@ -1327,7 +1329,7 @@ test("a system subtree revealed by a selection counts as part of that focus, so 
 test("systems carry a host, a parent system and any number of places, and are drawn as something no other kind looks like", () => {
   assert.match(source, /if\(event\.type==="system_host"&&source\?\.kind==="system"&&states\.get\(event\.target\)\?\.kind==="character"\)/);
   assert.match(source, /if\(event\.type==="system_parent"&&source\?\.kind==="system"&&states\.get\(event\.target\)\?\.kind==="system"\)/);
-  assert.match(source, /if\(event\.type==="system_location"&&source\?\.kind==="system"&&states\.get\(event\.location\)\?\.kind==="location"\)/, "many places per system — keyed by system and place together");
+  assert.match(source, /if\(event\.type==="system_location"&&source\?\.kind==="system"&&\["location","organization"\]\.includes\(states\.get\(event\.location\)\?\.kind\)\)/, "many places per system — keyed by system and place together, and a group it runs out of counts");
   assert.match(source, /<option value="system">System<\/option>/);
   assert.match(functionBody("renderGraph"), /class:"system-shape"/);
   assert.match(styleSource, /\.system-shape \{ fill: rgba\(46,28,78,\.92\); stroke: #b98cff/);
@@ -1929,7 +1931,7 @@ test("a scene inside a group happens at one of its places: the branch it names, 
 test("where something happened takes a group as readily as a place, and says which branch of it", () => {
   const body = functionBody("buildEventRecord");
   assert.match(body, /if\(location&&!\["location","organization"\]\.includes\(location\.kind\)\)\{toast\("Where this happened must be a place or an organization"\)/);
-  assert.match(body, /if\(\["residency","location_parent","organization_location","system_location"\]\.includes\(type\)&&location&&location\.kind!=="location"\)\{toast\("This one needs a real place, not an organization"\)/, "residence and the map itself still need somewhere that exists, though travel does not");
+  assert.match(body, /if\(type==="organization_location"&&location&&location\.kind!=="location"\)\{toast\("A branch stands at a place, not at another organization"\)/, "the one thing a group cannot be is where another group has a branch");
   assert.match(body, /if\(branchText&&location\?\.kind!=="organization"\)\{toast\("A branch belongs to an organization/);
   assert.match(body, /if\(branch&&!organizationBranches\(location\.id,derive\(chapter\)\.organizationLocations\)\.some\(link=>link\.location===branch\.id\)\)/, "and only somewhere that group is actually based by then");
   assert.match(body, /if\(branch\)record\.branch=branch\.id;/);
@@ -1976,7 +1978,7 @@ test("a place or a group can be spoken of long before the story ever shows it", 
 test("somebody can travel to a group, and the graph works out which of its places that means", () => {
   const record = functionBody("buildEventRecord");
   assert.doesNotMatch(record, /if\(\["movement","residency"/, "going to the office is an ordinary thing to write");
-  assert.match(record, /if\(\["residency","location_parent","organization_location","system_location"\]\.includes\(type\)&&location&&location\.kind!=="location"\)/, "though a residence and the map itself still need a real place");
+  assert.match(record, /if\(type==="organization_location"&&location&&location\.kind!=="location"\)/, "though a branch still stands at a place");
   assert.match(functionBody("actionEffectProblem"), /if\(type==="movement"\)return needs\(kind\(event\.source\)==="character"&&\["location","organization"\]\.includes\(kind\(event\.location\)\),"travel needs a character and somewhere to go"\)/);
   const derived = functionBody("derive");
   assert.match(derived, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:branch\|\|event\.location,organization:event\.location,/, "where they now stand is the branch; the group they went to is kept beside it so both can be said");
@@ -2010,4 +2012,47 @@ test("somebody spoken of in an action is part of it, marked as told about rather
   assert.match(styleSource, /\.spoken-focus-ring\{stroke:#c4a6ff!important;stroke-width:1\.9;stroke-dasharray:3 5\}/, "and its ring is the colour of the spoken-of line, and broken");
   assert.match(styleSource, /\.node\.event-spoken-node\{opacity:1!important;animation:spoken-node-breathe/);
   assert.match(styleSource, /\.edge\.mention-edge\{stroke:#c4a6ff/, "the same colour the line has always been");
+});
+
+test("a group can be a place in its own right — its own grounds, its own rooms — and still stand at branches elsewhere", () => {
+  // Three different relations, three different meanings, and a group can carry all of them at once.
+  assert.match(source, /if\(event\.type==="location_parent"&&source\?\.kind==="location"&&\["location","organization"\]\.includes\(states\.get\(event\.location\)\?\.kind\)\)/, "places nest inside it");
+  assert.match(source, /if\(event\.type==="organization_location"&&source\?\.kind==="organization"&&states\.get\(event\.location\)\?\.kind==="location"\)/, "while its branches still say where it stands in the world");
+  assert.match(source, /if\(event\.type==="residency"&&source\?\.kind==="character"&&\["location","organization"\]\.includes\(states\.get\(event\.location\)\?\.kind\)\)/, "and people are based at it");
+
+  assert.match(functionBody("holdsPlaces"), /return entity\(id\)\?\.kind==="organization"&&\(derived\?\.locationParents\|\|\[\]\)\.some\(link=>link\.parent===id&&!link\.pending\)/);
+  const graph = functionBody("renderGraph");
+  assert.match(graph, /openedLocation=\(\(item\.kind==="location"\|\|item\.kind==="organization"\)&&locView\.expanded\.has\(item\.id\)\)/, "and it opens and closes exactly as a place does");
+  assert.match(graph, /if\(holds\)\{group\.append\(svgEl\("circle",\{cx:28,cy:-24,r:9\.5,class:"location-child-badge org-child-badge"\}\)\)?/, "wearing the count of what it holds, the way a place does");
+  assert.match(graph, /group\.setAttribute\("aria-label",`\$\{shownName\}, contains \$\{holds\} place\$\{holds===1\?"":"s"\} — activate twice to open`\)/);
+  assert.match(functionBody("nodeRadiusFor"), /if\(item\.kind==="organization"\)return view\?\.expanded\.has\(item\.id\)\?20:42;/, "so the layout reserves the right room for it either way");
+  assert.match(styleSource, /\.org-open-halo\{fill:none;stroke:#8fa6c4/);
+});
+
+const INN_AS_PLACE = {
+  entities: [
+    { id: "inn", kind: "organization", name: "Midnight Inn" },
+    { id: "lobby", kind: "location", locationType: "Room", name: "Lobby" },
+    { id: "garden", kind: "location", locationType: "Room", name: "Back Garden" },
+    { id: "earth", kind: "location", locationType: "Realm", name: "Earth" }
+  ],
+  parents: [{ child: "lobby", parent: "inn" }, { child: "garden", parent: "inn" }],
+  visible: ["inn", "lobby", "garden", "earth"]
+};
+
+test("a drill tree does not care what kind of thing it is drilling, so a group holding places joins it whole", () => {
+  const closed = locationView(INN_AS_PLACE);
+  assert.deepEqual(closed.rendered, ["earth", "inn"], "closed, the group stands for everything inside it");
+  assert.equal(closed.anchorOf.lobby, "inn", "so a room folded inside reports through the group");
+  assert.equal(closed.parentOf.inn, null, "a group is never inside anything — where it stands is said by its branches, not by nesting");
+  assert.deepEqual(closed.childrenOf.inn.sort(), ["garden", "lobby"]);
+
+  const opened = locationView({ ...INN_AS_PLACE, expanded: ["inn"] });
+  assert.deepEqual(opened.rendered, ["earth", "garden", "inn", "lobby"], "opened, its rooms are drawn in their own right");
+  assert.equal(opened.anchorOf.lobby, "lobby");
+  assert.deepEqual(opened.opened, ["inn"]);
+
+  // A group with nothing inside it is not a place and never joins the tree.
+  const plain = locationView({ entities: [{ id: "office", kind: "organization", name: "Lex's Office" }, { id: "earth", kind: "location", locationType: "Realm", name: "Earth" }], parents: [], visible: ["office", "earth"] });
+  assert.deepEqual(plain.rendered, ["earth"]);
 });
