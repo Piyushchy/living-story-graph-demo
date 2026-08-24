@@ -66,7 +66,7 @@ test("initial cultivation is linked only by its explicit initial flag", () => {
 });
 
 test("first cultivation reveal is not presented as a breakthrough from Unrevealed", () => {
-  assert.match(functionBody("renderGraph"), /currentEvent\.initial===true&&!priorCultivationLevel\?`Cultivation revealed: \$\{after\}`/);
+  assert.match(functionBody("renderGraph"), /currentEvent\.initial===true&&!priorCultivationLevel\?`Cultivation revealed: \$\{realmText\(state,after\)\}`/);
 });
 
 test("cultivation playback highlights gains and losses outside the normal ring", () => {

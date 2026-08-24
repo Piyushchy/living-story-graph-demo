@@ -2163,3 +2163,24 @@ test("somebody the story has taken off the graph is not offered as a place to ju
   // Their history is untouched: the chapter roll still answers where they were.
   assert.doesNotMatch(functionBody("autoChapterRoll"), /departures/);
 });
+
+test("a cultivation reading can be a floor, for a rank the story never states outright", () => {
+  assert.match(functionBody("derive"), /source\.realm=cultivationDisplay\(event\);source\.atLeast=event\.atLeast===true;/, "the latest reading decides, floor or not");
+  assert.match(functionBody("realmText"), /return state\?\.atLeast\?`\$\{realm\} or above`:realm;/, "one place words it, so the panel, the profile and the beat label all agree");
+  const graph = functionBody("renderGraph");
+  assert.match(graph, /\$\{isOn\?"corona-on":state\.atLeast\?"corona-unknown":"corona-off"\}/, "past a floor nothing is known: neither attained nor not, so neither lit nor blank");
+  assert.match(graph, /`Cultivation revealed: \$\{realmText\(state,after\)\}`:before===after\?realmText\(state,after\):`\$\{before\} → \$\{realmText\(state,after\)\}`/);
+  assert.match(styleSource, /\.corona-unknown\{fill:none;stroke:var\(--amber\);stroke-width:3;stroke-dasharray:1 4/);
+
+  assert.match(source, /<input type="checkbox" name="atLeast" \/><span>Only a floor — at least this, possibly higher<\/span>/);
+  assert.match(source, /\$\("#event-at-least-field"\)\.hidden=type!=="cultivation";/, "it is a question only a cultivation reading asks");
+  assert.match(functionBody("buildEventRecord"), /if\(type==="cultivation"&&form\.get\("atLeast"\)\)record\.atLeast=true;/);
+  assert.match(source, /form\.elements\.atLeast\.checked=record\.atLeast===true;/, "and it reads back when the row is opened again");
+  // The same choice belongs where a rank is given at creation: "too high to read" is usually
+  // the first thing said about somebody, not something recorded later.
+  assert.match(source, /<input type="checkbox" name="initialAtLeast" \/>/);
+  assert.match(source, /atLeast:form\.get\("initialAtLeast"\)\?true:undefined,/);
+  assert.match(source, /generated=form\.get\("initialAtLeast"\)\?`\$\{name\} is at least \$\{shownTier\}\.`/);
+  assert.match(functionBody("generatedEventDescription"), /cultivation:atLeast\?`\$\{source\.name\} is at least \$\{cultivationText\}\.`/);
+  assert.match(source, /type: "cultivation", source: "eclipse", level: 7, atLeast: true/, "and the sample shows one, on somebody nobody can read");
+});
