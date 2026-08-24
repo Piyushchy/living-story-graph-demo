@@ -2156,3 +2156,10 @@ test("a chapter mark can be kept lit, unlike a cite that waits for the reader to
   assert.match(render("[[cite:4]]quiet[[/cite]]"), /class="prose-chapter-ref sentence-cite" data-chapter="4">quiet<cite>4<\/cite><\/span>/);
   assert.match(render("[[mark:4]]lit[[/mark]]"), /class="prose-chapter-ref sentence-cite perma-mark" data-chapter="4">lit<cite>4<\/cite><\/span>/);
 });
+
+test("somebody the story has taken off the graph is not offered as a place to jump to on it", () => {
+  assert.match(functionBody("searchIdentities"), /gone=currentDerived\(\)\.departures;/);
+  assert.match(functionBody("searchIdentities"), /inVolume\.has\(row\.id\)&&!gone\.has\(row\.id\)/, "picking them would land on nothing");
+  // Their history is untouched: the chapter roll still answers where they were.
+  assert.doesNotMatch(functionBody("autoChapterRoll"), /departures/);
+});

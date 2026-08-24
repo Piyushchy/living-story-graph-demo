@@ -1232,8 +1232,8 @@ function searchIdentities(query){
   if(query.filters.some(filter=>filter.field!=="from"&&filter.field!=="with"&&filter.field!=="at"&&filter.field!=="about"))return [];
   const wanted=[...query.words,...query.filters.flatMap(filter=>searchWords(filter.value))];
   if(!wanted.length)return [];
-  const inVolume=new Set(volumeActions().flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean)));
-  return searchNameRows().filter(row=>row.kind!=="quest"&&inVolume.has(row.id)&&row.names.some(name=>{
+  const inVolume=new Set(volumeActions().flatMap(event=>[event.source,event.target,event.location,...(event.characters||[])].filter(Boolean))),gone=currentDerived().departures;
+  return searchNameRows().filter(row=>row.kind!=="quest"&&inVolume.has(row.id)&&!gone.has(row.id)&&row.names.some(name=>{
     const lower=String(name).toLowerCase();
     return wanted.every(word=>lower.includes(word));
   })).slice(0,5);
