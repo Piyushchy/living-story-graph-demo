@@ -640,6 +640,13 @@ body.show-chapter-refs .prose-chapter-ref:hover .chapter-ref-link.uncited{cursor
 body.show-chapter-refs .prose-chapter-ref:hover .chapter-citation{opacity:1;pointer-events:auto}
 body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover{cursor:help}
 body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citation:not(.uncited)){cursor:pointer}
+/* A cite waits for the reader to turn chapter refs on. A mark does not: the writer wanted this
+   sentence standing out, so it stands out whatever the toggle says, and its source is reachable. */
+.perma-mark-helper{border-color:rgba(255,212,121,.5)!important;color:#ffd479!important}
+.prose-chapter-ref.perma-mark{background:rgba(255,212,121,.14);border-bottom:1px solid rgba(255,212,121,.5);border-radius:3px;padding:0 2px;cursor:help}
+.prose-chapter-ref.perma-mark:hover{background:rgba(255,212,121,.24)}
+.prose-chapter-ref.perma-mark:hover .chapter-citation{opacity:1;pointer-events:auto}
+.prose-chapter-ref.perma-mark:hover:has(.chapter-citation:not(.uncited)){cursor:pointer}
 .chapter-mark-helper{margin-left:6px}
 .cited-prose-line{display:inline-flex;align-items:baseline;gap:8px;max-width:100%;flex-wrap:wrap}.cited-prose-line>.chapter-citation{flex:0 0 auto;transform:translateY(-1px)}
 .profile-event-link .chapter-citation,.event-detail-list .chapter-citation{margin-top:7px}.event-detail-list small .entity-wiki-link{font-size:inherit}
@@ -665,6 +672,11 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .relation-edge[marker-end].newly-revealed-edge,.relation-edge[marker-start].newly-revealed-edge{stroke-width:4;opacity:1}
 .edge.met-edge.newly-revealed-edge{stroke-width:4;opacity:1}
 .conversation-edge.newly-revealed-edge{animation-name:conversation-reveal;stroke-width:3.6;stroke-dasharray:2 5;opacity:1}
+/* Its scene is over and it is on its way off the graph: still here, visibly not staying. */
+.node.passing-node{opacity:.6}
+.node.passing-node .node-label{font-style:italic}
+.node.passing-node .life-alive,.node.passing-node .life-dead,.node.passing-node .life-unknown,
+.node.passing-node .org-shape,.node.passing-node .location-glyph{stroke-dasharray:4 4}
 .node.mentioned-only{opacity:.72;filter:saturate(.45)}
 .node.mentioned-only .node-label{font-style:italic;fill:#c1cad7}
 /* A place or a group the story has only spoken of yet: drawn as an outline waiting to be filled. */

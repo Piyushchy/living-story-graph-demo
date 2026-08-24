@@ -176,7 +176,9 @@ test("richInline sentence-cite zones use the existing hover-highlight rule for f
 
 test("the Mark-chapter button now wraps the selection in a [[cite:N]]...[[/cite]] zone instead of a single-bracket marker that couldn't contain other markers", () => {
   const body = functionBody("installWikiLinkHelpers");
-  assert.match(body, /textarea\.setRangeText\(`\[\[cite:\$\{chapter\}\]\]\$\{selectedText\}\[\[\/cite\]\]`,start,end,"end"\)/);
+  assert.match(body, /textarea\.setRangeText\(`\[\[\$\{kind\}:\$\{chapter\}\]\]\$\{selectedText\}\[\[\/\$\{kind\}\]\]`,start,end,"end"\)/, "one helper built twice: a quiet cite, and a mark that stays lit");
+  assert.match(body, /chapterHelper\("cite","＋ Mark chapter for selected text"/);
+  assert.match(body, /permaButton=chapterHelper\("mark","＋ Highlight it and mark the chapter"/);
 });
 
 test("the wiki-link button can optionally attach a chapter citation too, producing the three-part syntax", () => {
@@ -210,7 +212,9 @@ test("selecting text and marking a chapter wraps it in [[cite:N]]...[[/cite]], n
   assert.match(body, /Mark chapter for selected text/);
   assert.match(body, /const selectedText=textarea\.value\.slice\(start,end\)/);
   assert.match(body, /chapter=validChapter\(input\)/);
-  assert.match(body, /textarea\.setRangeText\(`\[\[cite:\$\{chapter\}\]\]\$\{selectedText\}\[\[\/cite\]\]`,start,end,"end"\)/);
+  assert.match(body, /textarea\.setRangeText\(`\[\[\$\{kind\}:\$\{chapter\}\]\]\$\{selectedText\}\[\[\/\$\{kind\}\]\]`,start,end,"end"\)/, "one helper built twice: a quiet cite, and a mark that stays lit");
+  assert.match(body, /chapterHelper\("cite","＋ Mark chapter for selected text"/);
+  assert.match(body, /permaButton=chapterHelper\("mark","＋ Highlight it and mark the chapter"/);
 });
 
 test("prose chapter refs are fully inert with the toggle off — no pointer-events, no visible decoration — and even with the toggle on, everything stays hidden until actual hover", () => {
@@ -401,7 +405,7 @@ test("the recommended simple form for citing a custom infobox fact — no zone s
 });
 
 test("with the toggle on, clicking anywhere in a cited sentence zone navigates to its chapter source — not just the tiny floating badge — while an embedded word-link or the badge itself still takes priority", () => {
-  assert.match(source, /document\.addEventListener\("click",event=>\{if\(!document\.body\.classList\.contains\("show-chapter-refs"\)\)return;if\(event\.target\.closest\("a"\)\)return;const zone=event\.target\.closest\("\.sentence-cite"\);if\(!zone\)return;const url=zone\.querySelector\("\.chapter-citation"\)\?\.getAttribute\("href"\);if\(url\)window\.open\(url,"_blank","noopener,noreferrer"\);\}\);/);
+  assert.match(source, /document\.addEventListener\("click",event=>\{if\(event\.target\.closest\("a"\)\)return;const zone=event\.target\.closest\("\.sentence-cite"\);if\(!zone\)return;if\(!zone\.classList\.contains\("perma-mark"\)&&!document\.body\.classList\.contains\("show-chapter-refs"\)\)return;const url=zone\.querySelector\("\.chapter-citation"\)\?\.getAttribute\("href"\);if\(url\)window\.open\(url,"_blank","noopener,noreferrer"\);\}\);/);
   assert.match(styleSource, /body\.show-chapter-refs \.prose-chapter-ref\.sentence-cite:hover:has\(\.chapter-citation:not\(\.uncited\)\)\{cursor:pointer\}/);
 });
 
@@ -701,7 +705,7 @@ test("hovering a link answers which chapter that connection last changed in, hit
   assert.match(source, /if\(physics\.dragId\|\|panStart\|\|event\.target\.closest\("\.node,\.location-pod"\)\)\{hideEdgeTip\(\);return;\}/, "dragging, panning and hovering a node all suppress it");
   const body = functionBody("renderGraph");
   assert.match(body, /const noteEdge=\(a,b,chapter,note\)=>\{if\(a&&b&&a!==b&&chapter\)edgeIndex\.push\(\{a,b,chapter:Number\(chapter\),note\}\);\}/);
-  assert.match(body, /locationEdge\(character,visit\.location,`location-edge\$\{forming\(visit\)\}`,beatDoes\("movement",event=>event\.source===character&&\(event\.location===visit\.location\|\|event\.location===visit\.organization\)\),visit\.chapter,visit\.pending\?/, "travel, and travel still under way — including a move written as going to the group rather than to the place");
+  assert.match(body, /locationEdge\(character,visit\.location,`location-edge\$\{forming\(visit\)\}`,beatDoes\("movement",event=>locationCharacterIds\(event\)\.includes\(character\)&&\(event\.location===visit\.location\|\|event\.location===visit\.organization\)\),visit\.chapter,visit\.pending\?/, "travel, and travel still under way — including a move written as going to the group rather than to the place");
   assert.match(body, /noteEdge\(m\.character,m\.organization,m\.from/, "membership");
   assert.match(body, /noteEdge\(child,parent,link\.from,`Sits inside\$\{formingNote\(link\)\}`\)/, "location nesting, and whether it is still being made");
   assert.match(source, /pair\.from = event\.chapter;/, "awareness had no chapter of its own to report until now");
@@ -1028,7 +1032,7 @@ test("a conversation is not only people talking — a system speaks to its host,
   assert.match(functionBody("renderGraph"), /const seen=new Set\(\),talkers=convo\.talkers\.map\(edgeLocationId\)/, "a place folded into its parent speaks through it rather than dropping out");
   assert.match(source, /sampleData\.events\.filter\(event=>\["talk-3","talk-4"\]\.includes\(event\.id\)&&!eventIds\.has\(event\.id\)\)/, "a stored copy of the demo picks them up");
   assert.match(source, /type==="conversation"\?"Who speaks first"/, "and the editor stops asking only for a character");
-  assert.match(source, /charactersLabel\.textContent=type==="conversation"\?"Everyone taking part":"Who it is issued to"/);
+  assert.match(source, /charactersLabel\.textContent=type==="conversation"\?"Everyone taking part":type==="note"\?"Everyone else in it \(optional\)"/);
 });
 
 test("a linked word is written however it comes to hand, and the mark-up helpers keep out of fields that are not prose", () => {
@@ -1201,7 +1205,7 @@ test("what an action only speaks of is drawn as a reference, never as a presence
   assert.match(record, /toast\("One of the names spoken of does not match an identity"\)/, "a name that matches nothing is refused rather than silently dropped");
   assert.match(functionBody("eventInvolves"), /\(event\.mentions \|\| \[\]\)\.includes\(id\)/, "so it belongs to the history of whatever was spoken of");
   const graph = functionBody("renderGraph");
-  assert.match(graph, /\.\.\.\(event\.mentions\|\|\[\]\)\]\.filter\(Boolean\)\)\)/, "a name spoken of still comes onto the graph");
+  assert.match(graph, /\.\.\.\(event\.mentions\|\|\[\]\)\]\.filter\(Boolean\)\)\.filter\(id=>!passingGone\(id,passingSeen\)\)\)/, "a name spoken of still comes onto the graph — unless it is one that has already walked off it");
   assert.match(graph, /noteEdge\(speaker,spoken,event\.chapter,`Spoken of, not present\$\{personasOf\(event\)\.get\(event\.source\)\?/);
   assert.match(graph, /const key=`\$\{speaker\}\|\$\{spoken\}`,held=mentionLines\.get\(key\)/, "several actions naming the same pair share one line rather than stacking");
   assert.match(graph, /straightEdge\(speaker,spoken,`edge mention-edge\$\{live\|\|picked\?"":" settled-mention-edge"\}\$\{live\?" newly-revealed-edge":""\}`/, "kept once read, and brought up to strength while the action plays or either end is picked out");
@@ -1296,7 +1300,7 @@ test("a connection already made is left alone while an action plays; only a new 
 });
 
 test("a character moving on only replaces where they are — leaving one place for another is a single action", () => {
-  assert.match(source, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
+  assert.match(source, /if\(event\.type==="movement"\)locationCharacterIds\(event\)\.forEach\(character=>locations\.set\(character,\{character,location:event\.location/, "keyed by character, so the previous place is dropped automatically");
 });
 
 test("a system stands on the graph as soon as the story touches it, but the places it runs at wait until it or its host is picked out", () => {
@@ -1992,7 +1996,7 @@ test("somebody can travel to a group, and the graph works out which of its place
   assert.match(record, /if\(type==="organization_location"&&location&&location\.kind!=="location"\)/, "though a branch still stands at a place");
   assert.match(functionBody("actionEffectProblem"), /if\(type==="movement"\)return needs\(kind\(event\.source\)==="character"&&\["location","organization"\]\.includes\(kind\(event\.location\)\),"travel needs a character and somewhere to go"\)/);
   const derived = functionBody("derive");
-  assert.match(derived, /if\(event\.type==="movement"&&source\?\.kind==="character"\)locations\.set\(event\.source,\{character:event\.source,location:branch\|\|event\.location,organization:event\.location,/, "where they now stand is the branch; the group they went to is kept beside it so both can be said");
+  assert.match(derived, /if\(event\.type==="movement"\)locationCharacterIds\(event\)\.forEach\(character=>locations\.set\(character,\{character,location:branch\|\|event\.location,organization:event\.location,/, "where they now stand is the branch; the group they went to is kept beside it so both can be said");
   assert.match(functionBody("renderGraph"), /return where==="organization"\|\|event\.type!=="movement";/, "and a move into a group is joined to the group as well as to the place");
 });
 
@@ -2084,4 +2088,71 @@ test("a place a group keeps is drawn as one, wearing the group's own shape aroun
   // A branch is a different fact and keeps looking like one: the group stands at that place, and
   // the place itself is nobody's room.
   assert.match(body, /derived\.organizationLocations\.forEach\(link=>locationEdge\(link\.organization,link\.location,`organization-location-edge/);
+});
+
+test("a story event, and travel, carry everyone in them rather than one name and a copy of the line for each of the rest", () => {
+  assert.match(functionBody("updateEventHelp"), /\$\("#event-characters-field"\)\.hidden=!\["conversation","quest_issue","note","movement"\]\.includes\(type\)/);
+  const record = functionBody("buildEventRecord");
+  assert.match(record, /if\(\["note","movement"\]\.includes\(type\)\)\{/);
+  assert.match(record, /if\(type==="movement"\)\{const stuck=named\.find\(item=>item\.kind!=="character"\);/, "only a character can travel, whoever else is written in");
+  assert.match(record, /const everyone=\[\.\.\.new Set\(\[source\.id,\.\.\.named\.map\(item=>item\.id\)\]\)\];\s*if\(everyone\.length>1\)record\.characters=everyone;/, "the subject is one of them, and a cast of one is no cast at all");
+
+  // Everyone who travelled together ends up where they went, not only whoever was written first.
+  assert.match(functionBody("derive"), /if\(event\.type==="movement"\)locationCharacterIds\(event\)\.forEach\(character=>locations\.set\(character,\{character,location:event\.location/);
+  assert.match(functionBody("renderGraph"), /beatDoes\("movement",event=>locationCharacterIds\(event\)\.includes\(character\)&&/, "and every one of their lines lands on the beat");
+  // Already true, and this is what makes the rest work: the cast is drawn to the place and lights up.
+  assert.match(functionBody("locationCharacterIds"), /\[event\.source,event\.target,\.\.\.\(event\.characters\|\|\[\]\)\]/);
+  assert.match(functionBody("eventInvolves"), /\(event\.characters \|\| \[\]\)\.includes\(id\)/, "so the action belongs to each of their histories");
+
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext(functionBody("nameList"), ctx);
+  const list = names => vm.runInContext(`nameList(${JSON.stringify(names)})`, ctx);
+  assert.equal(list(["Lex"]), "Lex");
+  assert.equal(list(["Lex", "Hamid"]), "Lex and Hamid");
+  assert.equal(list(["Lex", "Hamid", "Jessica"]), "Lex, Hamid and Jessica", "which is how a cast list is actually written");
+  assert.equal(list(["Lex", "Lex", "Hamid"]), "Lex and Hamid", "the subject is not named twice for being in their own action");
+});
+
+test("an identity can walk off the graph again, after however many actions the writer gives it", () => {
+  assert.match(functionBody("passingLinger"), /const linger=Number\(entity\(id\)\?\.fades\);return Number\.isFinite\(linger\)&&linger>=0\?linger:null;/, "no count means it stays for good, as everything did before");
+  assert.match(functionBody("passingWatch"), /volumeActions\(\)\.forEach\(\(event,index\)=>watched\.forEach\(id=>\{if\(eventInvolves\(event,id\)\)lastSeen\.set\(id,index\+1\);\}\)\)/, "one pass for the last action each of them is in, however it is in it");
+  assert.match(functionBody("passingGone"), /currentActionIndex>at\+linger/);
+  assert.match(functionBody("passingLeaving"), /currentActionIndex>at&&currentActionIndex<=at\+linger/, "and between the two it is still here, visibly not staying");
+  const graph = functionBody("renderGraph");
+  assert.match(graph, /passingSeen=passingWatch\(\),visibleIds=new Set\(/, "read once per draw, not once per identity");
+  assert.match(graph, /leaving=passingLeaving\(item\.id,passingSeen\),/);
+  assert.match(graph, /\$\{leaving\?" passing-node":""\}/);
+  assert.match(styleSource, /\.node\.passing-node\{opacity:\.6\}/);
+  assert.match(source, /<label class="field" id="entity-fades-field"><span>Stays on the graph for \(optional\)<\/span>/);
+  assert.match(source, /if\(fadesText&&!\/\^\\d\{1,3\}\$\/\.test\(fadesText\)\)\{toast\("How long it stays is a whole number of actions, or empty"\)/);
+  assert.match(source, /fades:kind!=="quest"&&fadesAfter!==null\?fadesAfter:undefined,/);
+  // Stepping back into its scene brings it back: nothing is deleted, it is simply not drawn yet.
+  assert.doesNotMatch(functionBody("passingGone"), /data\.entities=|splice/);
+});
+
+test("a chapter mark can be kept lit, unlike a cite that waits for the reader to ask for it", () => {
+  const inline = functionBody("richInline");
+  assert.match(inline, /\/\\\[\\\[\(cite\|mark\):\(\\d\+\)\\\]\\\]\|\\\[\\\[\\\/\(\?:cite\|mark\)\\\]\\\]/, "one zone, written two ways");
+  assert.match(inline, /class="prose-chapter-ref sentence-cite\$\{match\[1\]==="mark"\?" perma-mark":""\}"/);
+  assert.match(inline, /if\(match\[0\]==="\[\[\/cite\]\]"\|\|match\[0\]==="\[\[\/mark\]\]"\)/, "and either closer shuts either zone");
+  assert.match(styleSource, /\.prose-chapter-ref\.perma-mark\{background:rgba\(255,212,121,\.14\)/, "lit without waiting for the toggle");
+  assert.match(styleSource, /\.prose-chapter-ref\.perma-mark:hover \.chapter-citation\{opacity:1;pointer-events:auto\}/, "and its source is reachable without it too");
+  assert.match(source, /if\(!zone\.classList\.contains\("perma-mark"\)&&!document\.body\.classList\.contains\("show-chapter-refs"\)\)return;/, "so clicking it opens the chapter whether refs are on or not");
+
+  // The parser's later groups all shifted by one when the zone gained its kind; a wrong index
+  // here silently turns every wiki link in the story into plain text.
+  const ctx = { URL };
+  vm.createContext(ctx);
+  vm.runInContext([
+    functionBody("escapeHtml"), functionBody("safeExternalUrl"), functionBody("validChapter"),
+    "function lexiconLink(t){return t;}function chapterUrl(){return '';}function chapterCitation(r){return `<cite>${r.chapter}</cite>`;}",
+    functionBody("proseText"), functionBody("richInline"),
+  ].join("\n"), ctx);
+  const render = text => vm.runInContext(`richInline(${JSON.stringify(text)})`, ctx);
+  assert.match(render("see [[Protos Energy|https://example.com/protos]] here"), /<a class="wiki-external-link" href="https:\/\/example\.com\/protos"[^>]*>Protos Energy/, "a plain wiki link still reads");
+  assert.match(render("[[Starter Pack|https://example.com/p|3]]"), /<a class="wiki-external-link"[^>]*>Starter Pack.*<cite>3<\/cite>/s, "and one that also cites a chapter");
+  assert.match(render("as of [[12]] it stood"), /<cite>12<\/cite>/, "and a bare chapter marker");
+  assert.match(render("[[cite:4]]quiet[[/cite]]"), /class="prose-chapter-ref sentence-cite" data-chapter="4">quiet<cite>4<\/cite><\/span>/);
+  assert.match(render("[[mark:4]]lit[[/mark]]"), /class="prose-chapter-ref sentence-cite perma-mark" data-chapter="4">lit<cite>4<\/cite><\/span>/);
 });
