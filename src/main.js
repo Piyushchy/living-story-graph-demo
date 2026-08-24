@@ -292,14 +292,14 @@ app.innerHTML = `
               <section class="side-card events-card" data-panel-content="events"><div class="events-head"><strong id="events-title">Chapter events</strong><span id="events-count"></span><span id="events-hold" class="events-hold" hidden>Paused</span></div><ul id="events-list" class="events-list"></ul></section>
               <section class="side-card quests-card" data-panel-content="quests" aria-label="Quests"><div class="events-head"><strong>Quests</strong><span id="quests-count"></span></div><div id="quests-list" class="quests-list"></div></section>
               <section class="side-card mobile-legend" data-panel-content="legend" aria-label="Mobile graph legend">
-                <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span><span><i class="line-key mention"></i>Spoken of</span>
+                <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization — opens too, if it holds places</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="pin held"></i>Place inside an organization</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span><span><i class="line-key mention"></i>Spoken of</span>
                 <span><i class="line-key friendly"></i>Friendly</span><span><i class="line-key hostile"></i>Hostile</span><span><i class="line-key neutral"></i>Neutral / awareness</span><span><i class="line-key clone"></i>Clone / avatar</span><span><i class="line-key member"></i>Membership</span><span><i class="line-key location"></i>Travel / activity</span><span><i class="line-key residence"></i>Residence</span><span><i class="line-key hierarchy"></i>Inside location</span><span><i class="line-key organization-location"></i>Organization place</span>
                 <span><i class="ring mentioned"></i>Mentioned only</span><span><i class="ring unknown"></i>Unknown status</span><span><i class="ring"></i>Alive</span><span><i class="ring dead"></i>Dead</span><span><i class="diamond"></i>Alias count</span><span><i class="corona-key"></i>Cultivation level</span>
               </section>
             </aside>
           </div>
           <div class="legend desktop-legend" aria-label="Graph legend">
-            <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span><span><i class="line-key mention"></i>Spoken of</span>
+            <span><i class="dot female"></i>Female</span><span><i class="dot male"></i>Male</span><span><i class="hex"></i>Organization — opens too, if it holds places</span><span><i class="pin"></i>Place — click twice to open</span><span><i class="pin held"></i>Place inside an organization</span><span><i class="gem"></i>System — click to open its reach</span><span><i class="line-key conversation"></i>Conversation</span><span><i class="line-key mention"></i>Spoken of</span>
             <span><i class="line-key friendly"></i>Friendly</span><span><i class="line-key hostile"></i>Hostile</span><span><i class="line-key neutral"></i>Neutral / awareness arrow</span><span><i class="line-key clone"></i>Clone / avatar</span><span><i class="line-key member"></i>Membership</span><span><i class="line-key location"></i>Travel / activity</span><span><i class="line-key residence"></i>Residence</span><span><i class="line-key hierarchy"></i>Inside location</span><span><i class="line-key organization-location"></i>Organization place</span>
             <span><i class="ring mentioned"></i>Mentioned only</span><span><i class="ring unknown"></i>Unknown status</span><span><i class="ring"></i>Alive</span><span><i class="ring dead"></i>Dead</span><span><i class="diamond"></i>Alias count</span><span><i class="corona-key"></i>Cultivation level</span>
           </div>
@@ -1362,12 +1362,21 @@ function isLocationRoot(id,derived){const item=entity(id);if(!item)return true;i
 // A place still connecting to its parent is not inside it yet, so it keeps its own place on the
 // graph — joined by a line that is visibly still being made — until the connection settles.
 function locationParentOf(id,derived){if(isLocationRoot(id,derived))return null;const link=derived.locationParents.find(item=>item.child===id);return link&&!link.pending?link.parent:null;}
+function hexPoints(r){return Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${r*Math.cos(angle)},${r*Math.sin(angle)}`;}).join(" ");}
 function roundedSquarePath(r,corner){const c=Math.min(corner,r);return `M ${-r+c} ${-r} H ${r-c} Q ${r} ${-r} ${r} ${-r+c} V ${r-c} Q ${r} ${r} ${r-c} ${r} H ${-r+c} Q ${-r} ${r} ${-r} ${r-c} V ${-r+c} Q ${-r} ${-r} ${-r+c} ${-r} Z`;}
 // Builds the drawable location tree for the ids the current action has revealed.
 // `parentOf` skips ancestors that are not revealed yet, so a deep location still
 // attaches to the closest place the reader can actually see.
+// A group that has places inside it is a place in its own right — the Inn is its own grounds —
+// so it joins the place map as a container and opens exactly as any other place does. It is never
+// inside anything itself: where it stands in the world is said by its branches, not by nesting.
+// The other side of the same fact: a place whose parent is a group. It is a place like any other
+// — it nests, it opens, it can be travelled to — but it belongs to the group rather than sitting
+// on the map, and the graph says so rather than leaving the reader to work it out from the line.
+function heldByGroup(id,derived){const link=(derived?.locationParents||[]).find(item=>item.child===id&&!item.pending);return entity(link?.parent)?.kind==="organization"?link.parent:null;}
+function holdsPlaces(id,derived){return entity(id)?.kind==="organization"&&(derived?.locationParents||[]).some(link=>link.parent===id&&!link.pending);}
 function buildLocationView(derived,visibleIds){
-  return buildDrillView([...visibleIds].filter(id=>entity(id)?.kind==="location"),id=>locationParentOf(id,derived),expandedLocations);
+  return buildDrillView([...visibleIds].filter(id=>entity(id)?.kind==="location"||holdsPlaces(id,derived)),id=>locationParentOf(id,derived),expandedLocations);
 }
 // Systems drill down exactly the way places do — collapsed to the outermost one, opened into a
 // dot ringed by its subsystems — so both share one tree builder.
@@ -1399,7 +1408,7 @@ function locationGlyphRadius(id,view){const base=LOCATION_TIER_RADIUS[entity(id)
 // One definition of how much room a node takes, so the layout can reserve space for a node
 // before it is drawn. Mirrors the shapes built in renderGraph.
 function nodeRadiusFor(item,state,view,chapter,systemView){
-  if(item.kind==="organization")return 42;
+  if(item.kind==="organization")return view?.expanded.has(item.id)?20:42;
   if(item.kind==="system")return systemView?.expanded.has(item.id)?20:systemGlyphRadius(state);
   if(item.kind==="location")return view.expanded.has(item.id)?20:locationGlyphRadius(item.id,view)+8;
   const appeared=state?.appeared!==null&&state?.appeared<=chapter;
@@ -1463,11 +1472,11 @@ function derive(chapter,eventSubset=null) {
       const key=event.source+"|"+event.location;
       if(event.action==="close")organizationLocations.delete(key);else organizationLocations.set(key,forming(organizationLocations.get(key),{organization:event.source,location:event.location,role:event.value||"Branch"}));
     }
-    if(event.type==="residency"&&source?.kind==="character"&&states.get(event.location)?.kind==="location"){
+    if(event.type==="residency"&&source?.kind==="character"&&["location","organization"].includes(states.get(event.location)?.kind)){
       const key=event.source+"|"+event.location;
       if(event.action==="end")residences.delete(key);else residences.set(key,forming(residences.get(key),{character:event.source,location:event.location,role:event.value||"Resident"}));
     }
-    if(event.type==="location_parent"&&source?.kind==="location"&&states.get(event.location)?.kind==="location"){
+    if(event.type==="location_parent"&&source?.kind==="location"&&["location","organization"].includes(states.get(event.location)?.kind)){
       if(event.action==="remove"){if(locationParents.get(event.source)?.parent===event.location)locationParents.delete(event.source);}else locationParents.set(event.source,forming(locationParents.get(event.source),{child:event.source,parent:event.location}));
     }
     if(event.type==="system_host"&&source?.kind==="system"&&states.get(event.target)?.kind==="character"){
@@ -1532,7 +1541,7 @@ function derive(chapter,eventSubset=null) {
       if(event.action==="remove")systemEnds.delete(event.source);
       else systemEnds.set(event.source,{system:event.source,from:event.chapter,reason:event.value||"Destroyed"});
     }
-    if(event.type==="system_location"&&source?.kind==="system"&&states.get(event.location)?.kind==="location"){
+    if(event.type==="system_location"&&source?.kind==="system"&&["location","organization"].includes(states.get(event.location)?.kind)){
       const key=event.source+"|"+event.location;
       if(event.action==="close")systemLocations.delete(key);else systemLocations.set(key,forming(systemLocations.get(key),{system:event.source,location:event.location,role:event.value||"Branch"}));
     }
@@ -2325,8 +2334,21 @@ function renderGraph() {
   // at a dark graph wondering what happened.
   if(!activeIds.size&&!spokenIds.size)viewportGroup.setAttribute("class",String(viewportGroup.getAttribute("class")).replace(" has-action-focus",""));
   const retractingIds=collapsingLocationId?new Set([...renderedSubtree(collapsingLocationId,locView)]):new Set();
-  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind!=="quest"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),eventSpoken=spokenIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=beatDoes("cultivation",event=>event.source===item.id),priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=(item.kind==="location"&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${eventSpoken?" event-spoken-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":eventSpoken?`${shownName}, spoken of here`:mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null,questNotice=null,personaNotice=null;
-    if(item.kind==="organization"){const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");group.append(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}),svgEl("polygon",{points,class:"org-shape"}));
+  visible.forEach(item=>{const state=derived.states.get(item.id),shownName=state.displayName||item.name,pos=positions.get(item.id),mentionedOnly=item.kind!=="quest"&&state.mentioned!==null&&(state.appeared===null||state.appeared>currentChapter),newlyRevealed=!previousVisibleIds.has(item.id),eventActive=activeIds.has(item.id),eventSpoken=spokenIds.has(item.id),chapterChanged=chapterChangedIds.has(item.id),cultivationReveal=beatDoes("cultivation",event=>event.source===item.id),priorCultivationState=cultivationReveal?priorCultivationDerived?.states.get(item.id):null,priorCultivationLevel=cultivationReveal?(priorCultivationState?.level||0):(state.level||0),openedLocation=((item.kind==="location"||item.kind==="organization")&&locView.expanded.has(item.id))||(item.kind==="system"&&sysView.expanded.has(item.id)),emerging=(item.kind==="location"||item.kind==="system"||item.kind==="organization")&&emergingLocations.has(item.id),retracting=retractingIds.has(item.id)||item.id===collapsingLocationId,group=svgEl("g",{class:`node ${item.kind}${item.kind==="system"&&isSpecialGrade(state.grade)?` system-${String(state.grade).trim().toLowerCase()}`:""}${mentionedOnly?" mentioned-only":""}${newlyRevealed?" newly-revealed-node":""}${chapterChanged?" chapter-changed-node":""}${eventActive?" event-active-node":""}${eventSpoken?" event-spoken-node":""}${cultivationReveal?" cultivation-reveal":""}${openedLocation?" location-opened":""}${emerging?" location-emerging":""}${retracting?" location-retracting":""}`,"data-id":item.id,role:"button",tabindex:0,"aria-label":eventSpoken?`${shownName}, spoken of here`:mentionedOnly?`${shownName}, mentioned but not appeared`:shownName,transform:`translate(${pos.x},${pos.y})`});let labelY=item.kind==="character"?5:58,locationShell=null,rankLabel=null,questNotice=null,personaNotice=null;
+    if(item.kind==="organization"){const holds=(locView.children.get(item.id)||[]).length;
+      group.appendChild(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}));
+      if(openedLocation){
+        // Opened, it reads the same as any opened place: a dot with what it holds around it. It
+        // stays an organization in every other way — its members and its branches are untouched.
+        labelY=-28;locationShell=svgEl("g",{class:"location-shell"});
+        locationShell.append(svgEl("circle",{cx:0,cy:0,r:18,class:"location-open-halo org-open-halo"}),svgEl("circle",{cx:0,cy:0,r:6.5,class:"location-open-dot org-open-dot"}));
+        group.appendChild(locationShell);
+        group.setAttribute("aria-label",`${shownName}, opened — ${holds} place${holds===1?"":"s"} inside, activate to close`);
+      }else{
+        const points=Array.from({length:6},(_,i)=>{const angle=Math.PI/3*i-Math.PI/6;return `${39*Math.cos(angle)},${39*Math.sin(angle)}`}).join(" ");
+        group.appendChild(svgEl("polygon",{points,class:"org-shape"}));
+        if(holds){group.append(svgEl("circle",{cx:28,cy:-24,r:9.5,class:"location-child-badge org-child-badge"}));const badge=svgEl("text",{x:28,y:-20.6,class:"location-child-badge-text"});badge.textContent=String(holds);group.appendChild(badge);group.setAttribute("aria-label",`${shownName}, contains ${holds} place${holds===1?"":"s"} — activate twice to open`);}
+      }
     }else if(item.kind==="system"){const opened=sysView.expanded.has(item.id),childCount=(sysView.children.get(item.id)||[]).length,r=systemGlyphRadius(state),
         rankMoved=beatDoes("system_rank",event=>event.source===item.id);
       group.appendChild(svgEl("circle",{cx:0,cy:0,r:46,class:"node-hit-target"}));
@@ -2356,11 +2378,16 @@ function renderGraph() {
         if(childCount){locationShell.append(svgEl("circle",{cx:r-6,cy:-r+6,r:9.5,class:"system-child-badge"}));const badge=svgEl("text",{x:r-6,y:-r+9.4,class:"location-child-badge-text system-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);}
       }
       group.appendChild(locationShell);
-    }else if(item.kind==="location"){const r=locationGlyphRadius(item.id,locView),childCount=(locView.children.get(item.id)||[]).length;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(38,r+16),class:"node-hit-target"}));
-      locationShell=svgEl("g",{class:"location-shell"});
-      if(openedLocation){labelY=-26;locationShell.append(svgEl("circle",{cx:0,cy:0,r:17,class:"location-open-halo"}),svgEl("circle",{cx:0,cy:0,r:6.5,class:"location-open-dot"}));group.setAttribute("aria-label",`${shownName}, opened — ${childCount} place${childCount===1?"":"s"} shown, activate to close`);
-      }else{labelY=-r-13;locationShell.append(svgEl("path",{d:roundedSquarePath(r,r*.42),class:"location-glyph"}),svgEl("path",{d:roundedSquarePath(r*.44,r*.22),class:"location-glyph-core"}));
-        if(childCount){locationShell.append(svgEl("circle",{cx:r-1,cy:-r+1,r:9.5,class:"location-child-badge"}));const badge=svgEl("text",{x:r-1,y:-r+4.4,class:"location-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);group.setAttribute("aria-label",`${shownName}, contains ${childCount} place${childCount===1?"":"s"}`);}
+    }else if(item.kind==="location"){const r=locationGlyphRadius(item.id,locView),childCount=(locView.children.get(item.id)||[]).length,inGroup=heldByGroup(item.id,derived);
+      group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(38,r+16),class:"node-hit-target"}));
+      locationShell=svgEl("g",{class:`location-shell${inGroup?" location-shell-held":""}`});
+      if(openedLocation){labelY=-26;
+        if(inGroup)locationShell.appendChild(svgEl("polygon",{points:hexPoints(26),class:"location-in-group"}));
+        locationShell.append(svgEl("circle",{cx:0,cy:0,r:17,class:"location-open-halo"}),svgEl("circle",{cx:0,cy:0,r:6.5,class:"location-open-dot"}));group.setAttribute("aria-label",`${shownName}, opened — ${childCount} place${childCount===1?"":"s"} shown, activate to close`);
+      }else{labelY=-r-13;
+        if(inGroup)locationShell.appendChild(svgEl("polygon",{points:hexPoints(r+9),class:"location-in-group"}));
+        locationShell.append(svgEl("path",{d:roundedSquarePath(r,r*.42),class:"location-glyph"}),svgEl("path",{d:roundedSquarePath(r*.44,r*.22),class:"location-glyph-core"}));
+        if(childCount){locationShell.append(svgEl("circle",{cx:r-1,cy:-r+1,r:9.5,class:"location-child-badge"}));const badge=svgEl("text",{x:r-1,y:-r+4.4,class:"location-child-badge-text"});badge.textContent=String(childCount);locationShell.appendChild(badge);group.setAttribute("aria-label",`${shownName}${inGroup?`, inside ${entity(inGroup)?.name||inGroup}`:""}, contains ${childCount} place${childCount===1?"":"s"}`);}
       }
       group.appendChild(locationShell);
     }else{const appeared=state.appeared!==null&&state.appeared<=currentChapter,r=appeared?radius(state):20;group.appendChild(svgEl("circle",{cx:0,cy:0,r:Math.max(44,r+22),class:"node-hit-target"}));
@@ -2397,7 +2424,7 @@ function renderGraph() {
     }
     if(mentionedOnly){const stateLabel=svgEl("text",{x:0,y:39,class:"node-state-label"});stateLabel.textContent="MENTIONED";labelGroup.appendChild(stateLabel);}
     labelLayer.appendChild(labelGroup);labelEls.set(item.id,{group:labelGroup,text:label,offset:labelY,kind:item.kind,tall:Boolean(rankLabel||questNotice||personaNotice),halfWidth:Math.min(150,Math.max(28,String(shownName).length*4.2)),halfHeight:9});
-    const selectNode=()=>{cancelChapterSequence();if(item.kind==="location"){activateLocation(item.id);return;}if(item.kind==="system"){activateSystem(item.id);return;}locationPovId=null;selectedId=selectedId===item.id?null:item.id;setMobilePanel("info");renderAll();};
+    const selectNode=()=>{cancelChapterSequence();if(item.kind==="location"||(locView.children.get(item.id)||[]).length){activateLocation(item.id);return;}if(item.kind==="system"){activateSystem(item.id);return;}locationPovId=null;selectedId=selectedId===item.id?null:item.id;setMobilePanel("info");renderAll();};
     // A character's name is drawn across the middle of its circle and lives in the layer above,
     // so the same gestures have to work from the label as from the shape — otherwise a press in
     // the middle of a node lands on the text and only the outer ring can start a drag.
@@ -2444,7 +2471,7 @@ function renderGraph() {
     noteEdge(satellite.id,satellite.anchor,satellite.from,satellite.mode==="merged"?"Merged into this system":satellite.reason||"Destroyed");
     straightEdge(satellite.id,satellite.anchor,`edge system-satellite-edge`,satellite.id,satellite.anchor);
   });
-  renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius,podOrigins,activeIds);
+  renderLocationPods(locView,currentEvent,positions,podLayer,glyphRadius,podOrigins,activeIds,new Set(derived.locationParents.filter(link=>!link.pending&&entity(link.parent)?.kind==="organization").map(link=>link.child)));
   podOrigins=new Map();
   // Draw each departing node where it last stood, then let it travel into whatever took it in.
   departing.forEach(item=>{
@@ -2492,7 +2519,7 @@ function syncPodTransitions(view,beatEvents,derived){
   return podIds;
 }
 const POD_CLEARANCE=96;
-function renderLocationPods(view,currentEvent,positions,layer,glyphRadius,origins=new Map(),liveIds=new Set()){
+function renderLocationPods(view,currentEvent,positions,layer,glyphRadius,origins=new Map(),liveIds=new Set(),heldIds=new Set()){
   const podIds=activePodIds;
   const placedPods=[];
   const draw=(id,retiring)=>{
@@ -2509,7 +2536,9 @@ function renderLocationPods(view,currentEvent,positions,layer,glyphRadius,origin
     const tether=svgEl("line",{class:"location-pod-tether"}),ring=svgEl("circle",{cx:0,cy:0,r:25,class:"location-pod-ring"}),core=svgEl("circle",{cx:0,cy:0,r:8,class:"location-pod-core"}),
       tier=svgEl("text",{x:0,y:-49,class:"location-pod-tier"}),label=svgEl("text",{x:0,y:-35,class:"location-pod-label"});
     tier.textContent=String(item.locationType||"Place").toUpperCase();label.textContent=item.name;
-    const shell=svgEl("g",{class:"location-pod-shell"});shell.append(ring,core,tier,label);
+    const shell=svgEl("g",{class:"location-pod-shell"});
+    if(heldIds.has(id))shell.appendChild(svgEl("polygon",{points:hexPoints(31),class:"location-in-group"}));
+    shell.append(ring,core,tier,label);
     // A place popped out for an action is as much part of it as anybody standing there, so it
     // carries the same ring going out.
     if(liveIds.has(id)&&!retiring)shell.append(svgEl("circle",{cx:0,cy:0,r:32,class:"action-focus-ring"}),svgEl("circle",{cx:0,cy:0,r:32,class:"action-focus-ring action-focus-ring-late"}));
@@ -2695,7 +2724,13 @@ function renderSummary(){
     $("#full-details").onclick=()=>openProfile(chosen.id);return;
   }
   if(chosen.kind==="organization"){
-    const members=d.memberships.filter(m=>m.organization===chosen.id).map(m=>({id:m.character,label:`${stateName(d,m.character)} · ${m.role}`})),places=d.organizationLocations.filter(link=>link.organization===chosen.id).map(link=>({id:link.location,label:`${stateName(d,link.location)} · ${link.role}`}));box.className=`side-card summary${panelActive?" mobile-active":""}`;box.innerHTML=`${header}<div class="summary-stats"><article><span>Active members</span><strong>${members.length}</strong></article><article><span>Locations</span><strong>${places.length}</strong></article><article><span>Introduced</span><strong>Ch. ${chosen.intro}</strong></article></div>${summaryGroup("Locations",places,5)}${summaryGroup("Members",members,5)}`;$("#full-details").onclick=()=>openProfile(chosen.id);return;
+    const members=d.memberships.filter(m=>m.organization===chosen.id).map(m=>({id:m.character,label:`${stateName(d,m.character)} · ${m.role}`})),places=d.organizationLocations.filter(link=>link.organization===chosen.id).map(link=>({id:link.location,label:`${stateName(d,link.location)} · ${link.role}`})),
+      inside=d.locationParents.filter(link=>link.parent===chosen.id).map(link=>({id:link.child,label:stateName(d,link.child)})),
+      based=d.residences.filter(link=>link.location===chosen.id).map(link=>({id:link.character,label:`${stateName(d,link.character)} · ${link.role}`})),
+      here=[...d.locations.values()].filter(visit=>visit.location===chosen.id).map(visit=>({id:visit.character,label:stateName(d,visit.character)}));
+    box.className=`side-card summary${panelActive?" mobile-active":""}`;
+    box.innerHTML=`${header}<div class="summary-stats"><article><span>Active members</span><strong>${members.length}</strong></article><article><span>${inside.length?"Places inside":"Branches"}</span><strong>${inside.length||places.length}</strong></article><article><span>Introduced</span><strong>Ch. ${chosen.intro}</strong></article></div><div class="summary-groups">${summaryGroup("Contains",inside,6)}${summaryGroup("Branches",places,5)}${summaryGroup("Based here",based,5)}${summaryGroup("Here now",here,5)}${summaryGroup("Members",members,5)}</div>${inside.length?`<p class="location-drill-hint">${lastLocationView?.expanded.has(chosen.id)?"Opened — click the shape to fold these places back in.":`Click again on the graph to open ${inside.length} place${inside.length===1?"":"s"} inside.`}</p>`:""}`;
+    $("#full-details").onclick=()=>openProfile(chosen.id);return;
   }
   if(chosen.kind==="location"){
     const chapterEvents=eventsAtLocation(chosen.id),visitors=[...new Set(chapterEvents.flatMap(locationCharacterIds))].map(id=>({id,label:entity(id)?.name||id})),occupants=[...d.locations.values()].filter(visit=>visit.location===chosen.id).map(visit=>({id:visit.character,label:entity(visit.character)?.name||visit.character})),residents=d.residences.filter(link=>link.location===chosen.id).map(link=>({id:link.character,label:`${entity(link.character)?.name} · ${link.role}`})),organizations=d.organizationLocations.filter(link=>link.location===chosen.id).map(link=>({id:link.organization,label:`${entity(link.organization)?.name} · ${link.role}`})),parentId=locationParentOf(chosen.id,d),children=d.locationParents.filter(link=>link.parent===chosen.id&&!isLocationRoot(link.child,d)).map(link=>({id:link.child,label:entity(link.child)?.name||link.child})),hierarchy=parentId?[{id:parentId,label:`Inside ${entity(parentId)?.name||parentId}`}]:[{label:String(chosen.locationType||"")===LOCATION_ROOT_TYPE?"Top-level realm":"Top level"}],pov=locationPovId?[{id:locationPovId,label:`${entity(locationPovId)?.name||locationPovId} event POV`}]:[];box.className=`side-card summary${panelActive?" mobile-active":""}`;box.innerHTML=`${header}<div class="summary-stats"><article><span>Place type</span><strong>${escapeHtml(chosen.locationType||"Other")}</strong></article><article><span>Residents</span><strong>${residents.length}</strong></article><article><span>Here now</span><strong>${occupants.length}</strong></article></div><div class="summary-groups">${summaryGroup("Viewing",pov,1)}${summaryGroup("Hierarchy",hierarchy,1)}${summaryGroup("Contains",children,5)}${summaryGroup("Residents",residents,5)}${summaryGroup("Based here",organizations,5)}${summaryGroup("Here now",occupants,5)}${summaryGroup("Active chapter",visitors,5)}</div>${children.length?`<p class="location-drill-hint">${lastLocationView?.expanded.has(chosen.id)?"Opened — click the dot to fold these places back in.":`Click again on the graph to open ${children.length} place${children.length===1?"":"s"} inside.`}</p>`:""}`;$("#full-details").onclick=()=>openProfile(chosen.id);return;
@@ -3112,13 +3147,13 @@ function actionEffectProblem(event){
   const kind=id=>entity(id)?.kind||"",type=String(event.type);
   const needs=(ok,message)=>ok?"":message;
   if(event.branch&&kind(event.location)!=="organization")return "a branch needs its organization named as where this happened";
-  if(type==="residency")return needs(kind(event.source)==="character"&&kind(event.location)==="location","a residence needs a character and a place");
+  if(type==="residency")return needs(kind(event.source)==="character"&&["location","organization"].includes(kind(event.location)),"a residence needs a character and somewhere to be based");
   if(type==="movement")return needs(kind(event.source)==="character"&&["location","organization"].includes(kind(event.location)),"travel needs a character and somewhere to go");
   if(type==="organization_location")return needs(kind(event.source)==="organization"&&kind(event.location)==="location","an organization place needs an organization and a place");
-  if(type==="location_parent")return needs(kind(event.source)==="location"&&kind(event.location)==="location","nesting needs two places");
+  if(type==="location_parent")return needs(kind(event.source)==="location"&&["location","organization"].includes(kind(event.location)),"nesting needs a place and something to put it inside");
   if(type==="system_host")return needs(kind(event.source)==="system"&&kind(event.target)==="character","a bond needs a system and a character");
   if(type==="system_parent"||type==="system_merge")return needs(kind(event.source)==="system"&&kind(event.target)==="system","this needs two systems");
-  if(type==="system_location")return needs(kind(event.source)==="system"&&kind(event.location)==="location","a system place needs a system and a place");
+  if(type==="system_location")return needs(kind(event.source)==="system"&&["location","organization"].includes(kind(event.location)),"a system place needs a system and somewhere it runs");
   if(type==="system_rank"||type==="system_end")return needs(kind(event.source)==="system","this needs a system");
   if(type==="identity_parent")return needs(IDENTITY_KINDS.has(kind(event.source))&&IDENTITY_KINDS.has(kind(event.target)),"this needs two identities");
   if(type==="membership")return needs(kind(event.source)==="character"&&Boolean(event.target),"a membership needs a character and an organization");
@@ -3373,7 +3408,7 @@ async function fillProfileEditor(){
 function updateBranchField(){
   const form=$("#event-form"),field=$("#event-branch-field");if(!form||!field)return;
   const where=resolveEntity(form.elements.location.value),
-    placeOnly=["residency","location_parent","organization_location","system_location"].includes(form.elements.type.value),
+    placeOnly=["organization_location"].includes(form.elements.type.value),
     isGroup=where?.kind==="organization"&&!placeOnly;
   field.hidden=!isGroup;
   if(!isGroup){form.elements.branch.value="";return;}
@@ -3384,14 +3419,14 @@ function updateBranchField(){
     :`${where.name} has no place of its own recorded yet, so the organization itself is what the graph lights. Record an organization location action to give it one.`;
 }
 function updateEventHelp(){
-  const form=$("#event-form"),type=form.elements.type.value,isOrgLocation=type==="organization_location",isResidence=type==="residency",isHierarchy=type==="location_parent",isIdentityHierarchy=type==="identity_parent",needsTarget=["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge","quest_part","quest_contribution"].includes(type),showsTarget=needsTarget||type==="note"||type==="quest_issue",needsValue=["alias","display_name","status","gender","age","relationship","organization_location","residency","identity_parent"].includes(type),showsSystemValue=["system_host","system_location","system_end"].includes(type),showsValue=needsValue||showsSystemValue||type==="membership"||type==="cultivation"||type==="quest_contribution",usesAction=["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end","quest_issue","quest_end","quest_part","movement"].includes(type),help={mention:"Use this when an identity is referred to without physically appearing. Status remains unknown.",appearance:"A normal physical appearance also proves that the character is alive at this action.",corpse_appearance:"Use when a dead body is the character's first physical appearance. This sets appearance and dead status together.",display_name:"Changes the public label from this exact action onward. Add another display-name event later to end a spy name or restore an earlier name.",identity_parent:"Keeps clones, avatars, incarnations, split souls, and their original identity close together in the graph. A character merged into a system belongs here too — record the merge now and change or remove the link in the chapter they separate.",movement:"Records travel and changes the character's current physical position.",residency:"Records a home, permanent residence, long-term stay, camp, or personal domain.",location_parent:"Places one location directly inside another. The graph only draws the outermost place — a realm at most — until you open it.",alias:"Adds another searchable name without changing the main displayed label.",cultivation:"Choose the canonical tier by name; an equivalent path title remains synchronized.",status:"Use this for later changes or uncertain states such as missing and presumed dead.",gender:"Use this for a later reveal or an actual change — not needed if it was already set when the character was created.",age:"Use this whenever an age is stated or changes in-story — an exact number, a range, or a description.",awareness:"The first character knows the second exists.",meeting:"Records that two characters meet.",conversation:"One action for a whole conversation, however many are in it — a system talking to its host and a place that speaks both belong here. The people in it count as having met.",relationship:"Choose a second character and enter friendly, neutral, or hostile.",membership:"Choose whether the membership begins now, was already true but is only revealed now, or ends here.",organization_location:"Connect an organization to a headquarters, branch, base, territory, or outpost.",system_host:"Bind a system to the character who carries it. A system can have no host, and a host can carry more than one.",system_parent:"Place one system inside another — the taverns and resorts that belong to a larger system.",system_location:"A system operates at this place. A system can operate at many places at once.",system_rank:"A system rises or falls. Fill in whichever of authority or grade changed — the other keeps its current value. Write unknown in a field to take that rank away, for a system that loses its grade or whose number was never known.",system_merge:"One system is swallowed by another. It keeps its own history, shown as a small marker on the system that took it.",system_end:"The system is destroyed. It stays on the graph as a small marker so its history is still reachable.",quest_issue:"A quest is handed out. Name the character who receives it if the story says who — a quest can be issued to nobody in particular. List more than one and it becomes a joint quest, worked in cooperation and rewarded by contribution.",quest_progress:"How far along the quest is, as a percentage. Record one of these each time the story moves it, and the quest tab fills its card to match.",quest_end:"The quest is settled. Most quests only name their reward here, scaled to how the host performed, so fill in the rank and the performance grade on this action. A completed quest leaves the active list; a failed one carries whatever punishment the quest itself names.",quest_update:"A quest's terms grow as the story turns. Record the update, hint, added objective, or the system's own remark here — it belongs to the same quest, not to a second one.",quest_part:"Put this quest inside a larger one. The larger quest shows as a single card that opens to reveal its parts, each with its own reward.",quest_contribution:"For a joint quest, what one character contributed and what they were given for it. Record one of these per character — their shares need not be equal, and their rewards need not match.",note:"A general story event."};
+  const form=$("#event-form"),type=form.elements.type.value,isOrgLocation=type==="organization_location",isResidence=type==="residency",isHierarchy=type==="location_parent",isIdentityHierarchy=type==="identity_parent",needsTarget=["awareness","meeting","relationship","membership","identity_parent","system_host","system_parent","system_merge","quest_part","quest_contribution"].includes(type),showsTarget=needsTarget||type==="note"||type==="quest_issue",needsValue=["alias","display_name","status","gender","age","relationship","organization_location","residency","identity_parent"].includes(type),showsSystemValue=["system_host","system_location","system_end"].includes(type),showsValue=needsValue||showsSystemValue||type==="membership"||type==="cultivation"||type==="quest_contribution",usesAction=["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end","quest_issue","quest_end","quest_part","movement"].includes(type),help={mention:"Use this when an identity is referred to without physically appearing. Status remains unknown.",appearance:"A normal physical appearance also proves that the character is alive at this action.",corpse_appearance:"Use when a dead body is the character's first physical appearance. This sets appearance and dead status together.",display_name:"Changes the public label from this exact action onward. Add another display-name event later to end a spy name or restore an earlier name.",identity_parent:"Keeps clones, avatars, incarnations, split souls, and their original identity close together in the graph. A character merged into a system belongs here too — record the merge now and change or remove the link in the chapter they separate.",movement:"Records travel and changes the character's current physical position.",residency:"Records a home, permanent residence, long-term stay, camp, personal domain, or the organization somebody is based at.",location_parent:"Places one location directly inside another — or inside an organization that is a place in its own right, the way an inn is its own grounds and its own rooms. The graph only draws the outermost one until you open it.",alias:"Adds another searchable name without changing the main displayed label.",cultivation:"Choose the canonical tier by name; an equivalent path title remains synchronized.",status:"Use this for later changes or uncertain states such as missing and presumed dead.",gender:"Use this for a later reveal or an actual change — not needed if it was already set when the character was created.",age:"Use this whenever an age is stated or changes in-story — an exact number, a range, or a description.",awareness:"The first character knows the second exists.",meeting:"Records that two characters meet.",conversation:"One action for a whole conversation, however many are in it — a system talking to its host and a place that speaks both belong here. The people in it count as having met.",relationship:"Choose a second character and enter friendly, neutral, or hostile.",membership:"Choose whether the membership begins now, was already true but is only revealed now, or ends here.",organization_location:"Where the organization stands in the wider world — a headquarters, branch, base, territory, or outpost. This is different from what it holds inside itself, which is a nesting action.",system_host:"Bind a system to the character who carries it. A system can have no host, and a host can carry more than one.",system_parent:"Place one system inside another — the taverns and resorts that belong to a larger system.",system_location:"A system operates at this place. A system can operate at many places at once.",system_rank:"A system rises or falls. Fill in whichever of authority or grade changed — the other keeps its current value. Write unknown in a field to take that rank away, for a system that loses its grade or whose number was never known.",system_merge:"One system is swallowed by another. It keeps its own history, shown as a small marker on the system that took it.",system_end:"The system is destroyed. It stays on the graph as a small marker so its history is still reachable.",quest_issue:"A quest is handed out. Name the character who receives it if the story says who — a quest can be issued to nobody in particular. List more than one and it becomes a joint quest, worked in cooperation and rewarded by contribution.",quest_progress:"How far along the quest is, as a percentage. Record one of these each time the story moves it, and the quest tab fills its card to match.",quest_end:"The quest is settled. Most quests only name their reward here, scaled to how the host performed, so fill in the rank and the performance grade on this action. A completed quest leaves the active list; a failed one carries whatever punishment the quest itself names.",quest_update:"A quest's terms grow as the story turns. Record the update, hint, added objective, or the system's own remark here — it belongs to the same quest, not to a second one.",quest_part:"Put this quest inside a larger one. The larger quest shows as a single card that opens to reveal its parts, each with its own reward.",quest_contribution:"For a joint quest, what one character contributed and what they were given for it. Record one of these per character — their shares need not be equal, and their rewards need not match.",note:"A general story event."};
   $("#event-target-field").hidden=!showsTarget;$("#event-characters-field").hidden=!["conversation","quest_issue"].includes(type);$("#event-authority-field").hidden=type!=="system_rank";$("#event-grade-field").hidden=type!=="system_rank";$("#event-progress-field").hidden=type!=="quest_progress";$("#event-note-kind-field").hidden=type!=="quest_update";$("#event-relation-field").hidden=type!=="conversation";$("#event-rewards-field").hidden=!["quest_end","quest_contribution"].includes(type);$("#event-performance-field").hidden=!["quest_end","quest_contribution"].includes(type);$("#event-value-field").hidden=!showsValue;$("#event-level-field").hidden=type!=="cultivation";$("#event-action-field").hidden=!usesAction;
   // Ending something does not need the wording of what it was. Leaving this required meant the
   // browser silently refused to submit a removal at all — no toast, no event, nothing.
   const removing=REMOVAL_ACTIONS.has(form.elements.action.value);
   form.elements.target.required=needsTarget;form.elements.value.required=needsValue&&!removing;form.elements.location.required=["movement","organization_location","residency","location_parent","system_location"].includes(type);
-  $("#event-location-label").textContent=type==="movement"?"Destination":isOrgLocation?"Headquarters / branch location":isResidence?"Home / long-term location":isHierarchy?"Direct parent location":"Where this happened (optional)";
-  const placeOnly=["residency","location_parent","organization_location","system_location"].includes(type);
+  $("#event-location-label").textContent=type==="movement"?"Destination":isOrgLocation?"Headquarters / branch location":isResidence?"Home / long-term base":isHierarchy?"What it is inside":"Where this happened (optional)";
+  const placeOnly=["organization_location"].includes(type);
   form.elements.location.placeholder=placeOnly?"Type a place":"Type a place or an organization";
   $("#event-location-note").hidden=placeOnly;
   updateBranchField();
@@ -3442,43 +3477,18 @@ function generatedEventDescription(type,source,target,location,value,level,actio
 
 function isAutomaticCultivationDescription(description,previous){if(!previous||previous.type!=="cultivation")return false;const text=String(description||""),oldNames=[cultivationDisplay(previous),cultivationCanonical(previous)].filter(Boolean);return /\b(cultivation is revealed as|reaches|is introduced at)\b/i.test(text)&&oldNames.some(name=>text.toLowerCase().includes(name.toLowerCase()));}
 
-// A place a group occupies is a place in its own right: it can hold other places, be travelled
-// to, and outlive the group that keeps it. When an action needs a place and names a group, this
-// finds the one the group already stands in, or draws up a new one — named after the group, tied
-// to it, and free to be renamed — without writing either into the story until the caller says so.
-function placeForOrganization(organization,chapter){
-  const standing=new Map();
-  data.events.filter(event=>event.type==="organization_location"&&event.source===organization.id&&event.chapter<=chapter)
-    .sort((a,b)=>a.chapter-b.chapter||(Number(a.order)||0)-(Number(b.order)||0))
-    .forEach(event=>{if(event.action==="close")standing.delete(event.location);else standing.set(event.location,event);});
-  const places=[...standing.keys()].map(id=>entity(id)).filter(item=>item?.kind==="location");
-  if(places.length===1)return {place:places[0],pending:null};
-  if(places.length>1)return {place:null,pending:null,several:places.map(item=>item.name)};
-  let name=`${organization.name} Premises`,nameSuffix=2;
-  while(resolveEntity(name))name=`${organization.name} Premises ${nameSuffix++}`;
-  let id=slugify(name),idSuffix=2;
-  while(entity(id))id=slugify(name)+"-"+idSuffix++;
-  const place={id,kind:"location",locationType:"Site",name,intro:chapter};
-  return {place,pending:{organization:organization.name,entity:place,event:{id:"ev-"+crypto.randomUUID(),chapter,order:nextEventOrder(chapter),type:"organization_location",source:organization.id,location:id,action:"open",value:"Base",description:`${name} becomes ${organization.name}'s base.`}}};
-}
 function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   const form=new FormData(formElement),type=String(form.get("type")),source=resolveEntity(String(form.get("source")||"")),target=resolveEntity(String(form.get("target")||"")),rawValue=String(form.get("value")||"").trim(),value=type==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===rawValue.toLowerCase())?"":rawValue,level=Number(form.get("level"))||undefined,action=String(form.get("action")||"join"),chapter=Number(form.get("chapter")),sourceUrl=String(form.get("sourceUrl")||"").trim();
-  let location=resolveEntity(String(form.get("location")||"")),placeToMake=null;
+  const location=resolveEntity(String(form.get("location")||""));
   if(!source){toast("Choose an existing character, organization, or location");return null;}
   if(!Number.isFinite(chapter)||chapter<1){toast("Enter a valid chapter");return null;}
   if(String(form.get("location")||"").trim()&&!location){toast("Choose an existing place or organization");return null;}
   // Plenty of scenes happen inside a group rather than at a place: an office, a sect hall, a
-  // guild. Where it happened takes either. The actions that house somebody or build the map still
-  // need a real place — so rather than sending the writer away to make one by hand, the group is
-  // given somewhere to stand: the place it already occupies, or a new one named after it. The
-  // rule is met rather than bent, because what the action lands on is a real place either way.
+  // guild. Where it happened takes either, and so does nesting, housing somebody, and running a
+  // system: a group can be a place in its own right and hold those directly. Only a branch still
+  // insists on a real place, because a branch standing at another group means nothing.
   if(location&&!["location","organization"].includes(location.kind)){toast("Where this happened must be a place or an organization");return null;}
-  if(["residency","location_parent","system_location"].includes(type)&&location&&location.kind==="organization"){
-    const found=placeForOrganization(location,chapter);
-    if(!found.place){toast(`${location.name} stands in more than one place — name the one you mean: ${found.several.join(", ")}`);return null;}
-    placeToMake=found.pending;location=found.place;
-  }
-  if(["residency","location_parent","organization_location","system_location"].includes(type)&&location&&location.kind!=="location"){toast("This one needs a real place, not an organization");return null;}
+  if(type==="organization_location"&&location&&location.kind!=="location"){toast("A branch stands at a place, not at another organization");return null;}
   if(type==="movement"&&!location){toast("Choose the character's new location");return null;}
   if(type==="movement"&&source.kind!=="character"){toast("Only a character can change location");return null;}
   if(sourceUrl&&!safeExternalUrl(sourceUrl)){toast("The chapter citation must be a complete http:// or https:// URL");return null;}
@@ -3489,11 +3499,11 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   if(type==="system_host"&&(source.kind!=="system"||target?.kind!=="character")){toast("A host bond needs a system and a character");return null;}
   if(type==="system_parent"&&(source.kind!=="system"||target?.kind!=="system")){toast("A subsystem link needs two systems");return null;}
   if(type==="system_parent"&&source.id===target?.id){toast("A system cannot be its own subsystem");return null;}
-  if(type==="system_location"&&(source.kind!=="system"||!location||location.kind!=="location")){toast("A system location needs a system and a place");return null;}
+  if(type==="system_location"&&(source.kind!=="system"||!location||!["location","organization"].includes(location.kind))){toast("A system location needs a system and somewhere it runs");return null;}
   if(type==="system_merge"&&(source.kind!=="system"||target?.kind!=="system"||source.id===target.id)){toast("A merge needs two different systems");return null;}
   if(type==="system_end"&&source.kind!=="system"){toast("Only a system can be destroyed this way");return null;}
   if(type==="location_parent"&&!location){toast("Choose the direct parent location");return null;}
-  if(type==="location_parent"&&(source.kind!=="location"||location.kind!=="location")){toast("Hierarchy requires a child location and a parent location");return null;}
+  if(type==="location_parent"&&(source.kind!=="location"||!["location","organization"].includes(location.kind))){toast("Nesting puts a place inside another place, or inside an organization that is one");return null;}
   if(type==="location_parent"&&source.id===location.id){toast("A location cannot contain itself");return null;}
   if(type==="location_parent"&&action!=="remove"&&String(source.locationType||"")===LOCATION_ROOT_TYPE){toast("A realm is the widest place the graph draws — it cannot sit inside another location");return null;}
   if(type==="location_parent"&&action!=="remove"&&locationLineage(location.id,derive(chapter)).includes(source.id)){toast("That would create a circular location hierarchy");return null;}
@@ -3593,12 +3603,6 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   }
   if(form.get("ghost"))record.ghost=true;
   if(["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end","quest_issue","quest_end","quest_part"].includes(type))record.action=action;
-  // Nothing is invented for an action that turns out to be refused: the place and the line tying
-  // it to its group are only written once the rest of the action has passed every check.
-  if(placeToMake){
-    data.entities.push(placeToMake.entity);data.events.push(placeToMake.event);
-    toast(`${placeToMake.organization} had nowhere of its own, so ${placeToMake.entity.name} was made for it — rename it whenever the story gives it a better name`);
-  }
   return record;
 }
 
