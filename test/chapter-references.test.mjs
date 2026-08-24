@@ -1203,8 +1203,10 @@ test("what an action only speaks of is drawn as a reference, never as a presence
   const graph = functionBody("renderGraph");
   assert.match(graph, /\.\.\.\(event\.mentions\|\|\[\]\)\]\.filter\(Boolean\)\)\)/, "a name spoken of still comes onto the graph");
   assert.match(graph, /noteEdge\(speaker,spoken,event\.chapter,`Spoken of, not present\$\{personasOf\(event\)\.get\(event\.source\)\?/);
-  assert.match(graph, /straightEdge\(speaker,spoken,`edge mention-edge\$\{live\?" newly-revealed-edge":""\}`/, "while the action plays, and whenever either end is picked out");
+  assert.match(graph, /const key=`\$\{speaker\}\|\$\{spoken\}`,held=mentionLines\.get\(key\)/, "several actions naming the same pair share one line rather than stacking");
+  assert.match(graph, /straightEdge\(speaker,spoken,`edge mention-edge\$\{live\|\|picked\?"":" settled-mention-edge"\}\$\{live\?" newly-revealed-edge":""\}`/, "kept once read, and brought up to strength while the action plays or either end is picked out");
   assert.match(styleSource, /\.edge\.mention-edge\{stroke:#c4a6ff/);
+  assert.match(styleSource, /\.edge\.mention-edge\.settled-mention-edge\{opacity:\.22/, "a name once spoken of does not stop having been spoken of");
   assert.match(source, /<i class="line-key mention"><\/i>Spoken of<\/span>/, "and the key says what the line means");
   assert.match(source, /mentions: \["stonevale","jotun"\]/, "the demo speaks of a city and an empire nobody is anywhere near");
   assert.match(functionBody("actionMatchesFilter"), /if\(filter\.field==="spokenof"\)/, "searchable: speaks:jotun");
@@ -1541,6 +1543,15 @@ test("a place known only to be inside a realm can later be placed exactly, witho
   assert.match(source, /if\(type==="location_parent"&&source\.id===location\.id\)\{toast\("A location cannot contain itself"\)/);
   assert.match(source, /if\(type==="location_parent"&&action!=="remove"&&locationLineage\(location\.id,derive\(chapter\)\)\.includes\(source\.id\)\)\{toast\("That would create a circular location hierarchy"\)/);
   assert.match(source, /String\(source\.locationType\|\|""\)===LOCATION_ROOT_TYPE\)\{toast\("A realm is the widest place the graph draws/);
+});
+
+test("a group holds its own places, rather than an invented place standing in for it", () => {
+  // An earlier answer to the same problem stood up a "<Group> Premises" location and nested
+  // everything inside that. A group can be a place itself, so nothing is invented and no name
+  // nobody wrote in the book ends up on the graph.
+  assert.doesNotMatch(source, /placeForOrganization/, "no place is conjured for a group any more");
+  assert.doesNotMatch(source, /Premises/, "and no name the story never used is written into it");
+  assert.match(functionBody("buildEventRecord"), /if\(type==="organization_location"&&location&&location\.kind!=="location"\)/, "only a branch still insists on a real place");
 });
 
 test("a host bond may name where it happened — the place is optional on every action, this one included", () => {
