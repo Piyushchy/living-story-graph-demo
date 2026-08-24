@@ -332,6 +332,8 @@ th { color: var(--muted); font-weight: 600; }
 .crowd-open-halo{fill:none;stroke:#f0a3c8;stroke-width:2;stroke-dasharray:3 5;opacity:.8}
 .crowd-open-dot{fill:#f0a3c8}
 .crowd-child-badge{fill:#0d1725;stroke:#f0a3c8;stroke-width:1.6}
+.edge.crowd-edge{fill:none;stroke:#f0a3c8;stroke-width:2.2;stroke-dasharray:6 4;opacity:.55}
+.line-key.crowd{border-top-color:#f0a3c8!important;border-top-style:dashed!important}
 .node.character .location-child-badge-text{fill:#ffd9ec}
 /* A group that holds places of its own: opened, it reads the same as any opened place. */
 .org-open-halo{fill:none;stroke:#8fa6c4;stroke-width:2;stroke-dasharray:3 5;opacity:.75}
