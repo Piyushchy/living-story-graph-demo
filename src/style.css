@@ -672,6 +672,8 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 .relation-edge[marker-end].newly-revealed-edge,.relation-edge[marker-start].newly-revealed-edge{stroke-width:4;opacity:1}
 .edge.met-edge.newly-revealed-edge{stroke-width:4;opacity:1}
 .conversation-edge.newly-revealed-edge{animation-name:conversation-reveal;stroke-width:3.6;stroke-dasharray:2 5;opacity:1}
+.fades-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
+.fades-row select{width:auto}
 /* Its scene is over and it is on its way off the graph: still here, visibly not staying. */
 .node.passing-node{opacity:.6}
 .node.passing-node .node-label{font-style:italic}

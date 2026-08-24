@@ -2115,17 +2115,38 @@ test("a story event, and travel, carry everyone in them rather than one name and
 });
 
 test("an identity can walk off the graph again, after however many actions the writer gives it", () => {
-  assert.match(functionBody("passingLinger"), /const linger=Number\(entity\(id\)\?\.fades\);return Number\.isFinite\(linger\)&&linger>=0\?linger:null;/, "no count means it stays for good, as everything did before");
-  assert.match(functionBody("passingWatch"), /volumeActions\(\)\.forEach\(\(event,index\)=>watched\.forEach\(id=>\{if\(eventInvolves\(event,id\)\)lastSeen\.set\(id,index\+1\);\}\)\)/, "one pass for the last action each of them is in, however it is in it");
-  assert.match(functionBody("passingGone"), /currentActionIndex>at\+linger/);
-  assert.match(functionBody("passingLeaving"), /currentActionIndex>at&&currentActionIndex<=at\+linger/, "and between the two it is still here, visibly not staying");
+  assert.match(functionBody("passingLinger"), /return Number\.isFinite\(linger\)&&linger>=0\?\{linger,byChapter:item\?\.fadesUnit==="chapter"\}:null;/, "no count means it stays for good, as everything did before");
+  assert.match(functionBody("passingWatch"), /volumeActions\(\)\.forEach\(\(event,index\)=>watched\.forEach\(id=>\{if\(eventInvolves\(event,id\)\)lastSeen\.set\(id,\{at:index\+1,chapter:event\.chapter\}\);\}\)\)/, "one pass for the last action each of them is in, however it is in it");
+  assert.match(functionBody("passingGone"), /span\.now>span\.end/);
+  assert.match(functionBody("passingLeaving"), /span\.now>span\.from&&span\.now<=span\.end/, "and between the two it is still here, visibly not staying");
+
+  // Chapters is the unit a writer thinks in for a walk-on; actions is the one an action's own
+  // "lasts for" counter uses. Both are the same arithmetic over a different clock.
+  const ctx = { currentChapter: 12, currentActionIndex: 40 };
+  vm.createContext(ctx);
+  vm.runInContext(["var ENTITIES=new Map();function entity(id){return ENTITIES.get(id)||null;}", functionBody("passingLinger"), functionBody("passingSpan"), functionBody("passingGone"), functionBody("passingLeaving")].join("\n"), ctx);
+  const check = (item, seen, chapter, action) => {
+    ctx.currentChapter = chapter; ctx.currentActionIndex = action;
+    vm.runInContext(`ENTITIES.set("x",${JSON.stringify(item)});var seen=new Map([["x",${JSON.stringify(seen)}]]);`, ctx);
+    return vm.runInContext(`passingGone("x",seen)?"gone":passingLeaving("x",seen)?"leaving":"on"`, ctx);
+  };
+  const oneChapter = { id: "x", fades: 0, fadesUnit: "chapter" }, lastSeen = { at: 30, chapter: 11 };
+  assert.equal(check(oneChapter, lastSeen, 11, 30), "on", "in its own chapter it is simply there");
+  assert.equal(check(oneChapter, lastSeen, 11, 36), "on", "however many more actions that chapter runs to");
+  assert.equal(check(oneChapter, lastSeen, 12, 37), "gone", "and it goes when the chapter turns");
+  assert.equal(check({ id: "x", fades: 1, fadesUnit: "chapter" }, lastSeen, 12, 37), "leaving", "one more chapter keeps it, visibly on its way out");
+  assert.equal(check({ id: "x", fades: 1, fadesUnit: "chapter" }, lastSeen, 13, 44), "gone");
+  assert.equal(check({ id: "x", fades: 3 }, lastSeen, 12, 33), "leaving", "counted in actions it ignores the chapter entirely");
+  assert.equal(check({ id: "x", fades: 3 }, lastSeen, 11, 34), "gone");
+  assert.equal(check({ id: "x" }, lastSeen, 40, 400), "on", "and with no count at all it never leaves");
   const graph = functionBody("renderGraph");
   assert.match(graph, /passingSeen=passingWatch\(\),visibleIds=new Set\(/, "read once per draw, not once per identity");
   assert.match(graph, /leaving=passingLeaving\(item\.id,passingSeen\),/);
   assert.match(graph, /\$\{leaving\?" passing-node":""\}/);
   assert.match(styleSource, /\.node\.passing-node\{opacity:\.6\}/);
   assert.match(source, /<label class="field" id="entity-fades-field"><span>Stays on the graph for \(optional\)<\/span>/);
-  assert.match(source, /if\(fadesText&&!\/\^\\d\{1,3\}\$\/\.test\(fadesText\)\)\{toast\("How long it stays is a whole number of actions, or empty"\)/);
+  assert.match(source, /toast\("How long it stays is a whole number of chapters or actions, or empty"\)/);
+  assert.match(source, /<select name="fadesUnit"><option value="chapter">more chapters<\/option><option value="action">more actions<\/option><\/select>/, "chapters first, because that is the one a walk-on wants");
   assert.match(source, /fades:kind!=="quest"&&fadesAfter!==null\?fadesAfter:undefined,/);
   // Stepping back into its scene brings it back: nothing is deleted, it is simply not drawn yet.
   assert.doesNotMatch(functionBody("passingGone"), /data\.entities=|splice/);
