@@ -1039,6 +1039,8 @@ body.show-chapter-refs .prose-chapter-ref.sentence-cite:hover:has(.chapter-citat
 /* Spoken of, not present: a reference the story made, not a connection it built. */
 .edge.mention-edge{stroke:#c4a6ff;stroke-width:1.1;stroke-dasharray:1 5;stroke-linecap:round;opacity:.5}
 .edge.mention-edge.newly-revealed-edge{opacity:.9;stroke-width:1.5}
+/* A name once spoken of stays spoken of: the line is kept, faint, after its action has passed. */
+.edge.mention-edge.settled-mention-edge{opacity:.22;stroke-width:.9}
 .line-key.mention{background:repeating-linear-gradient(90deg,#c4a6ff 0 1px,transparent 1px 5px)}
 .event-mentions{padding:2px 7px;border-radius:999px;background:rgba(196,166,255,.14);color:#c4a6ff;font-size:9px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
 

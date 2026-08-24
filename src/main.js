@@ -2246,15 +2246,28 @@ function renderGraph() {
   // Plenty of actions name a place without being a movement — a meeting, a fight, a note. While
   // such an action is showing, tie everyone it involves to the place it names.
   // Being spoken of is drawn as a reference, not a presence: a thin line from whoever spoke to
-  // whatever they spoke of, while the action plays and whenever either end is picked out.
-  volumeApplied.filter(event=>(event.mentions||[]).length&&(beatEvents.some(item=>item.id===event.id)||holdingIds.has(event.id)||(selectedId&&event.chapter===currentChapter&&(event.source===selectedId||event.mentions.includes(selectedId))))).forEach(event=>{
-    const speaker=edgeLocationId(event.source),live=beatEvents.some(item=>item.id===event.id)||holdingIds.has(event.id);
+  // whatever they spoke of. Once an action has spoken of somebody the line stays, faint, for the
+  // rest of the reading — a name the story has raised does not stop having been raised — and it
+  // comes up to full strength while the action plays, while it is still holding, or while either
+  // end is picked out in the chapter it was spoken in.
+  // Several actions naming the same pair share one line, so a name spoken of every other chapter
+  // is drawn once rather than stacked, while each of those chapters still leaves its own note.
+  const mentionLines=new Map();
+  volumeApplied.filter(event=>(event.mentions||[]).length).forEach(event=>{
+    const speaker=edgeLocationId(event.source),
+      live=beatEvents.some(item=>item.id===event.id)||holdingIds.has(event.id),
+      picked=Boolean(selectedId)&&event.chapter===currentChapter&&(event.source===selectedId||event.mentions.includes(selectedId));
     event.mentions.forEach(id=>{
       const spoken=edgeLocationId(id);
       if(!speaker||!spoken||speaker===spoken)return;
       noteEdge(speaker,spoken,event.chapter,`Spoken of, not present${personasOf(event).get(event.source)?` — by ${personasOf(event).get(event.source)}`:""}`);
-      straightEdge(speaker,spoken,`edge mention-edge${live?" newly-revealed-edge":""}`,speaker,spoken);
+      const key=`${speaker}|${spoken}`,held=mentionLines.get(key);
+      if(held){held.live=held.live||live;held.picked=held.picked||picked;}
+      else mentionLines.set(key,{speaker,spoken,live,picked});
     });
+  });
+  mentionLines.forEach(({speaker,spoken,live,picked})=>{
+    straightEdge(speaker,spoken,`edge mention-edge${live||picked?"":" settled-mention-edge"}${live?" newly-revealed-edge":""}`,speaker,spoken);
   });
   beatEvents.filter(event=>{
     const where=entity(event.location)?.kind;
@@ -3425,15 +3438,42 @@ function generatedEventDescription(type,source,target,location,value,level,actio
 
 function isAutomaticCultivationDescription(description,previous){if(!previous||previous.type!=="cultivation")return false;const text=String(description||""),oldNames=[cultivationDisplay(previous),cultivationCanonical(previous)].filter(Boolean);return /\b(cultivation is revealed as|reaches|is introduced at)\b/i.test(text)&&oldNames.some(name=>text.toLowerCase().includes(name.toLowerCase()));}
 
+// A place a group occupies is a place in its own right: it can hold other places, be travelled
+// to, and outlive the group that keeps it. When an action needs a place and names a group, this
+// finds the one the group already stands in, or draws up a new one — named after the group, tied
+// to it, and free to be renamed — without writing either into the story until the caller says so.
+function placeForOrganization(organization,chapter){
+  const standing=new Map();
+  data.events.filter(event=>event.type==="organization_location"&&event.source===organization.id&&event.chapter<=chapter)
+    .sort((a,b)=>a.chapter-b.chapter||(Number(a.order)||0)-(Number(b.order)||0))
+    .forEach(event=>{if(event.action==="close")standing.delete(event.location);else standing.set(event.location,event);});
+  const places=[...standing.keys()].map(id=>entity(id)).filter(item=>item?.kind==="location");
+  if(places.length===1)return {place:places[0],pending:null};
+  if(places.length>1)return {place:null,pending:null,several:places.map(item=>item.name)};
+  let name=`${organization.name} Premises`,nameSuffix=2;
+  while(resolveEntity(name))name=`${organization.name} Premises ${nameSuffix++}`;
+  let id=slugify(name),idSuffix=2;
+  while(entity(id))id=slugify(name)+"-"+idSuffix++;
+  const place={id,kind:"location",locationType:"Site",name,intro:chapter};
+  return {place,pending:{organization:organization.name,entity:place,event:{id:"ev-"+crypto.randomUUID(),chapter,order:nextEventOrder(chapter),type:"organization_location",source:organization.id,location:id,action:"open",value:"Base",description:`${name} becomes ${organization.name}'s base.`}}};
+}
 function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
-  const form=new FormData(formElement),type=String(form.get("type")),source=resolveEntity(String(form.get("source")||"")),target=resolveEntity(String(form.get("target")||"")),location=resolveEntity(String(form.get("location")||"")),rawValue=String(form.get("value")||"").trim(),value=type==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===rawValue.toLowerCase())?"":rawValue,level=Number(form.get("level"))||undefined,action=String(form.get("action")||"join"),chapter=Number(form.get("chapter")),sourceUrl=String(form.get("sourceUrl")||"").trim();
+  const form=new FormData(formElement),type=String(form.get("type")),source=resolveEntity(String(form.get("source")||"")),target=resolveEntity(String(form.get("target")||"")),rawValue=String(form.get("value")||"").trim(),value=type==="cultivation"&&CULTIVATION_LEVELS.some(name=>name.toLowerCase()===rawValue.toLowerCase())?"":rawValue,level=Number(form.get("level"))||undefined,action=String(form.get("action")||"join"),chapter=Number(form.get("chapter")),sourceUrl=String(form.get("sourceUrl")||"").trim();
+  let location=resolveEntity(String(form.get("location")||"")),placeToMake=null;
   if(!source){toast("Choose an existing character, organization, or location");return null;}
   if(!Number.isFinite(chapter)||chapter<1){toast("Enter a valid chapter");return null;}
   if(String(form.get("location")||"").trim()&&!location){toast("Choose an existing place or organization");return null;}
   // Plenty of scenes happen inside a group rather than at a place: an office, a sect hall, a
-  // guild. Where it happened takes either. The actions that move somebody, house them, or build
-  // the map still need a real place, and say so below.
+  // guild. Where it happened takes either. The actions that house somebody or build the map still
+  // need a real place — so rather than sending the writer away to make one by hand, the group is
+  // given somewhere to stand: the place it already occupies, or a new one named after it. The
+  // rule is met rather than bent, because what the action lands on is a real place either way.
   if(location&&!["location","organization"].includes(location.kind)){toast("Where this happened must be a place or an organization");return null;}
+  if(["residency","location_parent","system_location"].includes(type)&&location&&location.kind==="organization"){
+    const found=placeForOrganization(location,chapter);
+    if(!found.place){toast(`${location.name} stands in more than one place — name the one you mean: ${found.several.join(", ")}`);return null;}
+    placeToMake=found.pending;location=found.place;
+  }
   if(["residency","location_parent","organization_location","system_location"].includes(type)&&location&&location.kind!=="location"){toast("This one needs a real place, not an organization");return null;}
   if(type==="movement"&&!location){toast("Choose the character's new location");return null;}
   if(type==="movement"&&source.kind!=="character"){toast("Only a character can change location");return null;}
@@ -3549,6 +3589,12 @@ function buildEventRecord(formElement,id="ev-"+crypto.randomUUID()){
   }
   if(form.get("ghost"))record.ghost=true;
   if(["membership","organization_location","residency","location_parent","identity_parent","system_host","system_parent","system_location","system_merge","system_end","quest_issue","quest_end","quest_part"].includes(type))record.action=action;
+  // Nothing is invented for an action that turns out to be refused: the place and the line tying
+  // it to its group are only written once the rest of the action has passed every check.
+  if(placeToMake){
+    data.entities.push(placeToMake.entity);data.events.push(placeToMake.event);
+    toast(`${placeToMake.organization} had nowhere of its own, so ${placeToMake.entity.name} was made for it — rename it whenever the story gives it a better name`);
+  }
   return record;
 }
 

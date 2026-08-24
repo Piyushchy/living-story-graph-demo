@@ -1201,8 +1201,10 @@ test("what an action only speaks of is drawn as a reference, never as a presence
   const graph = functionBody("renderGraph");
   assert.match(graph, /\.\.\.\(event\.mentions\|\|\[\]\)\]\.filter\(Boolean\)\)\)/, "a name spoken of still comes onto the graph");
   assert.match(graph, /noteEdge\(speaker,spoken,event\.chapter,`Spoken of, not present\$\{personasOf\(event\)\.get\(event\.source\)\?/);
-  assert.match(graph, /straightEdge\(speaker,spoken,`edge mention-edge\$\{live\?" newly-revealed-edge":""\}`/, "while the action plays, and whenever either end is picked out");
+  assert.match(graph, /const key=`\$\{speaker\}\|\$\{spoken\}`,held=mentionLines\.get\(key\)/, "several actions naming the same pair share one line rather than stacking");
+  assert.match(graph, /straightEdge\(speaker,spoken,`edge mention-edge\$\{live\|\|picked\?"":" settled-mention-edge"\}\$\{live\?" newly-revealed-edge":""\}`/, "kept once read, and brought up to strength while the action plays or either end is picked out");
   assert.match(styleSource, /\.edge\.mention-edge\{stroke:#c4a6ff/);
+  assert.match(styleSource, /\.edge\.mention-edge\.settled-mention-edge\{opacity:\.22/, "a name once spoken of does not stop having been spoken of");
   assert.match(source, /<i class="line-key mention"><\/i>Spoken of<\/span>/, "and the key says what the line means");
   assert.match(source, /mentions: \["stonevale","jotun"\]/, "the demo speaks of a city and an empire nobody is anywhere near");
   assert.match(functionBody("actionMatchesFilter"), /if\(filter\.field==="spokenof"\)/, "searchable: speaks:jotun");
@@ -1539,6 +1541,19 @@ test("a place known only to be inside a realm can later be placed exactly, witho
   assert.match(source, /if\(type==="location_parent"&&source\.id===location\.id\)\{toast\("A location cannot contain itself"\)/);
   assert.match(source, /if\(type==="location_parent"&&action!=="remove"&&locationLineage\(location\.id,derive\(chapter\)\)\.includes\(source\.id\)\)\{toast\("That would create a circular location hierarchy"\)/);
   assert.match(source, /String\(source\.locationType\|\|""\)===LOCATION_ROOT_TYPE\)\{toast\("A realm is the widest place the graph draws/);
+});
+
+test("a group named where a place belongs is given somewhere to stand, instead of the action being refused", () => {
+  const helper = functionBody("placeForOrganization");
+  assert.match(helper, /if\(places\.length===1\)return \{place:places\[0\],pending:null\}/, "a group already standing in one place is not given a second");
+  assert.match(helper, /if\(places\.length>1\)return \{place:null,pending:null,several:places\.map\(item=>item\.name\)\}/, "standing in several, and the writer has to say which");
+  assert.match(helper, /while\(resolveEntity\(name\)\)name=`\$\{organization\.name\} Premises \$\{nameSuffix\+\+\}`/, "the invented name never collides with one the story already answers to");
+  assert.match(helper, /while\(entity\(id\)\)id=slugify\(name\)\+"-"\+idSuffix\+\+/, "nor does its id");
+  const record = functionBody("buildEventRecord");
+  assert.match(record, /if\(\["residency","location_parent","system_location"\]\.includes\(type\)&&location&&location\.kind==="organization"\)\{/, "only where the action insists on a real place — elsewhere a group is a fine answer to where this happened");
+  assert.match(record, /if\(\["residency","location_parent","organization_location","system_location"\]\.includes\(type\)&&location&&location\.kind!=="location"\)\{toast\("This one needs a real place, not an organization"\)/, "and the rule itself still stands: it is met by making the place, not by bending it");
+  assert.match(record, /placeToMake=found\.pending;location=found\.place;/, "and the action goes on against the place, not the group");
+  assert.match(record, /if\(placeToMake\)\{\s*data\.entities\.push\(placeToMake\.entity\);data\.events\.push\(placeToMake\.event\);/, "written only once the rest of the action has passed, so a refused action invents nothing");
 });
 
 test("a host bond may name where it happened — the place is optional on every action, this one included", () => {
